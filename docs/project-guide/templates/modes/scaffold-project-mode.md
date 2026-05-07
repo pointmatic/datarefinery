@@ -10,13 +10,31 @@ Before starting, the developer must provide (or the LLM must ask for):
 
 ## Steps
 
-### 1. License
+### 1. Read the project-specific spec
+
+**Before doing any scaffolding work**, read **Story A.a** in `docs/specs/stories.md` and `docs/specs/tech-spec.md` in full. Story A.a is the **authoritative project-specific source** for:
+
+- Build backend (e.g., hatchling, setuptools, poetry-core, flit-core) — do not default
+- Version number (e.g., `0.0.1` vs. `0.1.0`) — do not default
+- Runtime dependencies and optional-dep extras (e.g., `[llm]`, `[dev]`)
+- Package layout (e.g., `src/<package>/` skeleton, `__version__`, `py.typed`)
+- Console scripts and entry-point groups
+- Dev tooling configuration (ruff, mypy `--strict`, pytest)
+- Test skeleton (`tests/conftest.py`, subdirectories)
+- Editable-install / testenv setup commands
+- Any other prescriptions specific to this project
+
+The steps below give **generic defaults** for the cases where Story A.a is silent. **On any conflict, Story A.a wins** — do not silently default to a generic value when the story prescribes a specific one. If Story A.a prescribes tasks the steps below do not mention (e.g., `requirements-dev.txt`, conftest skeletons, CLI console scripts, dev-tool configs), implement those as part of this scaffolding pass — not as follow-up.
+
+If no Story A.a exists (legitimate edge case for ad-hoc scaffolds without a planned project), the steps below are the full spec; proceed with the generic defaults.
+
+### 2. License
 
 1. If a `LICENSE` file exists in the project root, read it and identify the license.
 2. If no `LICENSE` file exists, create one based on the developer's preference.
 3. Record the license identifier (SPDX format, e.g. `Apache-2.0`) -- this will be used in `pyproject.toml` (or equivalent) and in file headers.
 
-### 2. Copyright and License Header
+### 3. Copyright and License Header
 
 Establish the standard copyright and license header for all source files in the project. The header format depends on the license and the file's comment syntax.
 
@@ -50,16 +68,26 @@ Establish the standard copyright and license header for all source files in the 
 
 Adapt the comment syntax for the file type (`#` for Python/Shell, `//` for JS/TS/Go, `<!-- -->` for HTML/XML, etc.).
 
-### 3. Package Manifest
+### 4. Package Manifest
 
-Create the project's package manifest (e.g. `pyproject.toml`, `package.json`, `Cargo.toml`):
+Create the project's package manifest (e.g. `pyproject.toml`, `package.json`, `Cargo.toml`).
+
+**Story A.a / `tech-spec.md` are authoritative for these fields — do not silently default:**
+
+- **Build backend** — use what Story A.a prescribes (e.g., hatchling, setuptools, poetry-core, flit-core). If A.a is silent, ask the developer; do not pick a default.
+- **Version** — per Story A.a (e.g., `0.0.1` for some projects, `0.1.0` for others). If A.a is silent, default to `0.1.0`.
+- **Runtime dependencies** — copy from `tech-spec.md`'s Dependencies section.
+- **Optional-dep extras** (e.g., `[llm]`, `[dev]`) — per Story A.a / `tech-spec.md`.
+- **Console scripts and entry-point groups** — per Story A.a / `tech-spec.md`.
+- **Dev-tool configuration** (ruff, mypy `--strict`, pytest, coverage) — per Story A.a / `tech-spec.md`.
+
+**Generic fields that apply regardless:**
 
 - The `license` field must match the `LICENSE` file (use the SPDX identifier).
 - Include the copyright holder in the authors/maintainers field.
-- Set the initial version to `0.1.0`.
-- Add a placeholder description (will be refined in `document_brand` mode).
+- Add a placeholder description (will be refined in `document_brand` mode) unless Story A.a prescribes one.
 
-### 4. README.md
+### 5. README.md
 
 Create an initial `README.md` with:
 
@@ -68,6 +96,8 @@ Create an initial `README.md` with:
 - License badge (always include)
 - Installation section placeholder
 - Usage section placeholder
+
+If Story A.a or `tech-spec.md` prescribes additional README sections (e.g., quick-start example, configuration table, contributor notes), include them now rather than deferring to a later story.
 
 **Badge reference:**
 
@@ -81,7 +111,7 @@ Create an initial `README.md` with:
 
 Add badges proactively as each becomes applicable.
 
-### 5. CHANGELOG.md
+### 6. CHANGELOG.md
 
 Create `CHANGELOG.md` in the repository root:
 
@@ -96,13 +126,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ```
 
+If Story A.a prescribes a seeded version entry beyond `## [Unreleased]` (for example, a `## [0.0.1]` entry when the scaffold itself ships as v0.0.1), include it now rather than leaving it for the first code story.
+
 **Guidelines:**
 - Update `CHANGELOG.md` in the same commit as the version bump
 - Use standard categories: Added, Changed, Deprecated, Removed, Fixed, Security
 - Omit empty categories
 - Most recent versions at the top
 
-### 6. .gitignore
+### 7. .gitignore
 
 Create or update `.gitignore` with language-appropriate patterns. Include at minimum:
 
@@ -112,23 +144,27 @@ Create or update `.gitignore` with language-appropriate patterns. Include at min
 - OS-specific files (`.DS_Store`, `Thumbs.db`)
 - Test/coverage output
 
-### 7. Mark Story A.a Done
+If Story A.a or `tech-spec.md` prescribes additional patterns (e.g., `data/` for data-pipeline projects, project-specific cache directories, secrets files), include them.
+
+### 8. Verify Story A.a is Implemented and Mark Done
+
+By this point, every task in Story A.a should already be implemented — Step 1 mandated reading A.a in full, and Steps 2–7 implemented its prescriptions plus the generic defaults for anything A.a was silent on. **Reading A.a here is a verification gate, not a "now I see what's missing" surfacing.**
 
 Read `docs/specs/stories.md` and locate Story A.a.
 
-- If Story A.a is found and represents project scaffolding: mark all its tasks `[x]` and change its status suffix from `[Planned]` to `[Done]`.
+- If Story A.a is found and represents project scaffolding: walk every task and confirm it is implemented. If every task is implemented, mark all tasks `[x]` and change the status suffix from `[Planned]` to `[Done]`. **If unmet tasks remain, that means Step 1 was skipped or rushed — loop back and implement them now rather than mass-marking `[x]` or surfacing the delta to the developer for "what should we do?" guidance.**
 - If Story A.a is not found or does not appear to be a scaffolding story: warn the developer ("Story A.a not found or does not match expected scaffolding content — skipping story update") and continue.
 
-### 8. Project Essentials: Verify or Create, then Memory Review
+### 9. Project Essentials: Verify or Create, then Memory Review
 
-**8a. Verify or create `project-essentials.md` with concrete file headers.**
+**9a. Verify or create `project-essentials.md` with concrete file headers.**
 
 Check whether `docs/specs/project-essentials.md` exists:
 
-- **If it does NOT exist**: create it from the artifact template at `docs/project-guide/templates/artifacts/project-essentials.md` (installed by `project-guide init`; refreshed by `project-guide update`). The **File header conventions** section is mandatory baseline content — substitute `<YEAR>`, `<OWNER>`, and `<LICENSE>` with the concrete values gathered in steps 1–3 above (the SPDX identifier from step 1, the copyright holder from the prerequisites, and the current year). Remove the trailing TODO note. Do **not** ask the developer whether to include the headers.
-- **If it exists**: read the **File header conventions** section. If it still contains `<YEAR>`, `<OWNER>`, or `<LICENSE>` placeholders (or a trailing TODO note), substitute the concrete values from steps 1–3 and remove the TODO note. If the section is already concrete, leave it alone.
+- **If it does NOT exist**: create it from the artifact template at `docs/project-guide/templates/artifacts/project-essentials.md` (installed by `project-guide init`; refreshed by `project-guide update`). The **File header conventions** section is mandatory baseline content — substitute `<YEAR>`, `<OWNER>`, and `<LICENSE>` with the concrete values gathered in steps 2–4 above (the SPDX identifier from step 2, the copyright holder from the prerequisites, and the current year). Remove the trailing TODO note. Do **not** ask the developer whether to include the headers.
+- **If it exists**: read the **File header conventions** section. If it still contains `<YEAR>`, `<OWNER>`, or `<LICENSE>` placeholders (or a trailing TODO note), substitute the concrete values from steps 2–4 and remove the TODO note. If the section is already concrete, leave it alone.
 
-**8b. Memory review (append additional project-specific facts).**
+**9b. Memory review (append additional project-specific facts).**
 
 Read your recorded memories for this project (e.g., `.claude/projects/<project-path>/memory/` for Claude Code users).
 
@@ -140,7 +176,7 @@ Present candidates to the developer:
 
 Await confirmation, then append confirmed items to `docs/specs/project-essentials.md` following the heading convention (`###` subsections, no top-level `#`). If the memory store is empty or inaccessible, note this briefly and continue.
 
-### 9. Present for Approval
+### 10. Present for Approval
 
 Present the scaffolded project to the developer for review:
 

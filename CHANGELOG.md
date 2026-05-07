@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-05-07
+
+### Added
+
+- Pipeline contracts: InputContracts and OutputExpectations evaluation
+  (Story C.d, FR-23):
+  - `src/datarefinery/pipeline/contracts.py` exposes
+    `evaluate_input_contracts(records, contracts) -> ContractResult` and
+    `evaluate_output_expectations(dataset, expectations) -> ContractResult`.
+    Both materialize the iterable once internally so multiple assertions
+    traverse the same records without callers re-buffering. The
+    `ContractResult` aggregates one `AssertionResult` per declared
+    contract and exposes `passed`, `failures`, `warnings`, plus a
+    `raise_for_status()` method that raises `ContractError` only on
+    error-severity failures (warnings are recorded but never raise).
+  - Five assertion kinds: `record_count` (dataset-level `min`/`max`
+    bounds), `required_field` (every record contains the field
+    non-None), `dtype` (Python type tag with numpy aliases, rejecting
+    `bool` for int-family tags), `range` (`min`/`max` per-field), and
+    `distributional` (placeholder that always passes in v1; full
+    machinery is post-v1 per features.md FR-23 edge cases).
+  - The aggregator does not short-circuit; an unknown assertion `kind`
+    or a missing required `field` is reported as a failure rather than
+    raising.
+  - `tests/unit/test_contracts.py` covers each assertion kind's pass
+    and fail paths, severity handling (warning vs. error),
+    `raise_for_status` behavior, the no-short-circuit aggregator,
+    iterator consumption, and frozen-result guarantees (34 tests).
+
 ## [0.3.1] - 2026-05-07
 
 ### Added

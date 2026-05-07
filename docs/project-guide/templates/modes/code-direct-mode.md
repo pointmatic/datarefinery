@@ -7,21 +7,22 @@ Implement stories rapidly with direct commits to main. Focus on feature completi
 For each story:
 
 1. **Read** the story's checklist from `docs/specs/stories.md` — always re-fetch from disk with the `Read` tool at the start of each cycle. The developer may have edited the file since you last viewed it (added tasks, reworded scope, marked items done), so do not rely on prior conversation context for its contents.
-2. **Implement** all tasks in the checklist
-3. **Add copyright/license headers** to every new source file
-4. **Run tests** -- `{{ test_invocation }}` (fix failures before continuing)
-5. **Run linting** -- fix any issues immediately
-6. **Mark tasks** as `[x]` in `stories.md` and change story suffix to `[Done]`
-7. **Bump version** in package manifest and source (if the story has a version)
-8. **Update CHANGELOG.md** with the version entry
-9. **Present** the completed story concisely: what changed (files + line refs), verification results (test counts, lint status), and the suggested next story. Do not propose commits, pushes, or bundling options. Do not offer "want me to also…?" follow-ups.
-10. **Wait** for the developer to say "go" before starting the next story
+2. **Identify and announce** the intended next story to the developer **before implementing anything**. State the **story ID** (e.g., `Story B.c`), **title**, and a **one-line scope summary** of what implementing it covers. Then wait for the developer to say "go" (a precise confirmation of *this specific story*) — or to redirect you to a different story. Do not start implementation work on the strength of your own pick; the announce-and-wait beat exists so the developer can redirect cheaply before any code is written.
+3. **Implement** all tasks in the checklist
+4. **Add copyright/license headers** to every new source file
+5. **Run tests** -- `{{ test_invocation }}` (fix failures before continuing)
+6. **Run linting** -- fix any issues immediately
+7. **Mark tasks** as `[x]` in `stories.md` and change story suffix to `[Done]`
+8. **Bump version** in package manifest and source — only if the story has a version assigned. **Determine the bump magnitude per the Version Cadence rule** (see `docs/specs/stories.md`'s Version Cadence section, summarized in this mode's header above): patch for bugfix, minor for feature, major for breaking (post-1.0 only via `plan_production_phase`). **Do not extrapolate from `pyproject.toml`'s current version** — re-read the cadence rule if unsure.
+9. **Update CHANGELOG.md** with the version entry
+10. **Present** the completed story concisely: what changed (files + line refs), verification results (test counts, lint status), and the suggested next story. Do not propose commits, pushes, or bundling options. Do not offer "want me to also…?" follow-ups.
+11. **Wait** for the developer to say "go" before starting the next cycle. "Go" re-enters the cycle at **Step 1** — a fresh `stories.md` read and a new announce in Step 2 — never silent implementation of whatever you assumed was next.
 
 ## Velocity Practices
 
 **LLM's role in each cycle:**
 
-- **Version bump per story** -- v0.1.0, v0.2.0, v0.3.0, etc. — bump in package manifest and source
+- **Version bump per story** — magnitude per the Version Cadence rule (bugfix=patch, feature=minor, breaking=major-post-1.0-only); bump in package manifest and source
 - **Minimal process overhead** -- focus on making it work, not making it perfect
 - **Tests run after every story** -- not after every file, but before presenting to developer
 - **Fix linting immediately** -- small incremental fixes, not batch cleanup
@@ -36,7 +37,7 @@ For each story:
 ## Story Ordering
 
 - Start with Story A.a (Hello World) if not yet implemented
-- If unclear which story is next, ask: "Which story should I work on next?"
+- The Step 2 announce-and-wait gate is where the developer confirms (or redirects). If you are unsure which story is next, that is the moment to surface the ambiguity in the announce — e.g., "I see two candidates: Story B.c and Story B.d. Which should I work on?" — not a moment to silently pick one.
 - Never skip ahead -- complete stories in order within each phase
 
 ## File Header Reminder

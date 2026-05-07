@@ -2,33 +2,40 @@ Break the project into an ordered sequence of small, independently completable s
 
 The high-level concept (why) should be captured in `concept.md`. The requirements and behavior (what) should be captured in `features.md`. The implementation details (how) should be written in `tech-spec.md`.
 
-## Prerequisites
+## Prerequisites — inputs the LLM reads in Step 2
 
-Before writing stories, the following must be approved:
-- `docs/specs/concept.md`
-- `docs/specs/features.md`
-- `docs/specs/tech-spec.md`
+`plan_stories` reads (it does **not** interrogate the developer to confirm these exist or are "approved" — the developer's choice to invoke this mode and the presence of the files imply approval; the natural pause-on-summary at Step 4 is the rejection path):
 
-Additionally, ask the developer:
+- `docs/specs/concept.md` — why
+- `docs/specs/features.md` — what
+- `docs/specs/tech-spec.md` — how, **including CI/CD scope** under its `## CI/CD Automation` section (or equivalent CI/automation language under packaging/distribution)
 
-> **Will this project need CI/CD automation?** For example: GitHub Actions for linting/testing on every push, dynamic code coverage badges (Codecov/Coveralls), and/or automated publishing to a package registry (PyPI, npm, etc.) on tagged releases?
-
-If yes, include a CI/CD phase in the stories. If no, skip it.
+**CI/CD scope is read from `tech-spec.md`, not asked of the developer.** Derive whether to include a CI/CD phase from the spec; ask the developer only if the spec is silent or genuinely ambiguous on the point. Do **not** present a standalone CI/CD-automation prompt to the developer when the spec already covers it.
 
 ## Steps
 
-1. Read the approved concept, features, and tech-spec documents.
+1. **Verify this is the right mode.** `plan_stories` is for *initial* story planning of a project that does not yet have a story plan. Before reading specs, run three deterministic checks:
 
-2. Generate `docs/specs/stories.md` using the artifact template at `docs/project-guide/templates/artifacts/stories.md` (installed by `project-guide init`; refreshed by `project-guide update`)
+   - Does `docs/specs/stories.md` already contain `### Story` headings (i.e., story content beyond the rendered template scaffold)?
+   - Does the working tree contain substantive source beyond Phase A scaffolding (heuristic: more than a handful of files in the package directory, or a populated `tests/` directory)?
+   - Is `git log --oneline | wc -l` deeper than ~10 commits?
 
-3. Present the complete document to the developer for approval. Iterate as needed.
+   If any check trips, **halt** and present the developer with a one-paragraph diagnosis: this project already has prior planning or implementation work, so `plan_stories` is likely the wrong mode. Suggest `plan_phase` (to add a new phase to an existing project), optionally preceded by `refactor_plan` if `features.md` / `tech-spec.md` need to change first. Do not proceed without explicit developer override.
+
+2. Read `docs/specs/concept.md`, `docs/specs/features.md`, and `docs/specs/tech-spec.md`. Extract CI/CD scope from `tech-spec.md`'s CI/CD section so it informs the Phase G decision below — do not re-ask the developer when the spec answers the question.
+
+3. Generate `docs/specs/stories.md` using the artifact template at `docs/project-guide/templates/artifacts/stories.md` (installed by `project-guide init`; refreshed by `project-guide update`). Include a CI/CD phase (Phase G) if and only if `tech-spec.md` indicates the project needs CI/CD automation.
+
+   **Version assignment** — the artifact template's **Version Cadence** section (rendered into the generated `stories.md`) is the authoritative rule for every story's version. Most stories in initial planning are features → **minor** bumps. Bug-fix stories are **patch**. Major bumps are forward-deferred to `plan_production_phase` (post-1.0 only). Story A.a starts at **v0.1.0**. Do not extrapolate from prior projects' version schemes.
+
+4. Present the complete document to the developer for approval. Iterate as needed.
 
 {% include "modes/_phase-letters.md" %}
 
 ## Story Writing Rules
 
 - **Story ID**: see the Phase and Story ID Scheme above.
-- **Version**: semver, bumped per story. Stories with no code changes omit the version.
+- **Version**: per the **Version Cadence** section in the generated `stories.md` — bugfix=patch, feature=minor, breaking=major (post-1.0 only, via `plan_production_phase`). Stories with no code changes (doc-only / polish) omit the version. Phase-bundled releases also omit per-story versions; the bundle ships with one tag at end-of-phase.
 - **Status suffix**: `[Planned]` initially, changed to `[Done]` when completed.
 - **Checklist**: use `- [ ]` for planned tasks, `- [x]` for completed tasks. Subtasks indented with two spaces.
 - **First story (A.a)**: Always Project Scaffolding — LICENSE, copyright header, package manifest, README, CHANGELOG, .gitignore. This story is executed in `scaffold_project` mode, not `{% if test_first %}code_test_first{% else %}code_direct{% endif %}`. It is marked `[Done]` by `scaffold_project` mode upon completion.

@@ -50,6 +50,8 @@ Recognize and adapt to two distinct development modes:
 
 **Rationale:** Velocity mode maximizes learning and iteration speed when exploring solutions. Production mode maximizes stability and security when users depend on the project. Using the wrong mode at the wrong time either slows progress unnecessarily or creates technical debt.
 
+**How project-guide enforces the switch:** the `plan_production_phase` mode (mandatory for every phase once the package is at v1.0.0+) walks the developer through the **Production-readiness checklist** above as step 2 — branch protection, SECURITY.md, CONTRIBUTING.md, Dependabot, trusted publisher, mandatory CI, bundled-release cadence. The mode does not proceed past unmet items without explicit developer override. `plan_phase` (pre-1.0 only) halts and recommends `plan_production_phase` if the manifest reports `version >= 1.0.0`. End-of-phase, the developer ships via `project-guide bump-version <X.Y.Z>` (the deterministic helper that updates `pyproject.toml` / `<package>/version.py` / `CHANGELOG.md`).
+
 ---
 
 ## Hello World First — Spike Early, Spike Often
@@ -248,6 +250,27 @@ rewrite. Spikes are cheap insurance against the most expensive category of failu
 - Test error paths explicitly, not just happy paths
 
 **Rationale:** Error handling is a first-class concern, not an afterthought.
+
+---
+
+## Logging and User Output
+
+### Separate User-Facing Output from Operator Logs
+
+**Problem:** LLMs (and humans) often conflate human-readable CLI output with structured operational logs, sending the wrong message to the wrong channel. A `console.print(...)` call emitting "stage X took longer than expected" looks helpful in the terminal but is unfilterable downstream — log aggregators, alerting rules, and dashboards can't see it. Conversely, dumping JSON logs into the user's terminal makes the CLI feel hostile.
+
+**Best Practice:**
+
+In Python projects:
+
+- **`rich` is for users** — CLI output, progress bars, tables, colored hints, error explanations a human reads in their terminal. Lives on stdout/stderr.
+- **`logging` is for operators** — structured, filterable, level-tagged events for log aggregation, monitoring, and post-hoc debugging. Use the stdlib `logging` module with a JSON formatter (or equivalent structured target).
+- **Warnings and operational concerns** ("stage X took longer than expected", "fell back to slower path", "retried 3 times") belong on the **logging** channel, not in `console.print(...)`. The wrong instinct is to reach for the user-facing channel because the message *feels* user-facing — but if downstream tooling can't filter or alert on it, it might as well not exist.
+- **Errors that block the user** belong on both channels: a `rich`-styled human-readable message on stderr *and* a structured log entry the operator can correlate with the rest of the system.
+
+The same channel discipline applies in other ecosystems (`chalk`/`pino` in Node, `pterm`/`slog` in Go, `console`/`tracing` in Rust) — two libraries because two audiences.
+
+**Rationale:** Two channels exist because they serve two audiences with different access patterns. Humans read terminals once. Operators query logs across thousands of runs. Mixing the channels makes both audiences worse off — the human gets noisier output, and the operator can't find what they need.
 
 ---
 

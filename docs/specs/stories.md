@@ -307,17 +307,17 @@ Validate-clean, materialize-fail stubs. Confirms the plugin abstraction doesn't 
 - [x] Update CHANGELOG.md
 - [x] Verify: stub plugin contract tests pass; tabular validate-clean / materialize-fail smoke test passes.
 
-### Story C.d: v0.3.2 Pipeline Contracts: InputContracts and OutputExpectations (FR-23) [Planned]
+### Story C.d: v0.3.2 Pipeline Contracts: InputContracts and OutputExpectations (FR-23) [Done]
 
 Assertion evaluation for declared contracts and expectations.
 
-- [ ] Add `src/datarefinery/pipeline/__init__.py`, `src/datarefinery/pipeline/contracts.py`.
-- [ ] Implement `evaluate_input_contracts(records, contracts) -> ContractResult` and `evaluate_output_expectations(dataset, expectations) -> ContractResult`.
-- [ ] Failures raise `ContractError`; severities `error` and `warning` honored.
-- [ ] Unit tests: each assertion type (record-count bounds, required field, dtype, range, distributional placeholder) passes/fails as documented.
-- [ ] Bump version to v0.3.2
-- [ ] Update CHANGELOG.md
-- [ ] Verify: contract evaluation tests pass.
+- [x] Add `src/datarefinery/pipeline/__init__.py`, `src/datarefinery/pipeline/contracts.py`.
+- [x] Implement `evaluate_input_contracts(records, contracts) -> ContractResult` and `evaluate_output_expectations(dataset, expectations) -> ContractResult`.
+- [x] Failures raise `ContractError`; severities `error` and `warning` honored.
+- [x] Unit tests: each assertion type (record-count bounds, required field, dtype, range, distributional placeholder) passes/fails as documented.
+- [x] Bump version to v0.3.2
+- [x] Update CHANGELOG.md
+- [x] Verify: contract evaluation tests pass.
 
 ### Story C.e: v0.3.3 Splits Stage (FR-7) [Planned]
 

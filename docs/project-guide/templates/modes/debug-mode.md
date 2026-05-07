@@ -159,6 +159,8 @@ This step has **two distinct artifacts**. (a) is the gate; (b) is required but s
 
 Create a new story in `docs/specs/stories.md` matching the project format (see the bundled `stories.md` template and `project-essentials.md` for commit/version conventions). Implementation tasks the fix actually completed are marked `[x]`; any housekeeping tasks discovered during the fix (related-bug scans, doc updates) are marked `[ ]` and left for follow-up.
 
+**Version assignment** — bug-fix stories take a **patch** bump per the Version Cadence rule at the top of `docs/specs/stories.md`. If the project is using the phase-bundling option (per the cadence rule), the bug-fix story may run unversioned and ride the next bundled release.
+
 **(b) The prevention scan — required, but separate from the gate:**
 
 1. Update `features.md` or `tech-spec.md` if the requirements were ambiguous.

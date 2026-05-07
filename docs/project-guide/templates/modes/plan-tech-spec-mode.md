@@ -29,6 +29,7 @@ The approved `docs/specs/concept.md` and `docs/specs/features.md` must exist bef
    - performance_implementation: Concurrency model, connection pooling, batching strategy, resource limits (if applicable)
    - testing_strategy: Unit tests, integration tests, and what each covers
    - packaging_and_distribution: Package metadata, registry (PyPI/npm/crates.io), installation methods, console scripts, package data inclusion (if applicable)
+   - ci_cd_automation: One-line summary of CI/CD scope — linting/testing on push (GitHub Actions, etc.), coverage reporting (Codecov/Coveralls), automated registry publishing on tag (PyPI/npm/crates.io). "None" is a valid answer for projects that explicitly opt out. Lands as the **CI/CD Automation** section of `tech-spec.md`; `plan_stories` reads this single fact to decide whether to include a Phase G (CI/CD & Automation), so do not scatter CI/CD breadcrumbs across packaging/distribution and cross-cutting — capture them once, here.
 
 3. Generate `docs/specs/tech-spec.md` using the artifact template at `docs/project-guide/templates/artifacts/tech-spec.md` (installed by `project-guide init`; refreshed by `project-guide update`)
 

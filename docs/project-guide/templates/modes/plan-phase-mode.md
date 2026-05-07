@@ -10,19 +10,23 @@ Before planning a new phase, the following should exist:
 - `docs/specs/tech-spec.md`
 - `docs/specs/stories.md`
 
+`plan_phase` is the **pre-1.0** phase-planning mode. Once the package version is at v1.0.0 or beyond, **every phase must use `plan_production_phase`** (which adds production-readiness scrutiny, breaking-change negotiation, and an explicit version-bump target). See the `## Version Cadence` section in `docs/specs/stories.md` for the rationale.
+
 ## Steps
 
-1. Read the existing spec documents to understand the current project state.
+1. **Verify this is the right mode.** Read the package version from `pyproject.toml` (or equivalent manifest). If the version is **`>= 1.0.0`**, **halt** and recommend `plan_production_phase` instead — `plan_phase` is pre-1.0 only. Do not proceed without explicit developer override (e.g., "I know we're post-1.0 but this phase is internal infrastructure and doesn't ship; proceed with `plan_phase`"). Continue to step 2 only if the version is below 1.0.0 or the developer explicitly overrides.
+
+2. Read the existing spec documents to understand the current project state.
 
    `docs/specs/stories.md` may be in one of two shapes:
 
-   a. **Populated** — contains one or more `## Phase <Letter>:` sections from prior phases. Use the highest existing phase letter as the basis for the next one (see step 5).
+   a. **Populated** — contains one or more `## Phase <Letter>:` sections from prior phases. Use the highest existing phase letter as the basis for the next one (see step 6).
 
    b. **Empty (post-archive)** — `archive_stories` was just run and `stories.md` contains only the header and a `## Future` section, no phases. In this case, look in `docs/specs/.archive/` for files named `stories-vX.Y.Z.md`. Read the one with the highest version and find its highest `## Phase <Letter>:` heading — that is the basis for the next phase letter. Phase letters **continue across the archive boundary**; they do not reset.
 
    If neither `stories.md` nor `.archive/` contains any phases, this is a fresh project — start at `A`.
 
-2. Gather information from the developer about the new phase:
+3. Gather information from the developer about the new phase:
    - phase_name: A short name for the phase (e.g., "Mode System", "API Integration")
    - problem_gap: What capability is missing or what problem this phase solves
    - new_features: What the phase will add (functional requirements)
@@ -30,16 +34,16 @@ Before planning a new phase, the following should exist:
    - constraints: Any limitations or compatibility requirements with existing code
    - scope: What this phase will and won't do
 
-3. Generate a phase plan document at `docs/specs/phase-<letter>-<name>-plan.md` that combines:
+4. Generate a phase plan document at `docs/specs/phase-<letter>-<name>-plan.md` that combines:
    - **Gap analysis**: What exists vs. what's needed
    - **Feature requirements**: What the phase adds (mini features.md)
    - **Technical changes**: New/modified modules, dependencies, config changes (mini tech-spec.md)
-   - **Out of scope**: What's deferred to future phases
+   - **Out of scope**: What's deferred to future phases. **Walk through each Out-of-scope item with the developer** before committing the phase plan — confirm each item is genuinely deferrable rather than something that should be in this phase. Out-of-scope is a negotiation, not a unilateral declaration.
 
-4. Present the phase plan to the developer for approval.
+5. Present the phase plan to the developer for approval.
 
-5. After approval, add a new phase section and stories to `docs/specs/stories.md`:
-   - **Determine the next phase letter** by applying the algorithm from step 1:
+6. After approval, add a new phase section and stories to `docs/specs/stories.md`:
+   - **Determine the next phase letter** by applying the algorithm from step 2:
      - If `stories.md` had existing phases, the next letter is the successor of the highest one (e.g., `K` → `L`).
      - If `stories.md` was empty but `.archive/` had a `stories-vX.Y.Z.md`, read the latest archived file, find its highest phase letter, and take its successor (e.g., archived Phase `J` → next phase `K`).
      - If neither had phases, start at `A`.
@@ -48,9 +52,9 @@ Before planning a new phase, the following should exist:
    - Break the phase into stories following the standard story format.
    - Include a spike story if the phase introduces a new integration boundary.
 
-6. Present the updated stories to the developer for approval.
+7. Present the updated stories to the developer for approval.
 
-7. **After the stories are approved, append any new must-know facts to `project-essentials.md`.** Run this step **once** at the end of phase planning — not per-story.
+8. **After the stories are approved, append any new must-know facts to `project-essentials.md`.** Run this step **once** at the end of phase planning — not per-story.
 
    First, check whether `docs/specs/project-essentials.md` exists:
    - **If it does NOT exist**: this is a legacy project that has never had project-essentials captured. Create it fresh from the artifact template at `docs/project-guide/templates/artifacts/project-essentials.md` (installed by `project-guide init`; refreshed by `project-guide update`). The **File header conventions** section is mandatory baseline content — pre-fill `<YEAR>`, `<OWNER>`, and `<LICENSE>` from the project's `LICENSE` file and `pyproject.toml` (or equivalent manifest) and remove the trailing TODO note. Do **not** ask the developer whether to include the headers — the question below is only ever about *additional* facts. Note: this is the same create path as `refactor_plan`, and legacy projects are the highest-value case for a first-time capture.
