@@ -217,17 +217,17 @@ Generation→Output schema consistency, defined-split references, SampleData sub
 - [x] Update CHANGELOG.md
 - [x] Verify: full FR-2 check suite (1–18) fires as documented.
 
-### Story B.f: v0.2.7 Cache Identity (FR-4) [Planned]
+### Story B.f: v0.2.7 Cache Identity (FR-4) [Done]
 
 `CacheKey` and `compute_cache_key` combining recipe canonical hash + input hash + seed.
 
-- [ ] Add `src/datarefinery/cache/__init__.py`, `src/datarefinery/cache/identity.py`.
-- [ ] Implement `CacheKey` frozen dataclass (`recipe_hash: str`, `input_hash: str`, `seed: int`) with `.short` returning `recipe_hash[:16]`.
-- [ ] Implement `compute_cache_key(recipe, raw_inputs, seed)`: SHA-256 over canonical bytes; SHA-256 over sorted-by-name concatenation of per-source content hashes; combined with seed.
-- [ ] Unit tests: byte-identical recipe + inputs + seed → identical key; any change → different key; sources sorted by declared name (order-independent).
-- [ ] Bump version to v0.2.7
-- [ ] Update CHANGELOG.md
-- [ ] Verify: cache-identity tests pass.
+- [x] Add `src/datarefinery/cache/__init__.py`, `src/datarefinery/cache/identity.py`.
+- [x] Implement `CacheKey` frozen dataclass (`recipe_hash: str`, `input_hash: str`, `seed: int`) with `.short` returning `recipe_hash[:16]`.
+- [x] Implement `compute_cache_key(recipe, raw_inputs, seed)`: SHA-256 over canonical bytes; SHA-256 over sorted-by-name concatenation of per-source content hashes; combined with seed.
+- [x] Unit tests: byte-identical recipe + inputs + seed → identical key; any change → different key; sources sorted by declared name (order-independent).
+- [x] Bump version to v0.2.7
+- [x] Update CHANGELOG.md
+- [x] Verify: cache-identity tests pass.
 
 ### Story B.g: v0.2.8 Cache Layout Helpers [Planned]
 

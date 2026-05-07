@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-05-07
+
+### Added
+
+- Cache identity (Story B.f, FR-4):
+  - `src/datarefinery/cache/__init__.py`,
+    `src/datarefinery/cache/identity.py`. Frozen `CacheKey` dataclass
+    (`recipe_hash`, `input_hash`, `seed`) with `.short` returning the
+    first 16 hex characters of `recipe_hash` for cache-directory
+    sharding. Full SHA-256 hashes are stored in `manifest.json`
+    (per `project-essentials.md` "Cache identity is the
+    reproducibility contract").
+  - `compute_cache_key(recipe, raw_input_hashes, seed)` SHA-256s
+    `to_canonical_bytes(recipe)` for `recipe_hash`, then SHA-256s the
+    sorted-by-name concatenation of per-source content hashes
+    (`name=<hex>;` pairs) for `input_hash`. Order-independent: dict
+    insertion order does not affect `input_hash`.
+  - `tests/unit/test_cache_identity.py` covers identity stability,
+    sensitivity to recipe / input / seed changes, order-independence,
+    name-vs-content-hash collision resistance, recipe-hash-matches-
+    canonical-bytes-SHA-256 internal consistency, and hex-format
+    invariants.
+
 ## [0.2.6] - 2026-05-07
 
 ### Added
