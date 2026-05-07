@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""FR-2 recipe validator framework + checks 1-6.
+"""FR-2 recipe validator framework + checks 1-13.
 
 Each enumerated check from features.md becomes a `check_NN_<descriptor>`
 function returning a `CheckResult`. `validate(recipe, plugin)` runs every
@@ -8,7 +8,7 @@ registered check and never short-circuits - a check that raises
 unexpectedly is captured as a `fail` result rather than aborting the
 whole report.
 
-Checks 7-18 land in stories B.e.2 and B.e.3.
+Checks 14-18 land in story B.e.3.
 """
 
 from __future__ import annotations
@@ -230,6 +230,241 @@ def check_06_fit_on_train_uses_train_split(
     )
 
 
+_VALID_VARIANT_OVERRIDE_KEYS: frozenset[str] = frozenset(
+    {
+        "schema_version",
+        "plugin",
+        "seed",
+        "Input",
+        "Output",
+        "Labels",
+        "SampleData",
+        "InputContracts",
+        "Filters",
+        "Generation",
+        "Splits",
+        "Transformations",
+        "Augmentations",
+        "Featurizations",
+        "OutputExpectations",
+        "Visualizations",
+    }
+)
+
+
+def _field_universe_pre_featurizations(recipe: Recipe) -> set[str]:
+    return set(recipe.Output.record_schema.keys()) | {recipe.Labels.field}
+
+
+def check_07_operations_reference_declared_fields(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    """Featurization inputs must reference declared/upstream-produced fields.
+
+    Operations whose models do not expose explicit field references
+    (`FilterOp`, `TransformationOp`, `AugmentationOp`) cannot be checked
+    statically here; their `params` are opaque and are validated by
+    check 18 against the plugin's `OperationSpec`.
+    """
+    del plugin
+    descriptor = "operations_reference_declared_fields"
+    issues: list[str] = []
+    available = _field_universe_pre_featurizations(recipe)
+    for op in recipe.Featurizations:
+        missing = [name for name in op.inputs if name not in available]
+        if missing:
+            issues.append(
+                f"Featurizations[{op.name!r}].inputs reference undeclared "
+                f"fields {missing}"
+            )
+        available.add(op.output_field)
+    if not issues:
+        return _passed(7, descriptor)
+    return CheckResult(
+        check_id=7,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
+def check_08_splits_partition_correctly(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "splits_partition_correctly"
+    splits = recipe.Splits
+    has_ratios = splits.ratios is not None
+    has_keys = splits.key_assignment is not None
+    if has_ratios and has_keys:
+        return CheckResult(
+            check_id=8,
+            descriptor=descriptor,
+            status="fail",
+            location="Splits",
+            message="declare exactly one of 'ratios' or 'key_assignment', got both",
+        )
+    if not has_ratios and not has_keys:
+        return CheckResult(
+            check_id=8,
+            descriptor=descriptor,
+            status="fail",
+            location="Splits",
+            message="must declare one of 'ratios' or 'key_assignment'",
+        )
+    if has_ratios:
+        ratios = splits.ratios or {}
+        negative = {k: v for k, v in ratios.items() if v < 0}
+        if negative:
+            return CheckResult(
+                check_id=8,
+                descriptor=descriptor,
+                status="fail",
+                location="Splits.ratios",
+                message=f"ratios must be non-negative, got {negative}",
+            )
+        total = sum(ratios.values())
+        if total > 1.0 + 1e-9:
+            return CheckResult(
+                check_id=8,
+                descriptor=descriptor,
+                status="fail",
+                location="Splits.ratios",
+                message=f"ratios sum to {total}, must be <= 1.0",
+            )
+    else:  # key_assignment present
+        assert splits.key_assignment is not None  # narrow for mypy
+        if not splits.key_assignment.mapping:
+            return CheckResult(
+                check_id=8,
+                descriptor=descriptor,
+                status="fail",
+                location="Splits.key_assignment.mapping",
+                message="key_assignment.mapping is empty",
+            )
+    return _passed(8, descriptor)
+
+
+def check_09_stratification_keys_exist(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "stratification_keys_exist"
+    if recipe.Splits.stratify_by is None:
+        return _passed(9, descriptor)
+    available = _field_universe_pre_featurizations(recipe)
+    available.update(op.output_field for op in recipe.Featurizations)
+    if recipe.Splits.stratify_by in available:
+        return _passed(9, descriptor)
+    return CheckResult(
+        check_id=9,
+        descriptor=descriptor,
+        status="fail",
+        location="Splits.stratify_by",
+        message=(
+            f"stratify_by={recipe.Splits.stratify_by!r} not declared in "
+            f"Output.record_schema, Labels, or Featurizations outputs"
+        ),
+    )
+
+
+def check_10_class_imbalance_strategy_in_one_place(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    """Heuristic v1 check: a `class_balance` strategy on `Splits` and a
+    Filter whose predicate names `class_balance` collide and must be
+    resolved to one site per imbalance concern.
+    """
+    del plugin
+    descriptor = "class_imbalance_strategy_in_one_place"
+    splits_handles = recipe.Splits.class_balance is not None
+    filter_handles = any(
+        "class_balance" in op.predicate for op in recipe.Filters
+    )
+    if splits_handles and filter_handles:
+        return CheckResult(
+            check_id=10,
+            descriptor=descriptor,
+            status="fail",
+            location=None,
+            message=(
+                "class-imbalance strategy declared in both 'Splits.class_balance' "
+                "and a Filters predicate; consolidate to one site"
+            ),
+        )
+    return _passed(10, descriptor)
+
+
+def check_11_visualization_mode_declared(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    """Tautological for valid recipes (the model already constrains
+    `mode` to `Literal["exploration", "reporting"]`), but kept as a
+    documented FR-2 check so the report is exhaustive.
+    """
+    del plugin
+    descriptor = "visualization_mode_declared"
+    issues: list[str] = []
+    for op in recipe.Visualizations:
+        if op.mode not in ("exploration", "reporting"):
+            issues.append(
+                f"Visualizations[{op.name!r}].mode={op.mode!r}"
+            )
+    if not issues:
+        return _passed(11, descriptor)
+    return CheckResult(
+        check_id=11,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
+def check_12_variants_reference_declared_sections(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "variants_reference_declared_sections"
+    issues: list[str] = []
+    for variant_name, overlay in recipe.variants.items():
+        for key in overlay:
+            if key not in _VALID_VARIANT_OVERRIDE_KEYS:
+                issues.append(
+                    f"variant {variant_name!r} overrides unknown section {key!r}"
+                )
+    if not issues:
+        return _passed(12, descriptor)
+    return CheckResult(
+        check_id=12,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
+def check_13_labels_resolvable(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "labels_resolvable"
+    if recipe.Labels.field not in recipe.Output.record_schema:
+        return CheckResult(
+            check_id=13,
+            descriptor=descriptor,
+            status="fail",
+            location="Labels.field",
+            message=(
+                f"Labels.field={recipe.Labels.field!r} not declared in "
+                f"Output.record_schema (declared fields: "
+                f"{sorted(recipe.Output.record_schema.keys())})"
+            ),
+        )
+    return _passed(13, descriptor)
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -249,6 +484,25 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         "fit_on_train_uses_train_split",
         check_06_fit_on_train_uses_train_split,
     ),
+    (
+        7,
+        "operations_reference_declared_fields",
+        check_07_operations_reference_declared_fields,
+    ),
+    (8, "splits_partition_correctly", check_08_splits_partition_correctly),
+    (9, "stratification_keys_exist", check_09_stratification_keys_exist),
+    (
+        10,
+        "class_imbalance_strategy_in_one_place",
+        check_10_class_imbalance_strategy_in_one_place,
+    ),
+    (11, "visualization_mode_declared", check_11_visualization_mode_declared),
+    (
+        12,
+        "variants_reference_declared_sections",
+        check_12_variants_reference_declared_sections,
+    ),
+    (13, "labels_resolvable", check_13_labels_resolvable),
 )
 
 

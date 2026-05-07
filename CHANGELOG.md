@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-05-07
+
+### Added
+
+- Recipe validator checks 7-13 (Story B.e.2, FR-2 part 2):
+  - `check_07_operations_reference_declared_fields` validates
+    `FeaturizationOp.inputs` against the field universe
+    (`Output.record_schema` keys ∪ `Labels.field` ∪ upstream
+    Featurization `output_field`s). Field references inside opaque
+    operation params (Filters/Transformations/Augmentations) are
+    deferred to check 18.
+  - `check_08_splits_partition_correctly` requires exactly one of
+    `ratios` or `key_assignment`, non-negative ratios that sum to
+    `<= 1.0` (sub-one is allowed; remainder is unsplit), and a
+    non-empty `key_assignment.mapping`.
+  - `check_09_stratification_keys_exist` checks
+    `Splits.stratify_by` against the same field universe (including
+    Featurization outputs).
+  - `check_10_class_imbalance_strategy_in_one_place` (heuristic v1)
+    flags simultaneous handling in `Splits.class_balance` and any
+    `FilterOp.predicate` containing a `class_balance` key.
+  - `check_11_visualization_mode_declared` is tautological for valid
+    recipes (the model already constrains mode to
+    `Literal["exploration", "reporting"]`); kept for FR-2
+    completeness.
+  - `check_12_variants_reference_declared_sections` rejects variant
+    overlay keys that aren't valid Recipe section/scalar names.
+  - `check_13_labels_resolvable` requires `Labels.field` to be in
+    `Output.record_schema`.
+  - `tests/unit/test_validator.py` adds 21 new tests covering
+    per-check failure fixtures, pass cases, and a multi-violation
+    cross-check spanning 6 simultaneous failures across checks 1-13.
+  - Checks 14-18 land in B.e.3 (v0.2.6).
+
 ## [0.2.4] - 2026-05-07
 
 ### Added

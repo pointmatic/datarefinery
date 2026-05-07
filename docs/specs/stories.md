@@ -195,16 +195,16 @@ Land the validator framework that the rest of FR-2 builds on, plus the first six
 - [x] Update CHANGELOG.md
 - [x] Verify: `pyve test tests/unit/test_validator.py` passes; checks 1–6 fire as documented.
 
-### Story B.e.2: v0.2.5 Recipe Validator: checks 7–13 (FR-2 part 2) [Planned]
+### Story B.e.2: v0.2.5 Recipe Validator: checks 7–13 (FR-2 part 2) [Done]
 
 Field references, splits structure, class-imbalance strategy, visualization mode, variants targets, Labels resolvability.
 
-- [ ] Implement checks 7–13 as `check_07_operations_reference_declared_fields`, `check_08_splits_partition_correctly`, `check_09_stratification_keys_exist`, `check_10_class_imbalance_strategy_in_one_place`, `check_11_visualization_mode_declared`, `check_12_variants_reference_declared_sections`, `check_13_labels_resolvable`.
-- [ ] Per-check failure fixtures + unit tests asserting the right check fires for each violation.
-- [ ] Unit test: a recipe violating multiple of checks 1–13 reports every failure (no short-circuit).
-- [ ] Bump version to v0.2.5
-- [ ] Update CHANGELOG.md
-- [ ] Verify: checks 7–13 fire as documented.
+- [x] Implement checks 7–13 as `check_07_operations_reference_declared_fields`, `check_08_splits_partition_correctly`, `check_09_stratification_keys_exist`, `check_10_class_imbalance_strategy_in_one_place`, `check_11_visualization_mode_declared`, `check_12_variants_reference_declared_sections`, `check_13_labels_resolvable`.
+- [x] Per-check failure fixtures + unit tests asserting the right check fires for each violation.
+- [x] Unit test: a recipe violating multiple of checks 1–13 reports every failure (no short-circuit).
+- [x] Bump version to v0.2.5
+- [x] Update CHANGELOG.md
+- [x] Verify: checks 7–13 fire as documented.
 
 ### Story B.e.3: v0.2.6 Recipe Validator: checks 14–18 (FR-2 part 3) [Planned]
 
