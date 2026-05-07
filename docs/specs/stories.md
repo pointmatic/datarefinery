@@ -161,16 +161,16 @@ YAML → dict → `Recipe`, with the schema-version gate as the first thing that
 - [x] Update CHANGELOG.md
 - [x] Verify: loader-edge-case tests all pass with the documented error text.
 
-### Story B.c: v0.2.2 Canonical Bytes (FR-4) [Planned]
+### Story B.c: v0.2.2 Canonical Bytes (FR-4) [Done]
 
 The canonical-form algorithm. **This is the cache reproducibility contract** — see `project-essentials.md` "Cache identity is the reproducibility contract — invalidations are ceremonious." Every pydantic field default is part of the canonical bytes.
 
-- [ ] Add `src/datarefinery/recipe/canonical.py` with `to_canonical_bytes(recipe: Recipe) -> bytes` implementing `model_dump(mode="json")` → `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)` → UTF-8 encode.
-- [ ] Unit tests: byte-identical output for whitespace-only YAML edits, comment-only edits, key-reordered YAML; different output for any value change.
-- [ ] Add a fixture recipe and a pinned hex digest constant; unit test asserts the digest matches (the canonical-hash pinning test that gates accidental default changes).
-- [ ] Bump version to v0.2.2
-- [ ] Update CHANGELOG.md
-- [ ] Verify: cosmetic-edit invariance tests pass; the pinned canonical-hash test passes.
+- [x] Add `src/datarefinery/recipe/canonical.py` with `to_canonical_bytes(recipe: Recipe) -> bytes` implementing `model_dump(mode="json")` → `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)` → UTF-8 encode.
+- [x] Unit tests: byte-identical output for whitespace-only YAML edits, comment-only edits, key-reordered YAML; different output for any value change.
+- [x] Add a fixture recipe and a pinned hex digest constant; unit test asserts the digest matches (the canonical-hash pinning test that gates accidental default changes).
+- [x] Bump version to v0.2.2
+- [x] Update CHANGELOG.md
+- [x] Verify: cosmetic-edit invariance tests pass; the pinned canonical-hash test passes.
 
 ### Story B.d: v0.2.3 Variant Overlay (FR-14) [Planned]
 

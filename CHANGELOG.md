@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-05-07
+
+### Added
+
+- Canonical bytes — recipe-side cache reproducibility contract (Story B.c, FR-4):
+  - `src/datarefinery/recipe/canonical.py` exposes
+    `to_canonical_bytes(recipe)` implementing
+    `Recipe.model_dump(mode="json")` →
+    `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)` →
+    UTF-8 encode.
+  - `tests/unit/test_canonical.py` covers cosmetic-edit invariance
+    (whitespace-only, comment-only, key-reordered YAML), value-edit
+    sensitivity (changed scalar, added section), valid-UTF-8-JSON
+    output with no whitespace separators, and byte stability across
+    repeated calls.
+  - **Canonical hash pin:** `_PINNED_DIGEST` records the SHA-256 of
+    the baseline fixture's canonical bytes. Bumping this constant is
+    a deliberate cache-invalidation event and must follow the
+    ceremony in `project-essentials.md` "Cache identity is the
+    reproducibility contract".
+
 ## [0.2.1] - 2026-05-07
 
 ### Added

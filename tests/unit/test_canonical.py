@@ -1,0 +1,227 @@
+# Copyright (c) 2026 Pointmatic
+# SPDX-License-Identifier: Apache-2.0
+"""FR-4 canonical-bytes tests — the cache reproducibility contract.
+
+Cosmetic-edit invariance (whitespace, comments, key order) and value-edit
+sensitivity, plus the pinned canonical hash. Bumping the pin requires
+conscious sign-off on cache invalidation per `project-essentials.md`
+"Cache identity is the reproducibility contract — invalidations are
+ceremonious."
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+from datarefinery.recipe.canonical import to_canonical_bytes
+from datarefinery.recipe.loader import load
+
+_BASELINE_YAML = """\
+schema_version: 1
+plugin: image_classification
+seed: 42
+Input:
+  sources:
+    - name: train
+      type: image_folder
+      path: /data/train
+      label_from: parent_directory_name
+Output:
+  record_schema:
+    image:
+      dtype: uint8
+      shape: [32, 32, 3]
+    label:
+      dtype: int32
+Labels:
+  field: label
+  source:
+    kind: derived
+    derivation: parent_directory_name
+Splits:
+  ratios:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+  stratify_by: label
+  seed: 7
+"""
+
+_REORDERED_YAML = """\
+Splits:
+  seed: 7
+  stratify_by: label
+  ratios:
+    test: 0.1
+    train: 0.8
+    val: 0.1
+Output:
+  record_schema:
+    label:
+      dtype: int32
+    image:
+      shape: [32, 32, 3]
+      dtype: uint8
+Labels:
+  source:
+    derivation: parent_directory_name
+    kind: derived
+  field: label
+Input:
+  sources:
+    - label_from: parent_directory_name
+      path: /data/train
+      type: image_folder
+      name: train
+seed: 42
+plugin: image_classification
+schema_version: 1
+"""
+
+_WHITESPACE_YAML = """\
+
+
+schema_version: 1
+
+plugin:    image_classification
+seed:   42
+
+Input:
+  sources:
+    -   name: train
+        type: image_folder
+        path: /data/train
+        label_from: parent_directory_name
+
+Output:
+  record_schema:
+    image:
+      dtype: uint8
+      shape: [32, 32, 3]
+    label:
+      dtype: int32
+Labels:
+  field: label
+  source:
+    kind: derived
+    derivation: parent_directory_name
+
+
+Splits:
+  ratios:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+  stratify_by: label
+  seed: 7
+
+"""
+
+_COMMENTED_YAML = """\
+# Top-of-file comment.
+schema_version: 1  # current schema
+plugin: image_classification  # registered via entry-point group
+seed: 42
+Input:  # raw image directories
+  sources:
+    - name: train
+      type: image_folder
+      path: /data/train
+      label_from: parent_directory_name
+Output:
+  record_schema:
+    image:
+      dtype: uint8
+      shape: [32, 32, 3]
+    label:
+      dtype: int32
+Labels:
+  field: label
+  source:
+    # derived from the immediate parent directory name
+    kind: derived
+    derivation: parent_directory_name
+Splits:
+  ratios:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+  stratify_by: label
+  seed: 7
+"""
+
+
+# Pinned canonical hash for the baseline fixture above. Updating this value
+# is a deliberate cache-invalidation event — see project-essentials.md
+# "Cache identity is the reproducibility contract — invalidations are
+# ceremonious."
+_PINNED_DIGEST = "bdaabb558a2ec3a51f59afb6160d1746b85993652df1369823679ebb05b4114e"
+
+
+def _write(tmp_path: Path, name: str, text: str) -> Path:
+    p = tmp_path / f"{name}.yaml"
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def _canonical(tmp_path: Path, name: str, text: str) -> bytes:
+    return to_canonical_bytes(load(_write(tmp_path, name, text)))
+
+
+def test_baseline_canonical_hash_pin(tmp_path: Path) -> None:
+    digest = hashlib.sha256(_canonical(tmp_path, "base", _BASELINE_YAML)).hexdigest()
+    assert digest == _PINNED_DIGEST, (
+        f"canonical hash changed to {digest!r}. If this is intentional, "
+        "follow the post-production ceremony in project-essentials.md "
+        "'Cache identity is the reproducibility contract' before bumping the pin."
+    )
+
+
+def test_whitespace_only_yaml_edits_are_canonical_invariant(tmp_path: Path) -> None:
+    base = _canonical(tmp_path, "base", _BASELINE_YAML)
+    ws = _canonical(tmp_path, "ws", _WHITESPACE_YAML)
+    assert base == ws
+
+
+def test_comment_only_yaml_edits_are_canonical_invariant(tmp_path: Path) -> None:
+    base = _canonical(tmp_path, "base", _BASELINE_YAML)
+    commented = _canonical(tmp_path, "c", _COMMENTED_YAML)
+    assert base == commented
+
+
+def test_key_reordered_yaml_is_canonical_invariant(tmp_path: Path) -> None:
+    base = _canonical(tmp_path, "base", _BASELINE_YAML)
+    reordered = _canonical(tmp_path, "r", _REORDERED_YAML)
+    assert base == reordered
+
+
+def test_value_change_produces_different_canonical_bytes(tmp_path: Path) -> None:
+    base = _canonical(tmp_path, "base", _BASELINE_YAML)
+    changed_seed = _BASELINE_YAML.replace("seed: 42", "seed: 43")
+    different = _canonical(tmp_path, "vc", changed_seed)
+    assert base != different
+
+
+def test_added_section_produces_different_canonical_bytes(tmp_path: Path) -> None:
+    base = _canonical(tmp_path, "base", _BASELINE_YAML)
+    extra = _BASELINE_YAML + "Filters:\n  - name: dedup\n    predicate: {kind: dedup}\n"
+    different = _canonical(tmp_path, "extra", extra)
+    assert base != different
+
+
+def test_canonical_bytes_are_valid_utf8_json(tmp_path: Path) -> None:
+    canonical = _canonical(tmp_path, "base", _BASELINE_YAML)
+    payload = json.loads(canonical.decode("utf-8"))
+    assert payload["schema_version"] == 1
+    # Compact form: no whitespace separators.
+    text = canonical.decode("utf-8")
+    assert ", " not in text
+    assert ": " not in text
+
+
+def test_repeated_calls_are_byte_stable(tmp_path: Path) -> None:
+    a = _canonical(tmp_path, "a", _BASELINE_YAML)
+    b = _canonical(tmp_path, "b", _BASELINE_YAML)
+    assert a == b
