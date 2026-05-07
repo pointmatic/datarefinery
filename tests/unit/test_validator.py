@@ -1,9 +1,8 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""FR-2 recipe validator tests - checks 1-13 (Stories B.e.1, B.e.2).
+"""FR-2 recipe validator tests - checks 1-18 (Stories B.e.1, B.e.2, B.e.3).
 
-Per-check failure fixtures and the no-short-circuit aggregator. Checks
-14-18 land in B.e.3.
+Per-check failure fixtures and the no-short-circuit aggregator.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from datarefinery.plugins.base import OperationSpec
+from datarefinery.plugins.base import OperationSpec, ParameterSpec
 from datarefinery.recipe.models import Recipe
 from datarefinery.recipe.validator import (
     CheckResult,
@@ -66,6 +65,7 @@ def _default_operations() -> dict[str, OperationSpec]:
             fit_on_train=True,
         ),
         "resize": OperationSpec(
+            parameters={"size": ParameterSpec(type="int", required=False)},
             applicable_sections=frozenset({"Transformations"}),
             fit_on_train=False,
         ),
@@ -77,6 +77,18 @@ def _default_operations() -> dict[str, OperationSpec]:
         ),
         "embed": OperationSpec(
             applicable_sections=frozenset({"Featurizations"}),
+        ),
+        "histogram": OperationSpec(
+            applicable_sections=frozenset({"Visualizations"}),
+        ),
+        # Used by check 18 failure fixtures: requires `mean` and `std`.
+        "normalize_strict": OperationSpec(
+            parameters={
+                "mean": ParameterSpec(type="float", required=True),
+                "std": ParameterSpec(type="float", required=True),
+            },
+            applicable_sections=frozenset({"Transformations"}),
+            fit_on_train=True,
         ),
     }
 
@@ -133,12 +145,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_thirteen_checks() -> None:
+def test_valid_recipe_passes_all_eighteen_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 13
-    assert {r.check_id for r in report.results} == set(range(1, 14))
+    assert len(report.results) == 18
+    assert {r.check_id for r in report.results} == set(range(1, 19))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -626,3 +638,347 @@ def test_multi_violation_recipe_spans_checks_1_through_13() -> None:
     report = validate(_build(bad), _Plugin())
     failed_ids = {r.check_id for r in report.failures}
     assert {1, 8, 9, 10, 12, 13}.issubset(failed_ids), failed_ids
+
+
+# ---------------------------------------------------------------------------
+# Per-check failure fixtures: checks 14-18 (Story B.e.3)
+# ---------------------------------------------------------------------------
+
+
+def test_check_14_fails_when_generation_field_not_in_record_schema() -> None:
+    bad = _base_dict()
+    bad["Generation"] = [
+        {
+            "name": "synth",
+            "inputs": ["image"],
+            "output_schema": {
+                "ghost_field": {"dtype": "uint8", "shape": [32, 32, 3]},
+            },
+            "seed": 1,
+            "applies_at": ["train"],
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 14)
+    assert len(failures) == 1
+    assert "ghost_field" in failures[0].message
+
+
+def test_check_14_fails_on_dtype_mismatch() -> None:
+    bad = _base_dict()
+    bad["Generation"] = [
+        {
+            "name": "synth",
+            "inputs": ["image"],
+            "output_schema": {
+                # `image` declared as uint8 in Output; Generation says float32 -> mismatch
+                "image": {"dtype": "float32", "shape": [32, 32, 3]},
+            },
+            "seed": 1,
+            "applies_at": ["train"],
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 14)
+    assert len(failures) == 1
+    assert "dtype" in failures[0].message
+
+
+def test_check_14_passes_when_generation_matches_record_schema() -> None:
+    ok = _base_dict()
+    ok["Generation"] = [
+        {
+            "name": "synth",
+            "inputs": ["image"],
+            "output_schema": {
+                "image": {"dtype": "uint8", "shape": [32, 32, 3]},
+                "label": {"dtype": "int32"},
+            },
+            "seed": 1,
+            "applies_at": ["train"],
+        }
+    ]
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 14)
+
+
+def test_check_15_fails_when_transformation_references_undefined_split() -> None:
+    bad = _base_dict()
+    bad["Transformations"] = [
+        {
+            "name": "n",
+            "op": "normalize",
+            "fit_source": "train",
+            "splits": ["train", "ghost"],
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 15)
+    assert len(failures) == 1
+    assert "ghost" in failures[0].message
+
+
+def test_check_15_fails_when_generation_applies_at_undefined_split() -> None:
+    bad = _base_dict()
+    bad["Generation"] = [
+        {
+            "name": "synth",
+            "inputs": ["image"],
+            "output_schema": {"image": {"dtype": "uint8", "shape": [32, 32, 3]}},
+            "seed": 1,
+            "applies_at": ["unknown_split"],
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 15)
+    assert len(failures) == 1
+    assert "unknown_split" in failures[0].message
+
+
+def test_check_15_fails_for_filter_referencing_undefined_split() -> None:
+    bad = _base_dict()
+    bad["Filters"] = [
+        {
+            "name": "f",
+            "predicate": {},
+            "stages": ["post_split"],
+            "splits": ["nope"],
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 15)
+    assert len(failures) == 1
+
+
+def test_check_15_passes_when_all_split_refs_defined() -> None:
+    report = validate(_build(_base_dict()), _Plugin())
+    assert not _failures_for(report, 15)
+
+
+def test_check_16_fails_when_neither_n_nor_fraction() -> None:
+    bad = _base_dict()
+    bad["SampleData"] = {"selector": {}}
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 16)
+    assert len(failures) == 1
+    assert "must declare" in failures[0].message
+
+
+def test_check_16_fails_when_both_n_and_fraction() -> None:
+    bad = _base_dict()
+    bad["SampleData"] = {"selector": {"n": 100, "fraction": 0.1}}
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 16)
+    assert len(failures) == 1
+    assert "got both" in failures[0].message
+
+
+def test_check_16_fails_when_fraction_not_strict() -> None:
+    bad = _base_dict()
+    bad["SampleData"] = {"selector": {"fraction": 1.0}}
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 16)
+    assert len(failures) == 1
+    assert "(0, 1)" in failures[0].message
+
+
+def test_check_16_fails_when_n_below_one() -> None:
+    bad = _base_dict()
+    bad["SampleData"] = {"selector": {"n": 0}}
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 16)
+    assert len(failures) == 1
+    assert ">= 1" in failures[0].message
+
+
+def test_check_16_passes_when_sample_data_absent() -> None:
+    report = validate(_build(_base_dict()), _Plugin())
+    assert not _failures_for(report, 16)
+
+
+def test_check_16_passes_for_valid_fraction() -> None:
+    ok = _base_dict()
+    ok["SampleData"] = {"selector": {"fraction": 0.1, "seed": 1}}
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 16)
+
+
+def test_check_17_fails_when_input_contract_field_undeclared() -> None:
+    bad = _base_dict()
+    bad["InputContracts"] = [
+        {"field": "ghost_field", "assertion": {"kind": "required"}, "severity": "error"}
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 17)
+    assert len(failures) == 1
+    assert "ghost_field" in failures[0].message
+
+
+def test_check_17_fails_when_output_expectation_field_undeclared() -> None:
+    bad = _base_dict()
+    bad["OutputExpectations"] = [
+        {"field": "ghost", "assertion": {"kind": "range"}, "severity": "warning"}
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 17)
+    assert len(failures) == 1
+
+
+def test_check_17_passes_for_dataset_level_assertion_without_field() -> None:
+    ok = _base_dict()
+    ok["OutputExpectations"] = [
+        {
+            "field": None,
+            "assertion": {"kind": "record_count_min", "value": 10},
+            "severity": "error",
+        }
+    ]
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 17)
+
+
+def test_check_18_fails_on_unknown_op_name() -> None:
+    bad = _base_dict()
+    bad["Transformations"] = [
+        {"name": "x", "op": "ghost_op", "fit_source": "train", "splits": ["train"]}
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 18)
+    assert len(failures) == 1
+    assert "ghost_op" in failures[0].message
+
+
+def test_check_18_fails_on_missing_required_param() -> None:
+    bad = _base_dict()
+    bad["Transformations"] = [
+        {
+            "name": "n",
+            "op": "normalize_strict",  # requires mean and std
+            "fit_source": "train",
+            "splits": ["train", "val", "test"],
+            "params": {"mean": 0.5},  # missing std
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 18)
+    assert len(failures) == 1
+    assert "std" in failures[0].message
+    assert "missing required" in failures[0].message
+
+
+def test_check_18_fails_on_unexpected_param() -> None:
+    bad = _base_dict()
+    bad["Transformations"] = [
+        {
+            "name": "r",
+            "op": "resize",
+            "fit_source": None,
+            "splits": ["train"],
+            "params": {"size": 32, "extra_param": True},
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 18)
+    assert len(failures) == 1
+    assert "extra_param" in failures[0].message
+
+
+def test_check_18_passes_on_well_formed_params() -> None:
+    ok = _base_dict()
+    ok["Transformations"] = [
+        {
+            "name": "n",
+            "op": "normalize_strict",
+            "fit_source": "train",
+            "splits": ["train", "val", "test"],
+            "params": {"mean": 0.5, "std": 0.2},
+        }
+    ]
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 18)
+
+
+# ---------------------------------------------------------------------------
+# Multi-violation cross-check spanning every check 1-18
+# ---------------------------------------------------------------------------
+
+
+def test_multi_violation_recipe_spans_every_check_1_through_18() -> None:
+    bad = copy.deepcopy(_base_dict())
+    bad["schema_version"] = 99  # check 1
+    bad["plugin"] = "wrong_plugin"  # check 2
+    # Use a plugin that doesn't list "Visualizations" -> check 3
+    plugin = _Plugin(
+        supported_sections=frozenset(
+            {
+                "Input",
+                "Output",
+                "Labels",
+                "Splits",
+                "InputContracts",
+                "Filters",
+                "Generation",
+                "Transformations",
+                "Augmentations",
+                "Featurizations",
+                "OutputExpectations",
+                "SampleData",
+            }
+        ),
+    )
+    bad["Visualizations"] = [
+        {"name": "v", "op": "histogram", "stage": "post_split", "mode": "reporting"}
+    ]
+    bad["Transformations"] = [
+        {
+            "name": "n",
+            "op": "normalize_strict",  # requires mean+std (check 18)
+            "fit_source": "validation",  # check 6
+            "splits": [],  # check 4
+        }
+    ]
+    bad["Augmentations"] = [
+        {"name": "f", "op": "horizontal_flip", "splits": ["test"], "seed": 1}  # check 5
+    ]
+    bad["Featurizations"] = [
+        {
+            "name": "embed",
+            "inputs": ["nonexistent"],  # check 7
+            "output_field": "emb",
+            "op": "embed",
+            "splits": ["ghost_split"],  # check 15
+        }
+    ]
+    bad["Splits"]["ratios"] = {"train": 1.5}  # check 8
+    bad["Splits"]["stratify_by"] = "missing"  # check 9
+    bad["Splits"]["class_balance"] = "upsample"
+    bad["Filters"] = [
+        {
+            "name": "bal",
+            "predicate": {"class_balance": {}},
+            "stages": ["pre_split"],
+            "splits": [],
+        }
+    ]  # check 10
+    bad["variants"] = {"v": {"FakeSection": {}}}  # check 12
+    bad["Labels"]["field"] = "label_alt"  # check 13
+    bad["Generation"] = [
+        {
+            "name": "synth",
+            "inputs": ["image"],
+            "output_schema": {"image": {"dtype": "float32", "shape": [32, 32, 3]}},
+            "seed": 1,
+            "applies_at": ["train"],
+        }
+    ]  # check 14
+    bad["SampleData"] = {"selector": {}}  # check 16
+    bad["InputContracts"] = [
+        {"field": "no_such", "assertion": {"kind": "required"}, "severity": "error"}
+    ]  # check 17
+
+    report = validate(_build(bad), plugin)
+    failed_ids = {r.check_id for r in report.failures}
+    expected = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18}
+    assert expected.issubset(failed_ids), (
+        f"missing failures for {sorted(expected - failed_ids)}; got {sorted(failed_ids)}"
+    )

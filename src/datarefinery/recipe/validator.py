@@ -1,14 +1,12 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""FR-2 recipe validator framework + checks 1-13.
+"""FR-2 recipe validator framework + checks 1-18.
 
 Each enumerated check from features.md becomes a `check_NN_<descriptor>`
 function returning a `CheckResult`. `validate(recipe, plugin)` runs every
 registered check and never short-circuits - a check that raises
 unexpectedly is captured as a `fail` result rather than aborting the
 whole report.
-
-Checks 14-18 land in story B.e.3.
 """
 
 from __future__ import annotations
@@ -465,6 +463,222 @@ def check_13_labels_resolvable(
     return _passed(13, descriptor)
 
 
+def _defined_split_names(recipe: Recipe) -> set[str]:
+    splits = recipe.Splits
+    if splits.ratios:
+        return set(splits.ratios.keys())
+    if splits.key_assignment:
+        return set(splits.key_assignment.mapping.values())
+    return set()
+
+
+def check_14_generation_output_schema_consistent(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "generation_output_schema_consistent"
+    issues: list[str] = []
+    record_schema = recipe.Output.record_schema
+    for op in recipe.Generation:
+        for field_name, field_spec in op.output_schema.items():
+            target = record_schema.get(field_name)
+            if target is None:
+                issues.append(
+                    f"Generation[{op.name!r}] produces field {field_name!r} "
+                    f"not in Output.record_schema"
+                )
+                continue
+            if target.dtype != field_spec.dtype:
+                issues.append(
+                    f"Generation[{op.name!r}].{field_name!r} dtype "
+                    f"{field_spec.dtype!r} != Output.record_schema "
+                    f"{target.dtype!r}"
+                )
+            if target.shape != field_spec.shape:
+                issues.append(
+                    f"Generation[{op.name!r}].{field_name!r} shape "
+                    f"{field_spec.shape!r} != Output.record_schema "
+                    f"{target.shape!r}"
+                )
+    if not issues:
+        return _passed(14, descriptor)
+    return CheckResult(
+        check_id=14,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
+def check_15_split_references_defined(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "split_references_defined"
+    defined = _defined_split_names(recipe)
+    issues: list[str] = []
+
+    def _check(section: str, op_name: str, refs: list[str]) -> None:
+        bad = [s for s in refs if s not in defined]
+        if bad:
+            issues.append(
+                f"{section}[{op_name!r}] references undefined splits {bad}"
+            )
+
+    for filt in recipe.Filters:
+        _check("Filters", filt.name, filt.splits)
+    for tx in recipe.Transformations:
+        _check("Transformations", tx.name, tx.splits)
+    for aug in recipe.Augmentations:
+        _check("Augmentations", aug.name, aug.splits)
+    for feat in recipe.Featurizations:
+        _check("Featurizations", feat.name, feat.splits)
+    for gen in recipe.Generation:
+        _check("Generation", gen.name, gen.applies_at)
+
+    if not issues:
+        return _passed(15, descriptor)
+    return CheckResult(
+        check_id=15,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
+def check_16_sample_data_strict_subset(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "sample_data_strict_subset"
+    if recipe.SampleData is None:
+        return _passed(16, descriptor)
+    selector = recipe.SampleData.selector
+    has_n = selector.n is not None
+    has_fraction = selector.fraction is not None
+    if has_n and has_fraction:
+        return CheckResult(
+            check_id=16,
+            descriptor=descriptor,
+            status="fail",
+            location="SampleData.selector",
+            message="set exactly one of 'n' or 'fraction', got both",
+        )
+    if not has_n and not has_fraction:
+        return CheckResult(
+            check_id=16,
+            descriptor=descriptor,
+            status="fail",
+            location="SampleData.selector",
+            message="must declare 'n' or 'fraction'",
+        )
+    if has_n and selector.n is not None and selector.n < 1:
+        return CheckResult(
+            check_id=16,
+            descriptor=descriptor,
+            status="fail",
+            location="SampleData.selector.n",
+            message=f"n must be >= 1 for a strict subset, got {selector.n}",
+        )
+    if has_fraction and selector.fraction is not None and not (
+        0.0 < selector.fraction < 1.0
+    ):
+        return CheckResult(
+            check_id=16,
+            descriptor=descriptor,
+            status="fail",
+            location="SampleData.selector.fraction",
+            message=(
+                f"fraction must be in (0, 1) for a strict subset, "
+                f"got {selector.fraction}"
+            ),
+        )
+    return _passed(16, descriptor)
+
+
+def check_17_contract_fields_exist_at_stage(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    del plugin
+    descriptor = "contract_fields_exist_at_stage"
+    available = set(recipe.Output.record_schema.keys()) | {recipe.Labels.field}
+    issues: list[str] = []
+    for contract in recipe.InputContracts:
+        if contract.field is not None and contract.field not in available:
+            issues.append(
+                f"InputContracts references undeclared field {contract.field!r}"
+            )
+    for expectation in recipe.OutputExpectations:
+        if expectation.field is not None and expectation.field not in available:
+            issues.append(
+                f"OutputExpectations references undeclared field "
+                f"{expectation.field!r}"
+            )
+    if not issues:
+        return _passed(17, descriptor)
+    return CheckResult(
+        check_id=17,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
+def check_18_plugin_operation_params_validate(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    """Cross-check each operation's `params` against the plugin's
+    declared `OperationSpec`. v1 enforces operation existence,
+    required-parameter presence, and rejection of unknown parameters.
+    Type-checking parameter values lands when the runner does the
+    materialize side of FR-3.
+    """
+    descriptor = "plugin_operation_params_validate"
+    issues: list[str] = []
+
+    def _validate(section: str, op_name: str, op_kind: str, params: dict[str, object]) -> None:
+        spec = plugin.supported_operations.get(op_kind)
+        if spec is None:
+            issues.append(
+                f"{section}[{op_name!r}].op={op_kind!r} not declared by "
+                f"plugin {plugin.name!r}"
+            )
+            return
+        for required_name, param_spec in spec.parameters.items():
+            if param_spec.required and required_name not in params:
+                issues.append(
+                    f"{section}[{op_name!r}] missing required param "
+                    f"{required_name!r} (type={param_spec.type!r})"
+                )
+        for given in params:
+            if given not in spec.parameters:
+                issues.append(
+                    f"{section}[{op_name!r}] has unexpected param {given!r}"
+                )
+
+    for tx in recipe.Transformations:
+        _validate("Transformations", tx.name, tx.op, tx.params)
+    for aug in recipe.Augmentations:
+        _validate("Augmentations", aug.name, aug.op, aug.params)
+    for feat in recipe.Featurizations:
+        _validate("Featurizations", feat.name, feat.op, feat.params)
+    for viz in recipe.Visualizations:
+        _validate("Visualizations", viz.name, viz.op, viz.params)
+
+    if not issues:
+        return _passed(18, descriptor)
+    return CheckResult(
+        check_id=18,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -503,6 +717,23 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         check_12_variants_reference_declared_sections,
     ),
     (13, "labels_resolvable", check_13_labels_resolvable),
+    (
+        14,
+        "generation_output_schema_consistent",
+        check_14_generation_output_schema_consistent,
+    ),
+    (15, "split_references_defined", check_15_split_references_defined),
+    (16, "sample_data_strict_subset", check_16_sample_data_strict_subset),
+    (
+        17,
+        "contract_fields_exist_at_stage",
+        check_17_contract_fields_exist_at_stage,
+    ),
+    (
+        18,
+        "plugin_operation_params_validate",
+        check_18_plugin_operation_params_validate,
+    ),
 )
 
 

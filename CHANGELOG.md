@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-05-07
+
+### Added
+
+- Recipe validator checks 14-18 (Story B.e.3, FR-2 part 3) - FR-2 complete:
+  - `check_14_generation_output_schema_consistent` cross-checks each
+    `GenerationOp.output_schema` against `Output.record_schema` for
+    field name presence and dtype/shape match.
+  - `check_15_split_references_defined` verifies every per-op
+    `splits` and `Generation.applies_at` reference a name declared in
+    `Splits.ratios` or `Splits.key_assignment.mapping` values.
+  - `check_16_sample_data_strict_subset` enforces that
+    `SampleData.selector` declares exactly one of `n` or `fraction`,
+    `n >= 1`, and `0 < fraction < 1` (strict subset).
+  - `check_17_contract_fields_exist_at_stage` requires `field`
+    references in `InputContracts` and `OutputExpectations` to exist
+    in the field universe (`Output.record_schema` ∪ `Labels.field`);
+    dataset-level assertions with `field=None` pass through.
+  - `check_18_plugin_operation_params_validate` looks up each
+    Transformation/Augmentation/Featurization/Visualization's `op`
+    against `plugin.supported_operations`; flags unknown operations,
+    missing required parameters, and unexpected (extra) parameters.
+    Type-checking parameter values is deferred to the runner.
+  - `tests/unit/test_validator.py` adds 21 new tests including
+    per-check failure fixtures, pass cases, and a multi-violation
+    cross-check that simultaneously fires 17 distinct checks
+    (everything except check 11, which the model already enforces
+    at parse time).
+
 ## [0.2.5] - 2026-05-07
 
 ### Added

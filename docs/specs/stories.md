@@ -206,16 +206,16 @@ Field references, splits structure, class-imbalance strategy, visualization mode
 - [x] Update CHANGELOG.md
 - [x] Verify: checks 7–13 fire as documented.
 
-### Story B.e.3: v0.2.6 Recipe Validator: checks 14–18 (FR-2 part 3) [Planned]
+### Story B.e.3: v0.2.6 Recipe Validator: checks 14–18 (FR-2 part 3) [Done]
 
 Generation→Output schema consistency, defined-split references, SampleData subset, contracts/expectations field existence, plugin-OperationSpec parameter validation. Check 18 cross-checks each operation's `params` against the declaring plugin's `OperationSpec` from Story A.h.
 
-- [ ] Implement checks 14–18 as `check_14_generation_output_schema_consistent`, `check_15_split_references_defined`, `check_16_sample_data_strict_subset`, `check_17_contract_fields_exist_at_stage`, `check_18_plugin_operation_params_validate`.
-- [ ] Per-check failure fixtures + unit tests asserting the right check fires for each violation.
-- [ ] Unit tests: a fully valid recipe passes all 18 checks; a multi-violation recipe spanning checks 1–18 reports every failure (no short-circuit).
-- [ ] Bump version to v0.2.6
-- [ ] Update CHANGELOG.md
-- [ ] Verify: full FR-2 check suite (1–18) fires as documented.
+- [x] Implement checks 14–18 as `check_14_generation_output_schema_consistent`, `check_15_split_references_defined`, `check_16_sample_data_strict_subset`, `check_17_contract_fields_exist_at_stage`, `check_18_plugin_operation_params_validate`.
+- [x] Per-check failure fixtures + unit tests asserting the right check fires for each violation.
+- [x] Unit tests: a fully valid recipe passes all 18 checks; a multi-violation recipe spanning checks 1–18 reports every failure (no short-circuit).
+- [x] Bump version to v0.2.6
+- [x] Update CHANGELOG.md
+- [x] Verify: full FR-2 check suite (1–18) fires as documented.
 
 ### Story B.f: v0.2.7 Cache Identity (FR-4) [Planned]
 
