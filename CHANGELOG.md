@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-05-07
+
+### Added
+
+- Recipe pydantic models (Story B.a) — Phase B begins:
+  - `src/datarefinery/recipe/models.py` defines `Recipe` plus per-section
+    models (`InputSection`, `InputSource`, `OutputSection`, `FieldSpec`,
+    `LabelsSection`, `LabelSource`, `SampleDataSection`, `SampleSelector`,
+    `Contract`, `Expectation`, `FilterOp`, `GenerationOp`,
+    `SplitsSection`, `KeyAssignment`, `TransformationOp`,
+    `AugmentationOp`, `FeaturizationOp`, `VisualizationOp`). All models
+    inherit from a shared frozen base with `extra="forbid"`. Plugin-
+    specific operation parameters are typed as opaque mappings here;
+    cross-checking against `OperationSpec` lands in Story B.e.
+  - `tests/unit/test_recipe_models.py` covers minimal-recipe validation,
+    `model_dump` round-trip, unknown top-level keys, unknown per-section
+    keys, missing required sections (`Input`/`Output`/`Labels`/`Splits`)
+    and required top-level fields (`schema_version`/`plugin`),
+    instance-frozen guarantee, the `mode` Literal on `VisualizationOp`,
+    and `SplitsSection` with key-assignment only.
+
 ## [0.1.6] - 2026-05-07
 
 ### Added

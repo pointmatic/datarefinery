@@ -135,18 +135,18 @@ Plugin abstraction landed *before* recipe validator, since validator check 2 + c
 
 The reproducibility contract is built here: recipe → pydantic model → canonical bytes → SHA-256 → cache layout → atomic promotion. Every stage of Phase C depends on these primitives. Cache identity is the most consequential surface in the project; per `project-essentials.md` post-production it is invalidation-ceremonious, but in this phase we are establishing the canonical algorithm itself.
 
-### Story B.a: v0.2.0 Recipe Pydantic Models [Planned]
+### Story B.a: v0.2.0 Recipe Pydantic Models [Done]
 
 Pydantic v2 models for `Recipe` and every section, frozen and `extra="forbid"` so unknown keys produce loud failures.
 
-- [ ] Add `src/datarefinery/recipe/__init__.py`, `src/datarefinery/recipe/models.py`.
-- [ ] Define `Recipe` plus per-section models per tech-spec table: `InputSection`, `OutputSection`, `LabelsSection`, `SampleDataSection`, `Contract`, `Expectation`, `FilterOp`, `GenerationOp`, `SplitsSection`, `TransformationOp`, `AugmentationOp`, `FeaturizationOp`, `VisualizationOp`.
-- [ ] All models use `model_config = ConfigDict(extra="forbid", frozen=True)`.
-- [ ] Per-section models have minimum viable fields wired (full plugin-specific param shapes are validated by `OperationSpec` later).
-- [ ] Unit tests: round-trip a small recipe dict through `Recipe.model_validate(...)` and `model_dump()`; unknown keys raise; missing required sections raise.
-- [ ] Bump version to v0.2.0
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `pyve test tests/unit/test_recipe_models.py` passes.
+- [x] Add `src/datarefinery/recipe/__init__.py`, `src/datarefinery/recipe/models.py`.
+- [x] Define `Recipe` plus per-section models per tech-spec table: `InputSection`, `OutputSection`, `LabelsSection`, `SampleDataSection`, `Contract`, `Expectation`, `FilterOp`, `GenerationOp`, `SplitsSection`, `TransformationOp`, `AugmentationOp`, `FeaturizationOp`, `VisualizationOp`.
+- [x] All models use `model_config = ConfigDict(extra="forbid", frozen=True)`.
+- [x] Per-section models have minimum viable fields wired (full plugin-specific param shapes are validated by `OperationSpec` later).
+- [x] Unit tests: round-trip a small recipe dict through `Recipe.model_validate(...)` and `model_dump()`; unknown keys raise; missing required sections raise.
+- [x] Bump version to v0.2.0
+- [x] Update CHANGELOG.md
+- [x] Verify: `pyve test tests/unit/test_recipe_models.py` passes.
 
 ### Story B.b: v0.2.1 Recipe Loader and Schema-Version Gate (FR-1) [Planned]
 
