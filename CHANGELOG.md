@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-05-07
+
+### Added
+
+- Error hierarchy and CLI exit-code mapping (Story A.f):
+  - `src/datarefinery/core/errors.py` defines `DataRefineryError` plus
+    `RecipeError`, `ValidationError`, `PluginError`, `ContractError`,
+    `MaterializeError`, `CacheError`.
+  - `src/datarefinery/cli/_exit_codes.py` exposes `EXIT_OK`, `EXIT_USER`,
+    `EXIT_SYSTEM`, `EXIT_INTERRUPT` and `exit_code_for(exc)` mapping per
+    tech-spec (user 1 / system 2 / SIGINT 130).
+  - `cli/app.py` adds `main_entry()` that runs the typer app with
+    `standalone_mode=False`, catches `DataRefineryError` and
+    `KeyboardInterrupt`, renders a `rich` error panel on stderr, and exits
+    with the mapped code; uncaught exceptions exit 2.
+  - Console script (`pyproject.toml`) and `__main__.py` now route through
+    `main_entry`.
+
+### Tests
+
+- `tests/unit/test_errors.py` — exhaustive subclass and exit-code mapping.
+- `tests/cli/test_exit_codes.py` — subprocess tests asserting each error
+  class produces the documented exit code through `main_entry`, plus
+  `KeyboardInterrupt → 130`, uncaught `RuntimeError → 2`, and that
+  `--help` / `--version` still exit 0.
+
 ## [0.1.3] - 2026-05-07
 
 ### Added

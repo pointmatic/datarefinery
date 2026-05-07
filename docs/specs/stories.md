@@ -92,17 +92,17 @@ JSON line-formatted operational logger separated from `rich` user-facing output 
 - [x] Update CHANGELOG.md
 - [x] Verify: `pyve run python -c "import logging, datarefinery.logging as l; lg=l.get_logger('x'); lg.info('hi', extra={'stage':'s','op_id':'o'})"` emits a single JSON line containing `"stage": "s"`.
 
-### Story A.f: v0.1.4 Error Hierarchy [Planned]
+### Story A.f: v0.1.4 Error Hierarchy [Done]
 
 Define the exception tree that every later module raises against, plus the CLI exit-code mapping.
 
-- [ ] Add `src/datarefinery/core/__init__.py`, `src/datarefinery/core/errors.py` with the hierarchy from tech-spec: `DataRefineryError` → `RecipeError`, `ValidationError`, `PluginError`, `ContractError`, `MaterializeError`, `CacheError`.
-- [ ] Add `cli/_exit_codes.py` mapping exception type → exit code (0/1/2/130) per tech-spec CLI design.
-- [ ] Wire `cli/app.py` to catch `DataRefineryError` subclasses, print a structured `rich` error panel, and exit with the mapped code; also catch `KeyboardInterrupt` → exit 130.
-- [ ] Unit tests: each exception subclass maps to the expected exit code; uncaught exceptions exit 2.
-- [ ] Bump version to v0.1.4
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `pyve test tests/unit/test_errors.py` passes; a deliberate raise of each subclass through the CLI surface yields the documented exit code.
+- [x] Add `src/datarefinery/core/__init__.py`, `src/datarefinery/core/errors.py` with the hierarchy from tech-spec: `DataRefineryError` → `RecipeError`, `ValidationError`, `PluginError`, `ContractError`, `MaterializeError`, `CacheError`.
+- [x] Add `cli/_exit_codes.py` mapping exception type → exit code (0/1/2/130) per tech-spec CLI design.
+- [x] Wire `cli/app.py` to catch `DataRefineryError` subclasses, print a structured `rich` error panel, and exit with the mapped code; also catch `KeyboardInterrupt` → exit 130.
+- [x] Unit tests: each exception subclass maps to the expected exit code; uncaught exceptions exit 2.
+- [x] Bump version to v0.1.4
+- [x] Update CHANGELOG.md
+- [x] Verify: `pyve test tests/unit/test_errors.py` passes; a deliberate raise of each subclass through the CLI surface yields the documented exit code.
 
 ### Story A.g: v0.1.5 RuntimeConfig and Configuration Precedence [Planned]
 

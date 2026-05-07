@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarefinery"
-version = "0.1.3"
+version = "0.1.4"
 description = "Recipe-driven data preparation and caching for machine learning"
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
@@ -42,7 +42,7 @@ llm = ["lmentry"]
 Homepage = "https://github.com/pointmatic/datarefinery"
 
 [project.scripts]
-datarefinery = "datarefinery.cli.app:app"
+datarefinery = "datarefinery.cli.app:main_entry"
 
 # Plugin discovery group; populated by Phase C stories
 # (image_classification: C.b; tabular and text: C.c).

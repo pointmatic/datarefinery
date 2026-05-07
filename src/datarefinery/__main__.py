@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Entry point for ``python -m datarefinery``."""
 
-from datarefinery.cli.app import app
+from datarefinery.cli.app import main_entry
 
 if __name__ == "__main__":
-    app()
+    main_entry()
