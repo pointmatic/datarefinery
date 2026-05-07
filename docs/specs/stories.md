@@ -240,17 +240,17 @@ Generation→Output schema consistency, defined-split references, SampleData sub
 - [x] Update CHANGELOG.md
 - [x] Verify: layout-helper tests pass.
 
-### Story B.h: v0.2.9 Atomic Temp-then-Promote (FR-5) [Planned]
+### Story B.h: v0.2.9 Atomic Temp-then-Promote (FR-5) [Done]
 
 `os.replace`-based promotion with cross-device guard and `FAILED` marker on failure.
 
-- [ ] Add `src/datarefinery/cache/atomic.py` with `atomic_promote(temp_dir, final_dir)` and `mark_failed(temp_dir, exc, stage)`.
-- [ ] `atomic_promote` validates `os.stat().st_dev` of `temp_dir.parent` and `final_dir.parent` match; raises `MaterializeError` on mismatch with the documented "same-filesystem" message.
-- [ ] `mark_failed` writes `FAILED` JSON marker (stage, exc_type, message, traceback).
-- [ ] Unit tests: success path promotes and removes temp; failure path leaves temp + `FAILED` marker; cross-device case is exercised on a tmpfs/loopback (skip on platforms where multi-device tmp isn't easy).
-- [ ] Bump version to v0.2.9
-- [ ] Update CHANGELOG.md
-- [ ] Verify: atomic-promote tests pass; injected-failure test leaves the expected `FAILED` artifact.
+- [x] Add `src/datarefinery/cache/atomic.py` with `atomic_promote(temp_dir, final_dir)` and `mark_failed(temp_dir, exc, stage)`.
+- [x] `atomic_promote` validates `os.stat().st_dev` of `temp_dir.parent` and `final_dir.parent` match; raises `MaterializeError` on mismatch with the documented "same-filesystem" message.
+- [x] `mark_failed` writes `FAILED` JSON marker (stage, exc_type, message, traceback).
+- [x] Unit tests: success path promotes and removes temp; failure path leaves temp + `FAILED` marker; cross-device case is exercised on a tmpfs/loopback (skip on platforms where multi-device tmp isn't easy). *Implemented via monkey-patched `_device_id` rather than a real tmpfs mount; same code path coverage with portable test setup.*
+- [x] Bump version to v0.2.9
+- [x] Update CHANGELOG.md
+- [x] Verify: atomic-promote tests pass; injected-failure test leaves the expected `FAILED` artifact.
 
 ### Story B.i: v0.2.10 Cache Cleaner (FR-21) [Planned]
 

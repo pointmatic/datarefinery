@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-05-07
+
+### Added
+
+- Atomic temp-then-promote (Story B.h, FR-5):
+  - `src/datarefinery/cache/atomic.py` exposes
+    `atomic_promote(temp_dir, final_dir)` (cross-device guard via
+    `os.stat(...).st_dev` comparison; `os.replace`-based rename; wraps
+    `OSError` and missing-temp into `MaterializeError`) and
+    `mark_failed(temp_dir, exc, stage)` (writes a `FAILED` JSON marker
+    with stage, exception type/message/traceback, and ISO-8601 UTC
+    timestamp; no-ops if `temp_dir` was already promoted/cleaned).
+    Cross-device detection is wrapped in a `_device_id` helper so the
+    guard is testable without a real multi-filesystem setup.
+  - `tests/unit/test_atomic.py` covers success path (temp gone, final
+    populated), missing-temp failure, cross-device refusal (with
+    monkey-patched `_device_id`), `os.replace` `OSError` wrapping,
+    `mark_failed` JSON shape and required fields, no-op on missing
+    temp, and an end-to-end `atomic_promote` failure followed by
+    `mark_failed` leaving temp + `FAILED` marker without ever touching
+    the final cache path.
+
 ## [0.2.8] - 2026-05-07
 
 ### Added
