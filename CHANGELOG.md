@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-05-07
+
+### Added
+
+- Cache cleaner library API (Story B.i, FR-21) - Phase B complete:
+  - `src/datarefinery/cache/cleaner.py` exposes the frozen
+    `CleanSelector` dataclass (`by_recipe_hash`, `by_input_hash`,
+    `by_seed`, `by_age_days`, `orphans`, `orphan_age_days`, `all`) and
+    `clean(cache_root, selector, *, force=False) -> CleanReport`. The
+    `by_*` filters compose intersection-style; `orphans=True` adds
+    temp dirs older than `orphan_age_days` to the target set;
+    `all=True` requires `force=True` and clears every direct child of
+    `<cache-root>/instances/`. Recipe and input hash matchers truncate
+    callers' full hashes to 16 chars before comparison. Failed
+    removals are captured in `CleanReport.skipped` rather than aborting
+    the run. The CLI verb wrapping this lands in Phase D.
+  - `tests/unit/test_cleaner.py` synthesizes a 4-instance + 2-orphan
+    layout and covers each selector, intersection-style composition,
+    the 16-char truncation invariant, the `all`-without-`force`
+    refusal, the `orphan_age_days` threshold, missing-cache-root
+    no-op, and `shutil.rmtree` failure capture in `skipped`.
+
 ## [0.2.9] - 2026-05-07
 
 ### Added

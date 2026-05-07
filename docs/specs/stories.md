@@ -252,16 +252,16 @@ Generation→Output schema consistency, defined-split references, SampleData sub
 - [x] Update CHANGELOG.md
 - [x] Verify: atomic-promote tests pass; injected-failure test leaves the expected `FAILED` artifact.
 
-### Story B.i: v0.2.10 Cache Cleaner (FR-21) [Planned]
+### Story B.i: v0.2.10 Cache Cleaner (FR-21) [Done]
 
 `clean` selectors: by-recipe, by-age, orphans, all. Library API only in this story; CLI verb lands in Phase D.
 
-- [ ] Add `src/datarefinery/cache/cleaner.py` with `CleanSelector` and `clean(cache_root, selector, *, force=False) -> CleanReport`.
-- [ ] Selectors: `by_recipe_hash`, `by_input_hash`, `by_seed`, `by_age_days` (mtime threshold), `orphans` (temp dirs older than threshold), `all` (requires `force=True`).
-- [ ] Unit tests covering each selector against a synthesized cache layout fixture; `all` without `force` raises; orphan threshold respected.
-- [ ] Bump version to v0.2.10
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `pyve test tests/unit/test_cleaner.py` passes.
+- [x] Add `src/datarefinery/cache/cleaner.py` with `CleanSelector` and `clean(cache_root, selector, *, force=False) -> CleanReport`.
+- [x] Selectors: `by_recipe_hash`, `by_input_hash`, `by_seed`, `by_age_days` (mtime threshold), `orphans` (temp dirs older than threshold), `all` (requires `force=True`).
+- [x] Unit tests covering each selector against a synthesized cache layout fixture; `all` without `force` raises; orphan threshold respected.
+- [x] Bump version to v0.2.10
+- [x] Update CHANGELOG.md
+- [x] Verify: `pyve test tests/unit/test_cleaner.py` passes.
 
 ---
 
