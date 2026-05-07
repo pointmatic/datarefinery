@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-05-07
+
+### Added
+
+- Recipe validator framework + checks 1-6 (Story B.e.1, FR-2 part 1):
+  - `src/datarefinery/recipe/validator.py` exposes `CheckStatus`,
+    `CheckResult` (frozen dataclass: `check_id`, `descriptor`, `status`,
+    `location`, `message`), `ValidationReport` (with `passed`,
+    `failures`, `warnings` properties), `validate(recipe, plugin)`
+    aggregator that runs every registered check and never short-circuits
+    (a check that raises is captured as a fail rather than aborting),
+    and the first six checks: `check_01_schema_version_recognized`,
+    `check_02_plugin_name_discoverable`,
+    `check_03_section_names_valid_for_plugin`,
+    `check_04_operations_declare_stages_and_splits`,
+    `check_05_augmentations_train_only`,
+    `check_06_fit_on_train_uses_train_split` (consults the plugin's
+    `OperationSpec.fit_on_train`).
+  - `tests/unit/test_validator.py` covers the valid-recipe-passes-all
+    case, no-short-circuit aggregation, exception-as-failure capture,
+    and per-check failure fixtures for each of checks 1-6 (with
+    pre-split / post-split filter splits, train-only augmentations, and
+    fit-on-train fit_source discipline edge cases).
+  - Checks 7-13 land in B.e.2 (v0.2.5); checks 14-18 land in
+    B.e.3 (v0.2.6).
+
 ## [0.2.3] - 2026-05-07
 
 ### Added

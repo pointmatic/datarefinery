@@ -183,20 +183,41 @@ Variants applied **before** canonicalization so cache identity reflects the sele
 - [x] Update CHANGELOG.md
 - [x] Verify: variant-cache-identity tests pass.
 
-### Story B.e: v0.2.4 Recipe Validator: Checks 1–18 (FR-2) [Planned]
+### Story B.e.1: v0.2.4 Recipe Validator framework + checks 1–6 (FR-2 part 1) [Done]
 
-Each enumerated check from features.md becomes a `check_NN_<descriptor>` function returning a `CheckResult`. `validate(...)` runs them all and never short-circuits.
+Land the validator framework that the rest of FR-2 builds on, plus the first six checks (schema/plugin recognition, section validity, operation declarations, augmentation discipline, fit-on-train discipline). `validate(...)` never short-circuits — it runs every registered check.
 
-- [ ] Add `src/datarefinery/recipe/validator.py` with one function per check (1–18) and an aggregating `validate(recipe, plugin) -> ValidationReport`.
-- [ ] `ValidationReport` is a dataclass listing every result with `check_id`, `status`, `location`, `message`.
-- [ ] `validate` returns the full report; the CLI/library wrapper raises `ValidationError(report)` if any check failed.
-- [ ] Fixture recipes for each check designed to fail it; unit tests assert the right check fires for each.
-- [ ] Unit test: a fully valid recipe passes all 18 checks; a multi-violation recipe reports every failure (no short-circuit).
-- [ ] Bump version to v0.2.4
+- [x] Add `src/datarefinery/recipe/validator.py` with the framework: `CheckStatus = Literal["pass", "fail", "warn"]`; `CheckResult` dataclass (`check_id: int`, `descriptor: str`, `status`, `location: str | None`, `message: str`); `ValidationReport` dataclass listing every result with `passed`, `failures`, `warnings` properties; `validate(recipe, plugin) -> ValidationReport` aggregator that runs every registered check and never short-circuits.
+- [x] Implement checks 1–6 as `check_01_schema_version_recognized`, `check_02_plugin_name_discoverable`, `check_03_section_names_valid_for_plugin`, `check_04_operations_declare_stages_and_splits`, `check_05_augmentations_train_only`, `check_06_fit_on_train_uses_train_split`.
+- [x] Per-check failure fixtures + unit tests asserting the right check fires for each violation.
+- [x] Unit tests: a fully valid recipe passes all six checks; a recipe violating multiple checks (within 1–6) reports every failure (no short-circuit).
+- [x] Bump version to v0.2.4
+- [x] Update CHANGELOG.md
+- [x] Verify: `pyve test tests/unit/test_validator.py` passes; checks 1–6 fire as documented.
+
+### Story B.e.2: v0.2.5 Recipe Validator: checks 7–13 (FR-2 part 2) [Planned]
+
+Field references, splits structure, class-imbalance strategy, visualization mode, variants targets, Labels resolvability.
+
+- [ ] Implement checks 7–13 as `check_07_operations_reference_declared_fields`, `check_08_splits_partition_correctly`, `check_09_stratification_keys_exist`, `check_10_class_imbalance_strategy_in_one_place`, `check_11_visualization_mode_declared`, `check_12_variants_reference_declared_sections`, `check_13_labels_resolvable`.
+- [ ] Per-check failure fixtures + unit tests asserting the right check fires for each violation.
+- [ ] Unit test: a recipe violating multiple of checks 1–13 reports every failure (no short-circuit).
+- [ ] Bump version to v0.2.5
 - [ ] Update CHANGELOG.md
-- [ ] Verify: `pyve test tests/unit/test_validator.py` passes; per-check failure tests all pass.
+- [ ] Verify: checks 7–13 fire as documented.
 
-### Story B.f: v0.2.5 Cache Identity (FR-4) [Planned]
+### Story B.e.3: v0.2.6 Recipe Validator: checks 14–18 (FR-2 part 3) [Planned]
+
+Generation→Output schema consistency, defined-split references, SampleData subset, contracts/expectations field existence, plugin-OperationSpec parameter validation. Check 18 cross-checks each operation's `params` against the declaring plugin's `OperationSpec` from Story A.h.
+
+- [ ] Implement checks 14–18 as `check_14_generation_output_schema_consistent`, `check_15_split_references_defined`, `check_16_sample_data_strict_subset`, `check_17_contract_fields_exist_at_stage`, `check_18_plugin_operation_params_validate`.
+- [ ] Per-check failure fixtures + unit tests asserting the right check fires for each violation.
+- [ ] Unit tests: a fully valid recipe passes all 18 checks; a multi-violation recipe spanning checks 1–18 reports every failure (no short-circuit).
+- [ ] Bump version to v0.2.6
+- [ ] Update CHANGELOG.md
+- [ ] Verify: full FR-2 check suite (1–18) fires as documented.
+
+### Story B.f: v0.2.7 Cache Identity (FR-4) [Planned]
 
 `CacheKey` and `compute_cache_key` combining recipe canonical hash + input hash + seed.
 
@@ -204,22 +225,22 @@ Each enumerated check from features.md becomes a `check_NN_<descriptor>` functio
 - [ ] Implement `CacheKey` frozen dataclass (`recipe_hash: str`, `input_hash: str`, `seed: int`) with `.short` returning `recipe_hash[:16]`.
 - [ ] Implement `compute_cache_key(recipe, raw_inputs, seed)`: SHA-256 over canonical bytes; SHA-256 over sorted-by-name concatenation of per-source content hashes; combined with seed.
 - [ ] Unit tests: byte-identical recipe + inputs + seed → identical key; any change → different key; sources sorted by declared name (order-independent).
-- [ ] Bump version to v0.2.5
+- [ ] Bump version to v0.2.7
 - [ ] Update CHANGELOG.md
 - [ ] Verify: cache-identity tests pass.
 
-### Story B.g: v0.2.6 Cache Layout Helpers [Planned]
+### Story B.g: v0.2.8 Cache Layout Helpers [Planned]
 
 `CachePaths` helpers under `<cache-root>` matching the layout in tech-spec.
 
 - [ ] Add `src/datarefinery/cache/layout.py` with helpers: `instance_dir(cache_root, key)`, `tmp_dir(cache_root, run_id)`, `manifest_path(instance_dir)`, `report_dir(instance_dir)`, `dataset_dir(...)`, `fitted_stats_dir(...)`.
 - [ ] Implement `make_run_id() -> str` returning `<utc_iso_compact>-<8hex>`.
 - [ ] Unit tests: layout helpers produce the documented path shape; `make_run_id` outputs are sortable and unique under concurrent calls.
-- [ ] Bump version to v0.2.6
+- [ ] Bump version to v0.2.8
 - [ ] Update CHANGELOG.md
 - [ ] Verify: layout-helper tests pass.
 
-### Story B.h: v0.2.7 Atomic Temp-then-Promote (FR-5) [Planned]
+### Story B.h: v0.2.9 Atomic Temp-then-Promote (FR-5) [Planned]
 
 `os.replace`-based promotion with cross-device guard and `FAILED` marker on failure.
 
@@ -227,18 +248,18 @@ Each enumerated check from features.md becomes a `check_NN_<descriptor>` functio
 - [ ] `atomic_promote` validates `os.stat().st_dev` of `temp_dir.parent` and `final_dir.parent` match; raises `MaterializeError` on mismatch with the documented "same-filesystem" message.
 - [ ] `mark_failed` writes `FAILED` JSON marker (stage, exc_type, message, traceback).
 - [ ] Unit tests: success path promotes and removes temp; failure path leaves temp + `FAILED` marker; cross-device case is exercised on a tmpfs/loopback (skip on platforms where multi-device tmp isn't easy).
-- [ ] Bump version to v0.2.7
+- [ ] Bump version to v0.2.9
 - [ ] Update CHANGELOG.md
 - [ ] Verify: atomic-promote tests pass; injected-failure test leaves the expected `FAILED` artifact.
 
-### Story B.i: v0.2.8 Cache Cleaner (FR-21) [Planned]
+### Story B.i: v0.2.10 Cache Cleaner (FR-21) [Planned]
 
 `clean` selectors: by-recipe, by-age, orphans, all. Library API only in this story; CLI verb lands in Phase D.
 
 - [ ] Add `src/datarefinery/cache/cleaner.py` with `CleanSelector` and `clean(cache_root, selector, *, force=False) -> CleanReport`.
 - [ ] Selectors: `by_recipe_hash`, `by_input_hash`, `by_seed`, `by_age_days` (mtime threshold), `orphans` (temp dirs older than threshold), `all` (requires `force=True`).
 - [ ] Unit tests covering each selector against a synthesized cache layout fixture; `all` without `force` raises; orphan threshold respected.
-- [ ] Bump version to v0.2.8
+- [ ] Bump version to v0.2.10
 - [ ] Update CHANGELOG.md
 - [ ] Verify: `pyve test tests/unit/test_cleaner.py` passes.
 
