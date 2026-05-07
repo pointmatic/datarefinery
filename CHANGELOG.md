@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-05-07
+
+### Added
+
+- Variant overlay (Story B.d, FR-14):
+  - `src/datarefinery/recipe/variants.py` exposes
+    `apply_variant(recipe, variant_name)` which replaces target sections
+    wholesale (e.g., `Augmentations: []` clears, `seed: 99` replaces the
+    scalar). The returned `Recipe` always has `variants={}` so cache
+    identity reflects only the applied semantics — adding or editing
+    unused variants does not invalidate cached instances of other
+    variants.
+  - Unknown variant name raises `RecipeError` listing the declared
+    variants. An overlay that produces an invalid recipe surfaces the
+    pydantic message wrapped in `RecipeError`.
+  - `tests/unit/test_variants.py` covers `None` clears variants,
+    section-clear via empty list, scalar replacement, unknown-variant
+    failure, declared-variants listed in the message, distinct
+    canonical bytes per variant, neutrality to unused variants,
+    invalid-overlay handling, and input-recipe immutability.
+
 ## [0.2.2] - 2026-05-07
 
 ### Added

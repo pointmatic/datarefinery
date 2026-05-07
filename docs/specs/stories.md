@@ -172,16 +172,16 @@ The canonical-form algorithm. **This is the cache reproducibility contract** —
 - [x] Update CHANGELOG.md
 - [x] Verify: cosmetic-edit invariance tests pass; the pinned canonical-hash test passes.
 
-### Story B.d: v0.2.3 Variant Overlay (FR-14) [Planned]
+### Story B.d: v0.2.3 Variant Overlay (FR-14) [Done]
 
 Variants applied **before** canonicalization so cache identity reflects the selected variant.
 
-- [ ] Add `src/datarefinery/recipe/variants.py` with `apply_variant(recipe, variant_name)`.
-- [ ] Variant overlays merge per-section (allow `Augmentations: []` to clear; allow scalar replacements).
-- [ ] Unit tests: each variant produces a different `to_canonical_bytes` output; default (no variant) leaves recipe unchanged; unknown variant name raises `RecipeError`.
-- [ ] Bump version to v0.2.3
-- [ ] Update CHANGELOG.md
-- [ ] Verify: variant-cache-identity tests pass.
+- [x] Add `src/datarefinery/recipe/variants.py` with `apply_variant(recipe, variant_name)`.
+- [x] Variant overlays merge per-section (allow `Augmentations: []` to clear; allow scalar replacements).
+- [x] Unit tests: each variant produces a different `to_canonical_bytes` output; default (no variant) leaves recipe unchanged; unknown variant name raises `RecipeError`.
+- [x] Bump version to v0.2.3
+- [x] Update CHANGELOG.md
+- [x] Verify: variant-cache-identity tests pass.
 
 ### Story B.e: v0.2.4 Recipe Validator: Checks 1–18 (FR-2) [Planned]
 
