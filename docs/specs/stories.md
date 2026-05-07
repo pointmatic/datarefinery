@@ -104,18 +104,18 @@ Define the exception tree that every later module raises against, plus the CLI e
 - [x] Update CHANGELOG.md
 - [x] Verify: `pyve test tests/unit/test_errors.py` passes; a deliberate raise of each subclass through the CLI surface yields the documented exit code.
 
-### Story A.g: v0.1.5 RuntimeConfig and Configuration Precedence [Planned]
+### Story A.g: v0.1.5 RuntimeConfig and Configuration Precedence [Done]
 
 Pydantic `RuntimeConfig` populated from CLI flags and env vars; recipe never reads from this surface (per `project-essentials.md` "Recipe is authoritative").
 
-- [ ] Add `src/datarefinery/core/config.py` with `RuntimeConfig` (cache_root, log_level, log_target, plugin_path, workers).
-- [ ] Add shared CLI options to `cli/app.py`: `--cache-root`, `--log-level`, `--log-target`, `--plugin-path` (repeatable), `--workers`, `--seed`, `--variant`, `--no-color`, `--quiet`, `--verbose`, `--version`.
-- [ ] Map env vars `DATAREFINERY_CACHE_ROOT`, `DATAREFINERY_LOG_LEVEL`, `DATAREFINERY_LOG_TARGET`, `DATAREFINERY_PLUGIN_PATH` (PATH-style on POSIX), `DATAREFINERY_WORKERS` to the same fields with lower precedence than CLI flags.
-- [ ] Document in module docstring (one short line) that data-pipeline semantics never read from `RuntimeConfig`; only execution context does.
-- [ ] Unit tests covering precedence: env-only, CLI-only, both (CLI wins), defaults.
-- [ ] Bump version to v0.1.5
-- [ ] Update CHANGELOG.md
-- [ ] Verify: precedence tests pass; `datarefinery --cache-root /tmp/x --version` does not error.
+- [x] Add `src/datarefinery/core/config.py` with `RuntimeConfig` (cache_root, log_level, log_target, plugin_path, workers).
+- [x] Add shared CLI options to `cli/app.py`: `--cache-root`, `--log-level`, `--log-target`, `--plugin-path` (repeatable), `--workers`, `--seed`, `--variant`, `--no-color`, `--quiet`, `--verbose`, `--version`.
+- [x] Map env vars `DATAREFINERY_CACHE_ROOT`, `DATAREFINERY_LOG_LEVEL`, `DATAREFINERY_LOG_TARGET`, `DATAREFINERY_PLUGIN_PATH` (PATH-style on POSIX), `DATAREFINERY_WORKERS` to the same fields with lower precedence than CLI flags.
+- [x] Document in module docstring (one short line) that data-pipeline semantics never read from `RuntimeConfig`; only execution context does.
+- [x] Unit tests covering precedence: env-only, CLI-only, both (CLI wins), defaults.
+- [x] Bump version to v0.1.5
+- [x] Update CHANGELOG.md
+- [x] Verify: precedence tests pass; `datarefinery --cache-root /tmp/x --version` does not error.
 
 ### Story A.h: v0.1.6 Plugin Protocol and Discovery [Planned]
 

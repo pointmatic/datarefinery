@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import click
@@ -19,6 +20,7 @@ from datarefinery.cli._exit_codes import (
     EXIT_SYSTEM,
     exit_code_for,
 )
+from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import DataRefineryError
 from datarefinery.logging import get_logger
 
@@ -38,6 +40,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: Annotated[
         bool,
         typer.Option(
@@ -47,16 +50,83 @@ def main(
             help="Show the package version and exit.",
         ),
     ] = False,
+    cache_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--cache-root",
+            help="Root directory for the cache (env: DATAREFINERY_CACHE_ROOT).",
+        ),
+    ] = None,
+    log_level: Annotated[
+        str | None,
+        typer.Option(
+            "--log-level",
+            help="Log level (env: DATAREFINERY_LOG_LEVEL).",
+        ),
+    ] = None,
     log_target: Annotated[
         str | None,
         typer.Option(
             "--log-target",
-            help="Log routing target (reserved; currently a no-op stub).",
+            help="Log routing target; reserved no-op stub "
+            "(env: DATAREFINERY_LOG_TARGET).",
         ),
     ] = None,
+    plugin_path: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--plugin-path",
+            help="Extra plugin discovery path; repeatable "
+            "(env: DATAREFINERY_PLUGIN_PATH, PATH-style).",
+        ),
+    ] = None,
+    workers: Annotated[
+        int | None,
+        typer.Option(
+            "--workers",
+            help="Process pool worker count (env: DATAREFINERY_WORKERS).",
+        ),
+    ] = None,
+    seed: Annotated[
+        int | None,
+        typer.Option(
+            "--seed",
+            help="Override the recipe-declared seed (changes cache identity).",
+        ),
+    ] = None,
+    variant: Annotated[
+        str | None,
+        typer.Option("--variant", help="Recipe variant to apply before canonicalization."),
+    ] = None,
+    no_color: Annotated[
+        bool,
+        typer.Option("--no-color", help="Disable colored output."),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress non-essential output."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Verbose output."),
+    ] = False,
 ) -> None:
     """DataRefinery — recipe-driven data preparation and caching for ML."""
-    del log_target
+    config = RuntimeConfig.resolve(
+        cache_root=cache_root,
+        log_level=log_level,
+        log_target=log_target,
+        plugin_path=plugin_path,
+        workers=workers,
+    )
+    state = ctx.ensure_object(dict)
+    state["config"] = config
+    state["seed"] = seed
+    state["variant"] = variant
+    state["no_color"] = no_color
+    state["quiet"] = quiet
+    state["verbose"] = verbose
+
     get_logger("cli")
     return None
 

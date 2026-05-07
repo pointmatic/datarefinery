@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-05-07
+
+### Added
+
+- Runtime configuration and shared CLI options (Story A.g):
+  - `src/datarefinery/core/config.py` defines a frozen pydantic
+    `RuntimeConfig` with `cache_root`, `log_level`, `log_target`,
+    `plugin_path`, `workers` and a `resolve()` classmethod implementing
+    the documented CLI > env > default precedence (env mapping
+    overridable for testing). `DATAREFINERY_PLUGIN_PATH` is split on
+    `os.pathsep` (POSIX `:`).
+  - `cli/app.py` adds shared options at the root callback:
+    `--cache-root`, `--log-level`, `--log-target`,
+    `--plugin-path` (repeatable), `--workers`, `--seed`, `--variant`,
+    `--no-color`, `--quiet`, `--verbose`. The callback builds a
+    `RuntimeConfig` and stashes it on the typer `Context` for downstream
+    commands.
+  - `tests/unit/test_config.py` covers env-only, CLI-only, both
+    (CLI wins), partial overrides, empty-string env, PATH-style splitting,
+    `frozen=True`, and `extra="forbid"`.
+
 ## [0.1.4] - 2026-05-07
 
 ### Added
