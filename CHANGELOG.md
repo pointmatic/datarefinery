@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-05-07
+
+### Added
+
+- Plugin protocol and discovery (Story A.h):
+  - `src/datarefinery/plugins/base.py` defines a runtime-checkable
+    `Plugin` protocol (`name`, `supported_sections`,
+    `supported_operations`, `schema_version`, `operation_factory`,
+    `is_stub`) plus frozen pydantic `OperationSpec` (parameters,
+    `fit_on_train`, `applicable_splits`, `applicable_sections`) and
+    `ParameterSpec`. Both models reject extra fields.
+  - `src/datarefinery/plugins/discovery.py` exposes
+    `discover_plugins(extra_paths=None)` which walks the
+    `datarefinery.plugins` entry-point group plus developer extra
+    paths (directories or single `.py` files), looking for a
+    top-level `PLUGIN` attribute. Duplicate names raise
+    `PluginError`; missing paths and unloadable modules raise
+    `PluginError` with the file path included.
+  - `tests/fixtures/dummy_plugin.py` and `dummy_plugin_dup.py`
+    provide a `_test_dummy` plugin and a duplicate-name partner for
+    the discovery test suite.
+  - `tests/unit/test_plugins_discovery.py` covers extra-paths file
+    and directory discovery, duplicate-name failure, missing-path
+    failure, `OperationSpec`/`ParameterSpec` extra-field rejection,
+    defaults, frozenness, and round-trip parameters.
+
 ## [0.1.5] - 2026-05-07
 
 ### Added

@@ -117,17 +117,17 @@ Pydantic `RuntimeConfig` populated from CLI flags and env vars; recipe never rea
 - [x] Update CHANGELOG.md
 - [x] Verify: precedence tests pass; `datarefinery --cache-root /tmp/x --version` does not error.
 
-### Story A.h: v0.1.6 Plugin Protocol and Discovery [Planned]
+### Story A.h: v0.1.6 Plugin Protocol and Discovery [Done]
 
 Plugin abstraction landed *before* recipe validator, since validator check 2 + check 18 require the plugin contract.
 
-- [ ] Add `src/datarefinery/plugins/__init__.py`, `src/datarefinery/plugins/base.py` with `Plugin` protocol (`name`, `supported_sections`, `supported_operations`, `schema_version`, `operation_factory`, `is_stub`) and `OperationSpec` pydantic model (parameter schema, fit-on-train flag, applicable splits, stage applicability).
-- [ ] Add `src/datarefinery/plugins/discovery.py` with `discover_plugins(extra_paths)` walking entry-point group `datarefinery.plugins` and `extra_paths`; raise `PluginError` on duplicate names.
-- [ ] Add a `_test_dummy` plugin (in `tests/fixtures/`, registered ad-hoc via `extra_paths`) that satisfies the protocol and is used by discovery tests.
-- [ ] Unit tests: discovery returns the test plugin via `extra_paths`; duplicate-name raises `PluginError`; `OperationSpec` parameter validation rejects extra fields.
-- [ ] Bump version to v0.1.6
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `pyve test tests/unit/test_plugins_discovery.py` passes.
+- [x] Add `src/datarefinery/plugins/__init__.py`, `src/datarefinery/plugins/base.py` with `Plugin` protocol (`name`, `supported_sections`, `supported_operations`, `schema_version`, `operation_factory`, `is_stub`) and `OperationSpec` pydantic model (parameter schema, fit-on-train flag, applicable splits, stage applicability).
+- [x] Add `src/datarefinery/plugins/discovery.py` with `discover_plugins(extra_paths)` walking entry-point group `datarefinery.plugins` and `extra_paths`; raise `PluginError` on duplicate names.
+- [x] Add a `_test_dummy` plugin (in `tests/fixtures/`, registered ad-hoc via `extra_paths`) that satisfies the protocol and is used by discovery tests.
+- [x] Unit tests: discovery returns the test plugin via `extra_paths`; duplicate-name raises `PluginError`; `OperationSpec` parameter validation rejects extra fields.
+- [x] Bump version to v0.1.6
+- [x] Update CHANGELOG.md
+- [x] Verify: `pyve test tests/unit/test_plugins_discovery.py` passes.
 
 ---
 
