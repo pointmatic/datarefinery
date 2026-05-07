@@ -1,0 +1,42 @@
+# Copyright (c) 2026 Pointmatic
+# SPDX-License-Identifier: Apache-2.0
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Python build and test artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Pyve virtual environment
+.pyve/envs
+.pyve/testenv
+.envrc
+.env
+
+# IDE/editor files
+.vscode/settings.json
+.idea/
+
+# DataRefinery cache root (default)
+data/
+
+# project-guide
+docs/project-guide/**/*.bak.*
