@@ -294,18 +294,18 @@ Throwaway script in `scripts/` that exercises one real operation through the plu
 - [x] Update CHANGELOG.md
 - [x] Verify: `discover_plugins()` returns the image plugin; the plugin contract test passes.
 
-### Story C.c: v0.3.1 Plugin Stubs: Tabular and Text [Planned]
+### Story C.c: v0.3.1 Plugin Stubs: Tabular and Text [Done]
 
 Validate-clean, materialize-fail stubs. Confirms the plugin abstraction doesn't bake in image assumptions.
 
-- [ ] Add `src/datarefinery/plugins/tabular/plugin.py` and `src/datarefinery/plugins/text/plugin.py` declaring sections + operation outlines per tech-spec.
-- [ ] `is_stub() -> True`; `operation_factory(...)` raises `PluginError("stub plugin; not implemented")`.
-- [ ] Register under entry-point group `datarefinery.plugins` in `pyproject.toml`.
-- [ ] Plugin contract tests for both stubs assert section lists and operation outlines.
-- [ ] Smoke test: a recipe declaring `plugin: tabular` validates clean but raises `PluginError` at materialize time with the documented message.
-- [ ] Bump version to v0.3.1
-- [ ] Update CHANGELOG.md
-- [ ] Verify: stub plugin contract tests pass; tabular validate-clean / materialize-fail smoke test passes.
+- [x] Add `src/datarefinery/plugins/tabular/plugin.py` and `src/datarefinery/plugins/text/plugin.py` declaring sections + operation outlines per tech-spec.
+- [x] `is_stub() -> True`; `operation_factory(...)` raises `PluginError("stub plugin; not implemented")`.
+- [x] Register under entry-point group `datarefinery.plugins` in `pyproject.toml`.
+- [x] Plugin contract tests for both stubs assert section lists and operation outlines.
+- [x] Smoke test: a recipe declaring `plugin: tabular` validates clean but raises `PluginError` at materialize time with the documented message.
+- [x] Bump version to v0.3.1
+- [x] Update CHANGELOG.md
+- [x] Verify: stub plugin contract tests pass; tabular validate-clean / materialize-fail smoke test passes.
 
 ### Story C.d: v0.3.2 Pipeline Contracts: InputContracts and OutputExpectations (FR-23) [Planned]
 

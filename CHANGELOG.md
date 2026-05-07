@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-07
+
+### Added
+
+- Tabular and text plugin stubs (Story C.c):
+  - `src/datarefinery/plugins/tabular/` and
+    `src/datarefinery/plugins/text/` packages, each declaring a section
+    list and `OperationSpec` outlines so recipes targeting
+    `plugin: tabular` or `plugin: text` validate clean against FR-2
+    checks 1-18. Tabular outlines cover Filters
+    (`filter_by_value`, `drop_nulls`, `random_sample`), Generation
+    (`duplicate_minority_class`), Transformations
+    (`standardize` [fit-on-train], `min_max_scale` [fit-on-train],
+    `one_hot_encode` [fit-on-train], `cast_dtype`), Featurizations
+    (`polynomial_features`), and Visualizations
+    (`class_distribution_histogram`, `field_summary_table`). Text
+    outlines cover Filters (`filter_by_label`, `filter_by_length`,
+    `random_sample`), Generation (`duplicate_minority_class`),
+    Transformations (`lowercase`, `strip_punctuation`, `tokenize`,
+    `remove_stopwords`), Featurizations (`tfidf` [fit-on-train],
+    `token_count`), and Visualizations
+    (`class_distribution_histogram`, `token_length_histogram`).
+  - Both plugins return `is_stub() -> True`; `operation_factory(...)`
+    raises `PluginError("stub plugin; not implemented")` with plugin,
+    section, and op name in the message. Full operation
+    implementations are post-v1.
+  - Registered under the `datarefinery.plugins` entry-point group in
+    `pyproject.toml` so `discover_plugins()` returns both stubs.
+  - `tests/plugin_contract/test_tabular.py` and
+    `tests/plugin_contract/test_text.py` cover runtime-protocol
+    satisfaction, metadata, declared section/op set, `OperationSpec`
+    validity per operation, fit-on-train placement invariant, the
+    `PluginError` factory contract, and entry-point discovery.
+  - `tests/integration/test_tabular_stub_smoke.py` exercises a tabular
+    recipe through `Recipe.model_validate` + `validator.validate`
+    (all 18 checks pass) and confirms `operation_factory` raises
+    `PluginError`.
+
 ## [0.3.0] - 2026-05-07
 
 ### Added
