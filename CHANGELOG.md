@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-05-07
+
+### Added
+
+- Recipe loader with FR-1 schema-version gate (Story B.b):
+  - `src/datarefinery/recipe/loader.py` exposes
+    `SUPPORTED_SCHEMA_VERSIONS = frozenset({1})`, an empty post-production
+    `migrations: dict[(int, int), Callable]` registry, a
+    `KNOWN_TOP_LEVEL_KEYS` constant, and `load(path) -> Recipe`. The gate
+    runs before model validation; malformed YAML produces a `RecipeError`
+    annotated with the offending line/column, and unknown top-level keys
+    emit a forward-compatibility `UserWarning` before the inevitable
+    `extra="forbid"` validation hard-error.
+  - `tests/unit/test_recipe_loader.py` covers happy path, missing
+    `schema_version`, unrecognized version (with supported-list +
+    FR-1 pointer), non-integer and boolean schema versions, malformed
+    YAML with line/column, non-mapping root, the unknown-top-level-key
+    warning followed by hard error, and the constant/migrations stubs.
+
 ## [0.2.0] - 2026-05-07
 
 ### Added

@@ -148,18 +148,18 @@ Pydantic v2 models for `Recipe` and every section, frozen and `extra="forbid"` s
 - [x] Update CHANGELOG.md
 - [x] Verify: `pyve test tests/unit/test_recipe_models.py` passes.
 
-### Story B.b: v0.2.1 Recipe Loader and Schema-Version Gate (FR-1) [Planned]
+### Story B.b: v0.2.1 Recipe Loader and Schema-Version Gate (FR-1) [Done]
 
 YAML → dict → `Recipe`, with the schema-version gate as the first thing that runs.
 
-- [ ] Add `src/datarefinery/recipe/loader.py` with `SUPPORTED_SCHEMA_VERSIONS = frozenset({1})` and `load(path) -> Recipe`.
-- [ ] Use `yaml.safe_load`; wrap `yaml.YAMLError` into `RecipeError` with line/column.
-- [ ] Refuse missing/unrecognized `schema_version` with `RecipeError` listing supported versions and the migration-path pointer (placeholder for now).
-- [ ] Stub `recipe.loader.migrations: dict[tuple[int, int], Callable]` (empty for v1; reserved for post-production).
-- [ ] Unit tests: each FR-1 edge case (missing version, unrecognized version, malformed YAML, unknown top-level key warning).
-- [ ] Bump version to v0.2.1
-- [ ] Update CHANGELOG.md
-- [ ] Verify: loader-edge-case tests all pass with the documented error text.
+- [x] Add `src/datarefinery/recipe/loader.py` with `SUPPORTED_SCHEMA_VERSIONS = frozenset({1})` and `load(path) -> Recipe`.
+- [x] Use `yaml.safe_load`; wrap `yaml.YAMLError` into `RecipeError` with line/column.
+- [x] Refuse missing/unrecognized `schema_version` with `RecipeError` listing supported versions and the migration-path pointer (placeholder for now).
+- [x] Stub `recipe.loader.migrations: dict[tuple[int, int], Callable]` (empty for v1; reserved for post-production).
+- [x] Unit tests: each FR-1 edge case (missing version, unrecognized version, malformed YAML, unknown top-level key warning).
+- [x] Bump version to v0.2.1
+- [x] Update CHANGELOG.md
+- [x] Verify: loader-edge-case tests all pass with the documented error text.
 
 ### Story B.c: v0.2.2 Canonical Bytes (FR-4) [Planned]
 
