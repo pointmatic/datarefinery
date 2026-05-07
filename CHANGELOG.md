@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-05-07
+
+### Added
+
+- Cache layout helpers (Story B.g):
+  - `src/datarefinery/cache/layout.py` exposes path helpers
+    (`instances_root`, `instance_dir`, `tmp_dir`, `manifest_path`,
+    `dataset_dir`, `fitted_stats_dir`, `report_dir`) producing the
+    documented `<cache-root>/instances/<recipe16>/<input16>/<seed>/`
+    shape (with in-flight runs under `<cache-root>/instances/.tmp/`).
+    Final hashes truncate to 16 chars per `CacheKey`.
+  - `make_run_id()` returns `<utc_iso_compact>-<8hex>` (e.g.
+    `20260507T143022Z-deadbeef`); lex-sortable to the second with an
+    8-hex random suffix for collision resistance under concurrent calls.
+  - `tests/unit/test_cache_layout.py` covers each helper's path shape,
+    `instance_dir` truncation invariant, `make_run_id` format, sortable-
+    by-timestamp invariant, and uniqueness under both 2000-id sequential
+    bursts and 8-thread concurrent generation.
+
 ## [0.2.7] - 2026-05-07
 
 ### Added

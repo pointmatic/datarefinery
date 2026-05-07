@@ -229,16 +229,16 @@ Generation→Output schema consistency, defined-split references, SampleData sub
 - [x] Update CHANGELOG.md
 - [x] Verify: cache-identity tests pass.
 
-### Story B.g: v0.2.8 Cache Layout Helpers [Planned]
+### Story B.g: v0.2.8 Cache Layout Helpers [Done]
 
 `CachePaths` helpers under `<cache-root>` matching the layout in tech-spec.
 
-- [ ] Add `src/datarefinery/cache/layout.py` with helpers: `instance_dir(cache_root, key)`, `tmp_dir(cache_root, run_id)`, `manifest_path(instance_dir)`, `report_dir(instance_dir)`, `dataset_dir(...)`, `fitted_stats_dir(...)`.
-- [ ] Implement `make_run_id() -> str` returning `<utc_iso_compact>-<8hex>`.
-- [ ] Unit tests: layout helpers produce the documented path shape; `make_run_id` outputs are sortable and unique under concurrent calls.
-- [ ] Bump version to v0.2.8
-- [ ] Update CHANGELOG.md
-- [ ] Verify: layout-helper tests pass.
+- [x] Add `src/datarefinery/cache/layout.py` with helpers: `instance_dir(cache_root, key)`, `tmp_dir(cache_root, run_id)`, `manifest_path(instance_dir)`, `report_dir(instance_dir)`, `dataset_dir(...)`, `fitted_stats_dir(...)`.
+- [x] Implement `make_run_id() -> str` returning `<utc_iso_compact>-<8hex>`.
+- [x] Unit tests: layout helpers produce the documented path shape; `make_run_id` outputs are sortable and unique under concurrent calls.
+- [x] Bump version to v0.2.8
+- [x] Update CHANGELOG.md
+- [x] Verify: layout-helper tests pass.
 
 ### Story B.h: v0.2.9 Atomic Temp-then-Promote (FR-5) [Planned]
 
