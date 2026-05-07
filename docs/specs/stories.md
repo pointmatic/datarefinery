@@ -269,17 +269,17 @@ Generation→Output schema consistency, defined-split references, SampleData sub
 
 This is where DataRefinery actually does work: stages execute against a plugin's operations, fitted statistics persist, parallel workers preserve determinism, and the pipeline runner sequences everything inside an atomic temp-then-promote materialization. Phase C opens with a spike because it introduces the plugin/operation integration boundary.
 
-### Story C.a: Plugin-Driven Operation Execution Spike [Planned]
+### Story C.a: Plugin-Driven Operation Execution Spike [Done]
 
 Throwaway script in `scripts/` that exercises one real operation through the plugin protocol end-to-end (load tiny image fixture → invoke a single resize operation via plugin factory → write output). Validates the plugin abstraction against a real op before committing the full set. No version bump.
 
-- [ ] Create `scripts/spike_plugin_op.py` that:
-  - [ ] Builds a minimal in-memory `Plugin` instance with one resize operation.
-  - [ ] Loads three Pillow-decoded PNGs.
-  - [ ] Invokes the plugin's `operation_factory("Transformations", "resize")` and applies it.
-  - [ ] Writes outputs to `./scratch/spike/` and prints shape/dtype.
-- [ ] Document any abstraction friction discovered (signatures, lifecycle, error handling) at the bottom of the script for C.b/C.h to consume.
-- [ ] Verify: spike script runs end-to-end and produces three resized PNGs.
+- [x] Create `scripts/spike_plugin_op.py` that:
+  - [x] Builds a minimal in-memory `Plugin` instance with one resize operation.
+  - [x] Loads three Pillow-decoded PNGs.
+  - [x] Invokes the plugin's `operation_factory("Transformations", "resize")` and applies it.
+  - [x] Writes outputs to `./scratch/spike/` and prints shape/dtype.
+- [x] Document any abstraction friction discovered (signatures, lifecycle, error handling) at the bottom of the script for C.b/C.h to consume.
+- [x] Verify: spike script runs end-to-end and produces three resized PNGs.
 
 ### Story C.b: v0.3.0 Image Plugin Skeleton [Planned]
 
