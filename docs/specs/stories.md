@@ -45,20 +45,20 @@ Smallest runnable CLI artifact proving the entry-point and test runner are wired
 - [x] Update CHANGELOG.md
 - [x] Verify: `pyve run datarefinery --version` prints `0.0.2`; `pyve test tests/cli/test_smoke.py` passes.
 
-### Story A.c: End-to-End Stack Spike [Planned]
+### Story A.c: End-to-End Stack Spike [Done]
 
 Throwaway script wiring the full critical path together (recipe load → canonical bytes → SHA-256 → temp-dir create → atomic promote → manifest write) before production modules exist. Lives in `scripts/`, not in the package. No version bump (no shipped code).
 
-- [ ] Create `scripts/spike_critical_path.py` that:
-  - [ ] Hard-codes a tiny recipe dict (no plugin yet); serializes via `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
-  - [ ] Computes a SHA-256 hex digest over the canonical bytes.
-  - [ ] Creates `./data/instances/.tmp/<run-id>/` directory.
-  - [ ] Writes a stub `manifest.json` containing the recipe hash, a fake input hash, seed=0, and a UTC timestamp.
-  - [ ] Calls `os.replace(temp_dir, final_dir)` to promote into `./data/instances/<hash16>/<input16>/0/`.
-  - [ ] Re-runs and confirms the second run lands on the existing path (idempotent on identical inputs).
-- [ ] Add a `# spike — do not import from src/` warning at the top of the script.
-- [ ] Document discoveries (cross-device `os.replace` traps, `pathlib` vs `os` ergonomics, run-id format) in a comment block at the bottom of the file for the implementation stories to reference.
-- [ ] Verify: running the spike twice produces one promoted instance directory and prints `cache=hit` on the second run.
+- [x] Create `scripts/spike_critical_path.py` that:
+  - [x] Hard-codes a tiny recipe dict (no plugin yet); serializes via `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
+  - [x] Computes a SHA-256 hex digest over the canonical bytes.
+  - [x] Creates `./data/instances/.tmp/<run-id>/` directory.
+  - [x] Writes a stub `manifest.json` containing the recipe hash, a fake input hash, seed=0, and a UTC timestamp.
+  - [x] Calls `os.replace(temp_dir, final_dir)` to promote into `./data/instances/<hash16>/<input16>/0/`.
+  - [x] Re-runs and confirms the second run lands on the existing path (idempotent on identical inputs).
+- [x] Add a `# spike — do not import from src/` warning at the top of the script.
+- [x] Document discoveries (cross-device `os.replace` traps, `pathlib` vs `os` ergonomics, run-id format) in a comment block at the bottom of the file for the implementation stories to reference.
+- [x] Verify: running the spike twice produces one promoted instance directory and prints `cache=hit` on the second run.
 
 ### Story A.d: v0.0.3 PyPI Trusted Publishing & Name Reservation [Planned]
 
