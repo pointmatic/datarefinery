@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarefinery"
-version = "0.2.10"
+version = "0.3.0"
 description = "Recipe-driven data preparation and caching for machine learning"
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
@@ -47,6 +47,7 @@ datarefinery = "datarefinery.cli.app:main_entry"
 # Plugin discovery group; populated by Phase C stories
 # (image_classification: C.b; tabular and text: C.c).
 [project.entry-points."datarefinery.plugins"]
+image_classification = "datarefinery.plugins.image_classification.plugin:PLUGIN"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/datarefinery"]

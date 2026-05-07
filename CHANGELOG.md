@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-07
+
+### Added
+
+- Image classification plugin skeleton (Story C.b) - Phase C begins:
+  - `src/datarefinery/plugins/image_classification/` package with
+    `plugin.py` declaring full `OperationSpec` parameter schemas for
+    16 operations across Filters (`filter_by_label`, `random_sample`),
+    Generation (`duplicate_minority_class`), Transformations
+    (`resize`, `normalize` [fit-on-train], `mean_subtract`
+    [fit-on-train], `to_grayscale`, `cast_dtype`), Featurizations
+    (`label_from_path`, `image_size_stats`), Augmentations
+    (`random_crop`, `horizontal_flip`, `color_jitter` - all
+    train-only), and Visualizations
+    (`class_distribution_histogram`, `sample_grid`,
+    `mean_image_per_class`).
+  - `operation_factory` raises `NotImplementedError` for now (real
+    implementations land in Stories C.f-C.k); `is_stub() -> False`
+    because the schemas are real.
+  - Registered under the `datarefinery.plugins` entry-point group in
+    `pyproject.toml` so `discover_plugins()` returns it without
+    requiring `--plugin-path`.
+  - `tests/plugin_contract/test_image_classification.py` covers
+    runtime-protocol satisfaction, metadata, declared section/op set,
+    `OperationSpec` validity per operation, fit-on-train invariant
+    (must be in Transformations), augmentation train-only invariant,
+    `resize` parameter schema accepting fixture params, the
+    `NotImplementedError` factory contract, and that
+    `discover_plugins()` returns the plugin via entry points.
+
 ## [0.2.10] - 2026-05-07
 
 ### Added

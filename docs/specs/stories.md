@@ -281,18 +281,18 @@ Throwaway script in `scripts/` that exercises one real operation through the plu
 - [x] Document any abstraction friction discovered (signatures, lifecycle, error handling) at the bottom of the script for C.b/C.h to consume.
 - [x] Verify: spike script runs end-to-end and produces three resized PNGs.
 
-### Story C.b: v0.3.0 Image Plugin Skeleton [Planned]
+### Story C.b: v0.3.0 Image Plugin Skeleton [Done]
 
 `image_classification` plugin module with the section list, operation registry, and parameter schemas — but no operation logic yet. Lets the validator's check 18 light up immediately and gives later stage stories a concrete plugin to register against.
 
-- [ ] Add `src/datarefinery/plugins/image_classification/__init__.py`, `src/datarefinery/plugins/image_classification/plugin.py`, `src/datarefinery/plugins/image_classification/operations/__init__.py`.
-- [ ] Declare `name`, `supported_sections`, `supported_operations` (resize, normalize, augment, label_from_path, sample, …) with full `OperationSpec` parameter schemas.
-- [ ] Register the plugin under entry-point group `datarefinery.plugins` in `pyproject.toml`.
-- [ ] `operation_factory(...)` raises `NotImplementedError` for now; `is_stub() -> False`.
-- [ ] Plugin contract test (`tests/plugin_contract/test_image_classification.py`) asserts declared sections and operation schemas validate against fixture parameter dicts.
-- [ ] Bump version to v0.3.0
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `discover_plugins()` returns the image plugin; the plugin contract test passes.
+- [x] Add `src/datarefinery/plugins/image_classification/__init__.py`, `src/datarefinery/plugins/image_classification/plugin.py`, `src/datarefinery/plugins/image_classification/operations/__init__.py`.
+- [x] Declare `name`, `supported_sections`, `supported_operations` (resize, normalize, augment, label_from_path, sample, …) with full `OperationSpec` parameter schemas.
+- [x] Register the plugin under entry-point group `datarefinery.plugins` in `pyproject.toml`.
+- [x] `operation_factory(...)` raises `NotImplementedError` for now; `is_stub() -> False`.
+- [x] Plugin contract test (`tests/plugin_contract/test_image_classification.py`) asserts declared sections and operation schemas validate against fixture parameter dicts.
+- [x] Bump version to v0.3.0
+- [x] Update CHANGELOG.md
+- [x] Verify: `discover_plugins()` returns the image plugin; the plugin contract test passes.
 
 ### Story C.c: v0.3.1 Plugin Stubs: Tabular and Text [Planned]
 
