@@ -70,6 +70,16 @@ from datarefinery.pipeline.stages.visualizations import (
 )
 from datarefinery.plugins.base import Plugin
 from datarefinery.recipe.models import Recipe
+from datarefinery.reporting.drift import (
+    compute_drift_placeholder,
+    write_drift,
+)
+from datarefinery.reporting.report import (
+    DRIFT_FILENAME,
+    REPORT_FILENAME,
+    render_report_md,
+    write_report,
+)
 
 Record = Mapping[str, Any]
 
@@ -200,6 +210,7 @@ class PipelineRunner:
                 label_field=label_field,
             )
             split_map = dict(tx_result.splits)
+            fitted_op_ids: list[str] = list(tx_result.fitted_op_ids)
 
             current_stage = "Featurizations"
             feat_result = apply_featurizations(
@@ -210,6 +221,7 @@ class PipelineRunner:
                 label_field=label_field,
             )
             split_map = dict(feat_result.splits)
+            fitted_op_ids.extend(feat_result.fitted_op_ids)
 
             current_stage = "Augmentations"
             collect_augmentation_policies(self.recipe.Augmentations)
@@ -261,6 +273,21 @@ class PipelineRunner:
                 warnings=warnings,
             )
             write_manifest(manifest_path(temp_dir), manifest)
+
+            current_stage = "Report"
+            report_root = report_dir(temp_dir)
+            write_report(
+                report_root / REPORT_FILENAME,
+                render_report_md(
+                    self.recipe, manifest, fitted_op_ids=fitted_op_ids
+                ),
+            )
+            drift = compute_drift_placeholder(
+                split_map,
+                plugin_name=self.plugin.name,
+                label_field=label_field,
+            )
+            write_drift(report_root / DRIFT_FILENAME, drift)
 
             atomic_promote(temp_dir, final_dir)
         except Exception as exc:

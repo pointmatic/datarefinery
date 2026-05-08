@@ -5,6 +5,133 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.13] - 2026-05-08
+
+### Added
+
+- Deterministic image-classification scaffolder (Story C.o, FR-17) -
+  Phase C complete:
+  - `src/datarefinery/scaffolder/__init__.py` (package),
+    `src/datarefinery/scaffolder/init.py`
+    (`scaffold_image_classification(input_path, output_path, *,
+    enhance=False)` and the top-level `scaffold(...,
+    plugin="image_classification", ...)` dispatcher), and
+    `src/datarefinery/scaffolder/llm.py` (lazy `lmentry` import +
+    offline detection). The deterministic path performs no network
+    I/O and never imports `lmentry`; `enhance=True` is the only
+    surface that touches the optional extra.
+  - Recipe inspection: walks the ImageFolder layout
+    (`<root>/<class>/<file>.{png,jpg,jpeg}`), inspects the first
+    image for shape and dtype, sorts class names. Raises
+    `RecipeError` for non-directory inputs, missing class
+    subdirectories, or missing image files - each error message
+    cites the expected layout.
+  - Generated recipe: declares `Input` (image_folder source pointing
+    at the scanned directory), `Output` (record schema with `image`
+    and `label`, plus `path` for downstream traceability and so
+    validator check 7 sees it in the field universe), `Labels` (kind
+    "derived", derivation "parent_directory_name"), `Splits` (70/15/15
+    stratified by `label`, seed 11), a `label_from_path`
+    Featurization populating `label`, and reporting Visualizations
+    (`class_distribution_histogram`, `sample_grid`). A commented-out
+    block of suggested `Transformations` (resize, normalize) is
+    appended below the recipe so the user can uncomment and tune.
+  - LLM enhancement (`scaffolder.llm.enhance`): missing `lmentry` ->
+    `PluginError` pointing at the `[llm]` extra; offline detection
+    fails (UDP-level reachability probe via `_is_online`) -> the
+    deterministic recipe is emitted with a "LLM enhancement
+    skipped: offline" note in the YAML header. Online with `lmentry`
+    installed -> v1 placeholder marker note "LLM enhancement
+    applied" (full LLM-driven judgment lands post-v1).
+  - Non-image refusals: `scaffold(..., plugin="tabular")` and
+    `scaffold(..., plugin="text")` raise `PluginError` with the
+    documented "init scaffolder not available for this category in
+    v1" message per features.md FR-17 edge cases.
+  - `tests/unit/test_scaffolder.py` covers: scaffold writes a recipe
+    with the expected header + schema_version + plugin; loaded
+    recipe validates clean (all 18 checks pass); image dimensions
+    inferred from the first image; 70/15/15 stratified split; derived
+    label via `label_from_path`; both reporting visualizations
+    present; commented-out suggested Transformations in YAML;
+    parent-dir creation for output path; tabular/text refusals;
+    non-directory and empty-directory error paths; missing-images
+    error; LLM-without-lmentry `PluginError`; offline note in YAML;
+    online "applied" note; deterministic path doesn't import
+    lmentry; end-to-end materialize round-trip via the runner
+    (synthetic records matching the scaffolded on-disk layout
+    produce a complete instance with both reporting PNGs and full
+    record counts); module exposes `scaffold` and
+    `scaffold_image_classification` (21 tests).
+
+### Notes
+
+- v1 deviation: the materialize round-trip test synthesizes records
+  matching the scaffolded directory layout in-memory because
+  disk-based input loading was deferred from C.m. The CLI
+  `materialize` verb (Story D.e) will wire scaffolded recipes through
+  end-to-end disk loading.
+
+## [0.3.12] - 2026-05-08
+
+### Added
+
+- Reporting: report.md + drift.json (Story C.n, FR-15):
+  - `src/datarefinery/reporting/drift.py` defines pydantic
+    `DriftSchema` (frozen, `extra="forbid"`) plus `SplitDriftRecord`
+    and `FeatureDriftRecord`. `DRIFT_SCHEMA_VERSION_PLACEHOLDER = 0`
+    per features.md FR-15 #3 - the schema is unstable until
+    production release (v1.0.0) at which point the version bumps to 1.
+    `compute_drift_placeholder(splits, *, plugin_name, label_field)`
+    builds the v1 placeholder: per-split record counts and (when a
+    label field is provided) sorted class distributions. Feature-
+    level summaries are intentionally empty in v1; the schema slot is
+    reserved for DataMachine consumers. `write_drift`/`read_drift`
+    canonical JSON round-trip with sorted keys.
+  - `src/datarefinery/reporting/report.py` exposes
+    `render_report_md(recipe, manifest, *, fitted_op_ids) -> str`
+    producing a deterministic markdown summary: manifest header
+    (recipe/input hashes, seed, variant, created_at, elapsed,
+    partial-run marker), inputs, splits + total, operations applied
+    per section (filters/generation/transformations/featurizations/
+    augmentations/visualizations), fitted statistics op_ids, and any
+    accumulated warnings. Same inputs -> byte-identical markdown.
+  - `re_render_report(instance_dir, recipe)` regenerates `report.md`
+    from a materialized instance without rerunning the pipeline
+    (FR-15.4). Compares the manifest's `recipe_hash` against the
+    canonical hash of the recipe handed in; mismatch raises
+    `MaterializeError` per FR-15 edge case "re-rendering against a
+    stale fitted-statistics block is rejected".
+    `list_fitted_op_ids(fitted_root)` enumerates persisted op_ids
+    for the report's fitted-statistics section.
+  - `src/datarefinery/pipeline/runner.py` now also writes
+    `<instance>/report/report.md` and `<instance>/report/drift.json`
+    inside the temp directory before the atomic promote. Fitted
+    op_ids accumulated across Transformations and Featurizations
+    flow into the report.
+  - `tests/unit/test_drift.py` covers placeholder version, frozen +
+    extra-forbid model behavior, per-split counts, label-field-driven
+    class distribution, missing-label-field skip, sorted split keys,
+    unstable-notes, empty feature_summary, JSON round-trip, and
+    canonical sort-keys output (13 tests).
+  - `tests/unit/test_report.py` covers manifest summary inclusion,
+    inputs/splits sections, per-section op listings, fitted op_ids
+    listing, "(none)" placeholders, warning rendering, partial-run
+    marker, byte-stability for identical inputs, the
+    `list_fitted_op_ids` directory helper (missing dir + sorted
+    subdirs), `re_render_report` happy path, recipe-hash-mismatch
+    hard error, and overwrite-of-stale-content (13 tests).
+  - `tests/integration/test_runner.py` adds an end-to-end check that
+    the runner writes both `report.md` (with fitted op listed) and
+    a parseable `drift.json` whose split records sum to the input
+    record count.
+
+### Notes
+
+- The story checklist mentioned adding `reporting/__init__.py`; that
+  package init was already created in Story C.k for the visualization
+  library API. No change needed beyond noting the package now also
+  hosts `report.py` and `drift.py`.
+
 ## [0.3.11] - 2026-05-08
 
 ### Added

@@ -439,31 +439,31 @@ The conductor: validate → cache check → temp dir → stages 1–11 → manif
 
 **v1 dataset-persistence simplification:** Per-split JSON-lines under `<instance>/dataset/<split>.jsonl` with serializable fields only - numpy `image` arrays are dropped (the recipe's `path` field carries the on-disk reference). Full-fidelity dataset persistence (image bytes, parquet+metadata) is a follow-up story.
 
-### Story C.n: v0.3.12 Reporting: report.md and drift.json (FR-15) [Planned]
+### Story C.n: v0.3.12 Reporting: report.md and drift.json (FR-15) [Done]
 
 Render the human-readable report and the structured drift placeholder consumed by DataMachine.
 
-- [ ] Add `src/datarefinery/reporting/__init__.py`, `src/datarefinery/reporting/report.py`, `src/datarefinery/reporting/drift.py`.
-- [ ] `report.md` summarizes recipe, inputs, splits, operations applied, fitted-statistics summary, key counts, warnings.
-- [ ] `drift.json` schema matches `DriftSchema` in tech-spec (`schema_version=0` placeholder; documented as unstable until production release; typed JSON shape).
-- [ ] `Instance.render_report()` re-renders without rerunning the pipeline (FR-15.4).
-- [ ] Unit tests: `report.md` content stable for fixture instance; `drift.json` validates against pydantic `DriftSchema`.
-- [ ] Bump version to v0.3.12
-- [ ] Update CHANGELOG.md
-- [ ] Verify: report and drift-schema tests pass.
+- [x] Add `src/datarefinery/reporting/__init__.py`, `src/datarefinery/reporting/report.py`, `src/datarefinery/reporting/drift.py`. *`reporting/__init__.py` already existed from C.k; this story added `report.py` and `drift.py`.*
+- [x] `report.md` summarizes recipe, inputs, splits, operations applied, fitted-statistics summary, key counts, warnings.
+- [x] `drift.json` schema matches `DriftSchema` in tech-spec (`schema_version=0` placeholder; documented as unstable until production release; typed JSON shape).
+- [x] `Instance.render_report()` re-renders without rerunning the pipeline (FR-15.4). *Exposed as the top-level `re_render_report(instance_dir, recipe)` for now; the `Instance` class lands in D.a and will wrap this. Includes the FR-15 stale-fitted-stats hard error (recipe-hash mismatch).*
+- [x] Unit tests: `report.md` content stable for fixture instance; `drift.json` validates against pydantic `DriftSchema`.
+- [x] Bump version to v0.3.12
+- [x] Update CHANGELOG.md
+- [x] Verify: report and drift-schema tests pass.
 
-### Story C.o: v0.3.13 Scaffolder: Deterministic init for image_classification (FR-17) [Planned]
+### Story C.o: v0.3.13 Scaffolder: Deterministic init for image_classification (FR-17) [Done]
 
 `init` produces a working starter recipe from raw image inputs, offline. Optional `lmentry` enhancement layer is lazy-imported.
 
-- [ ] Add `src/datarefinery/scaffolder/__init__.py`, `src/datarefinery/scaffolder/init.py`, `src/datarefinery/scaffolder/llm.py`.
-- [ ] `scaffold_image_classification(input_path, output_path, *, enhance=False)`: inspects image directory tree (file types, dimensions, dtype, class folders), emits a starter recipe with `Input`/`Output`/`Labels`/`Splits` populated, common `Transformations` stubbed (commented out).
-- [ ] `enhance=True` lazy-imports `lmentry`; missing extra raises `PluginError` pointing at `[llm]`; offline detection emits a recipe with an "enhancement skipped" comment.
-- [ ] Tabular/text invocations raise the documented "init scaffolder not available for this category in v1" error.
-- [ ] Unit tests: scaffolded recipe parses through `recipe.loader`, validates clean, materializes successfully on a CIFAR-shaped fixture.
-- [ ] Bump version to v0.3.13
-- [ ] Update CHANGELOG.md
-- [ ] Verify: scaffolded recipe round-trip materializes; non-image scaffold attempt raises documented error.
+- [x] Add `src/datarefinery/scaffolder/__init__.py`, `src/datarefinery/scaffolder/init.py`, `src/datarefinery/scaffolder/llm.py`.
+- [x] `scaffold_image_classification(input_path, output_path, *, enhance=False)`: inspects image directory tree (file types, dimensions, dtype, class folders), emits a starter recipe with `Input`/`Output`/`Labels`/`Splits` populated, common `Transformations` stubbed (commented out). *Recipe also adds a `path` field to `Output.record_schema` so validator check 7 sees the input-source-provided field used by `label_from_path`.*
+- [x] `enhance=True` lazy-imports `lmentry`; missing extra raises `PluginError` pointing at `[llm]`; offline detection emits a recipe with an "enhancement skipped" comment.
+- [x] Tabular/text invocations raise the documented "init scaffolder not available for this category in v1" error.
+- [x] Unit tests: scaffolded recipe parses through `recipe.loader`, validates clean, materializes successfully on a CIFAR-shaped fixture. *Materialize test synthesizes records matching the scaffolded on-disk layout in-memory because disk-based input loading was deferred from C.m; CLI verb in D.e wires the disk path.*
+- [x] Bump version to v0.3.13
+- [x] Update CHANGELOG.md
+- [x] Verify: scaffolded recipe round-trip materializes; non-image scaffold attempt raises documented error.
 
 ---
 

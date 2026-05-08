@@ -111,6 +111,41 @@ def _config(cache_root: Path) -> RuntimeConfig:
 # ---------------------------------------------------------------------------
 
 
+def test_runner_writes_report_md_and_drift_json(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    recipe = _recipe(
+        transformations=[
+            TransformationOp(
+                name="norm",
+                op="normalize",
+                params={},
+                fit_source="train",
+                splits=["train", "val", "test"],
+            )
+        ],
+    )
+    records = _records(12)
+    runner = PipelineRunner(
+        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
+    )
+    temp = tmp_dir_for(cache_root, "run-1")
+    result = runner.run(
+        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
+    )
+    rd = report_dir(result.instance_dir)
+    assert (rd / "report.md").exists()
+    md = (rd / "report.md").read_text()
+    assert "DataRefinery report" in md
+    assert "norm" in md  # fitted op listed
+
+    from datarefinery.reporting.drift import read_drift
+
+    drift = read_drift(rd / "drift.json")
+    assert drift.plugin == "image_classification"
+    assert "train" in drift.splits
+    assert sum(s.record_count for s in drift.splits.values()) == 12
+
+
 def test_runner_materializes_complete_instance(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     recipe = _recipe(
