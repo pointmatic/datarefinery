@@ -32,7 +32,8 @@ from datarefinery.core.check import CheckReport, build_check_report
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import PluginError
 from datarefinery.core.instance import Instance
-from datarefinery.pipeline.inputs import load_raw_records
+from datarefinery.core.status import StatusReport, resolve_status
+from datarefinery.pipeline.inputs import hash_inputs, load_raw_records
 from datarefinery.pipeline.runner import PipelineRunner, RunnerResult
 from datarefinery.plugins.base import Plugin
 from datarefinery.plugins.discovery import discover_plugins
@@ -217,12 +218,18 @@ class DataRefinery:
         """Remove cache entries matching ``selector`` (FR-21)."""
         return clean(self._config.cache_root, selector, force=force)
 
-    def status(self, instance_path: Path | None = None) -> Any:
-        """Summarize an instance (FR-19). Implementation lands in D.f."""
-        del instance_path
-        raise NotImplementedError(
-            "DataRefinery.status() lands in Story D.f (CLI verb: status)"
-        )
+    def status(self) -> StatusReport:
+        """Resolve cache identity from disk inputs and report instance state (FR-19).
+
+        Hashes the recipe's input sources via the same path the
+        materialize verb uses, computes the cache key, and inspects
+        ``<cache_root>/instances/<key>/manifest.json``. Cache miss
+        returns a ``StatusReport`` with ``cache_status="miss"``; it is
+        not an error.
+        """
+        hashes = hash_inputs(self._recipe, self._plugin)
+        key = compute_cache_key(self._recipe, hashes, self._seed)
+        return resolve_status(self._config.cache_root, key)
 
     def inspect(self, view: str | None = None) -> Any:
         """Read-only views (FR-20). Implementation lands in D.h."""

@@ -522,15 +522,15 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: materialize smoke test passes; second run hits cache.
 
-### Story D.f: v0.4.5 CLI verb: status (FR-19) [Planned]
+### Story D.f: v0.4.5 CLI verb: status (FR-19) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/status_cmd.py` invoking `DataRefinery.status()`.
-- [ ] Accepts either an instance path or a recipe path (resolves cache key to find instance).
-- [ ] Renders `rich` table: hashes, seed, plugin, schema version, variant, created_at, record counts per split, warnings.
-- [ ] Smoke test: status against fresh instance shows expected fields; against missing cache reports `cache=miss` (exit 0).
-- [ ] Bump version to v0.4.5
-- [ ] Update CHANGELOG.md
-- [ ] Verify: status smoke test passes.
+- [x] Add `src/datarefinery/cli/commands/status_cmd.py` invoking `DataRefinery.status()`. *Library API: new `core/status.py` exposes `StatusReport` (frozen dataclass) and `resolve_status(cache_root, key)`; `DataRefinery.status()` uses the same disk-input hashing path as the materialize verb (`pipeline.inputs.hash_inputs`) to compute the cache key, then looks up the instance.*
+- [x] Accepts either an instance path or a recipe path (resolves cache key to find instance). *CLI dispatches on `target.is_dir()` vs `target.is_file()`. Instance-path mode uses `Instance.load(...)` directly; recipe-path mode constructs `DataRefinery.from_recipe(...)` and calls `.status()`.*
+- [x] Renders `rich` table: hashes, seed, plugin, schema version, variant, created_at, record counts per split, warnings. *Three tables on hit (summary / records-per-split / optional warnings). On miss/corrupt, a single status table reports the recipe + input + seed hashes plus the expected instance path so the user can audit what would be looked up.*
+- [x] Smoke test: status against fresh instance shows expected fields; against missing cache reports `cache=miss` (exit 0). *Plus the FR-19 corrupt edge case: if the instance dir exists but `manifest.json` is missing, the report names the path and suggests `datarefinery clean`.*
+- [x] Bump version to v0.4.5
+- [x] Update CHANGELOG.md
+- [x] Verify: status smoke test passes.
 
 ### Story D.g: v0.4.6 CLI verb: report (FR-15 re-render) [Planned]
 

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-05-08
+
+### Added
+
+- `datarefinery status` CLI verb (Story D.f, FR-19):
+  - `src/datarefinery/core/status.py` with `StatusReport` (frozen
+    dataclass: `cache_status` ∈ {hit, miss, corrupt}, `cache_key`,
+    `instance_path`, optional `manifest`, optional `note`) and
+    `resolve_status(cache_root, key)`.
+  - `DataRefinery.status()` is now a real method (was a
+    `NotImplementedError` stub): hashes the recipe's input sources via
+    `pipeline.inputs.hash_inputs`, computes the cache key, and
+    inspects `<cache_root>/instances/<key>/manifest.json`.
+  - `src/datarefinery/cli/commands/status_cmd.py` registered on the
+    typer app via `app.command("status", ...)`. Accepts either an
+    instance directory (`Instance.load` path) or a recipe YAML file
+    (recipe-path resolution). Hit renders a three-table `rich` summary
+    (metadata, records-per-split, optional warnings); miss/corrupt
+    render a single status table with the resolved hashes and
+    expected instance path. `cache=miss` exits 0 (not an error);
+    corrupt instances surface a `datarefinery clean` pointer per the
+    FR-19 edge case.
+
+### Tests
+
+- 4 new CLI smoke tests in `tests/cli/test_status_cmd.py`: recipe-path
+  hit on a freshly materialized instance, recipe-path miss on an
+  unmaterialized recipe (exit 0), instance-path mode, and the FR-19
+  corrupt-instance edge case (manifest.json removed → `cache=corrupt`
+  + clean pointer).
+
 ## [0.4.4] - 2026-05-08
 
 ### Added
