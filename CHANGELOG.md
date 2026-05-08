@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-05-08
+
+### Added
+
+- Phase D golden-path integration test (Story D.j) — closes Phase D:
+  - `tests/integration/test_golden_path.py` exercises the documented
+    user journey end-to-end through the typer CLI: synthesizes a
+    CIFAR-10-shaped fixture (10 classes, 3 PNGs each, 8x8 RGB,
+    seeded), runs `datarefinery init`, simulates the "review and
+    uncomment the suggested Transformations" step by inserting a
+    fit-on-train normalize op, then runs
+    `datarefinery validate` → `datarefinery materialize` →
+    `datarefinery status` and asserts all four exit 0.
+  - Asserts every artifact called out in the story task is present in
+    the final instance: `manifest.json`, `recipe.json`, per-split
+    JSONL files, `fitted_statistics/norm/{mean,std}.parquet`,
+    `report/report.md`, `report/drift.json`, and the two scaffolded
+    reporting visualizations (`class_distribution.png`,
+    `samples.png`). Final invocation reruns `materialize` and
+    asserts `cache=hit` plus no new promotion.
+
 ## [0.4.8] - 2026-05-08
 
 ### Added

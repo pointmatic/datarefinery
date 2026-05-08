@@ -562,14 +562,14 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: clean smoke tests pass.
 
-### Story D.j: v0.4.9 Integration: `init → validate → materialize` Golden Path [Planned]
+### Story D.j: v0.4.9 Integration: 'init → validate → materialize' Golden Path [Done]
 
-End-to-end CLI integration test exercising the documented user journey.
+End-to-end CLI integration test exercising the documented user journey. **Closes Phase D.**
 
-- [ ] Integration test: from a CIFAR-10-shaped fixture directory, run `datarefinery init` → `datarefinery validate` → `datarefinery materialize` → `datarefinery status`; assert all four exit 0 and the final instance is complete (manifest, dataset, fitted_statistics, report all present).
-- [ ] Bump version to v0.4.9
-- [ ] Update CHANGELOG.md
-- [ ] Verify: golden-path integration test passes from a fresh tempdir.
+- [x] Integration test: from a CIFAR-10-shaped fixture directory, run `datarefinery init` → `datarefinery validate` → `datarefinery materialize` → `datarefinery status`; assert all four exit 0 and the final instance is complete (manifest, dataset, fitted_statistics, report all present). *Test inserts a `normalize` (fit-on-train) transformation between `init` and `validate` to simulate the user's "review and uncomment the suggested Transformations" review step — without it the scaffolded recipe has no fit-on-train op and `fitted_statistics/` is never created. Test also asserts both reporting visualizations (`class_distribution.png`, `samples.png`) render and that a fifth invocation (`materialize` rerun) hits the cache without re-promoting.*
+- [x] Bump version to v0.4.9
+- [x] Update CHANGELOG.md
+- [x] Verify: golden-path integration test passes from a fresh tempdir.
 
 ---
 
