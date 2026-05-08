@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-05-08
+
+### Added
+
+- Deterministic parallel worker pool (Story C.l):
+  - `src/datarefinery/pipeline/workers.py` exposes
+    `run_parallel(seed, fn, items, workers, *, record_id_field) ->
+    Iterator[Record]` and the `per_record_seed(global_seed, record, *,
+    record_id_field)` helper. Implements the determinism contract from
+    `project-essentials.md`: per-record seed
+    `sha256(global_seed.to_bytes(8, "big") + str(record_id).encode()).digest()[:8]`
+    decoded as a 64-bit unsigned int, and reorder-by-`record_id`
+    (stable across mixed-type ids via a `(type, str)` sort key)
+    before yielding. Worker count and process scheduling are
+    invisible to downstream stages.
+  - Serial fast-path when `workers <= 1` bypasses
+    `ProcessPoolExecutor` entirely (still per-record-seeded, still
+    reorder-by-record-id). Worker exceptions surface to the caller
+    via `Future.result()` in parallel mode and via direct call in
+    serial mode. Records missing the `record_id` field raise
+    `MaterializeError` rather than silently producing
+    nondeterministic output.
+  - `tests/unit/test_workers.py` covers the per-record seed formula
+    pin (deliberate cache-relevant change marker), seed determinism,
+    record/global-seed sensitivity, int/custom-field record ids,
+    missing-id error, byte-identical workers=1/2/4 output (the
+    headline determinism check, also parametrized), per-record-seed
+    invariance across worker counts and matches against the formula,
+    reorder-by-record-id in serial and parallel (with order-jumbling
+    delays in parallel), mixed-type id handling, empty input,
+    workers=0 serial fast-path, exception propagation in both modes,
+    same-seed cross-run identity, different-seed produces different
+    per-record seeds, and a serial-mode same-PID sanity check
+    (23 tests).
+
 ## [0.3.9] - 2026-05-08
 
 ### Added

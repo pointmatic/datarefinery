@@ -410,18 +410,18 @@ Reporting visualizations rendered into the instance; exploration visualizations 
 - [x] Update CHANGELOG.md
 - [x] Verify: visualization unit tests pass.
 
-### Story C.l: v0.3.10 Pipeline Workers: Deterministic Parallelism [Planned]
+### Story C.l: v0.3.10 Pipeline Workers: Deterministic Parallelism [Done]
 
 Opt-in `ProcessPoolExecutor` with the per-record seeding + reorder-by-record-id contract from `project-essentials.md` "Determinism contract in `pipeline.workers`."
 
-- [ ] Add `src/datarefinery/pipeline/workers.py` with `run_parallel(seed, fn, items, workers) -> Iterator[Record]`.
-- [ ] Per-record seed = `sha256(seed.to_bytes(8, 'big') + record_id_bytes).digest()[:8]` decoded as 64-bit int.
-- [ ] Collect futures; sort outputs by `record_id` before yielding (no `as_completed` streaming across stage boundaries).
-- [ ] Serial fast-path when `workers == 1`.
-- [ ] Unit tests: same input + same seed produces byte-identical output for `workers=1`, `workers=2`, `workers=4`; per-record seed independent of worker count and scheduling.
-- [ ] Bump version to v0.3.10
-- [ ] Update CHANGELOG.md
-- [ ] Verify: worker determinism unit tests pass under all three worker counts.
+- [x] Add `src/datarefinery/pipeline/workers.py` with `run_parallel(seed, fn, items, workers) -> Iterator[Record]`.
+- [x] Per-record seed = `sha256(seed.to_bytes(8, 'big') + record_id_bytes).digest()[:8]` decoded as 64-bit int.
+- [x] Collect futures; sort outputs by `record_id` before yielding (no `as_completed` streaming across stage boundaries).
+- [x] Serial fast-path when `workers == 1`.
+- [x] Unit tests: same input + same seed produces byte-identical output for `workers=1`, `workers=2`, `workers=4`; per-record seed independent of worker count and scheduling.
+- [x] Bump version to v0.3.10
+- [x] Update CHANGELOG.md
+- [x] Verify: worker determinism unit tests pass under all three worker counts.
 
 ### Story C.m: v0.3.11 PipelineRunner: Stage Sequencing (FR-3) [Planned]
 
