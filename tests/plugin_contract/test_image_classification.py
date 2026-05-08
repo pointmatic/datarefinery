@@ -111,11 +111,19 @@ def test_label_from_path_default_source_is_parent_directory_name() -> None:
 
 
 def test_operation_factory_raises_not_implemented_for_unimplemented_ops() -> None:
-    """Ops still pending implementation should raise NotImplementedError."""
+    """Ops still pending implementation should raise NotImplementedError.
+
+    Augmentations remain policy-only in v1 (FR-11): the recipe declares
+    them, the runner records the policy, but the plugin does not
+    pre-materialize augmented examples - so the factory still refuses.
+    """
     with pytest.raises(NotImplementedError, match="not yet implemented"):
         PLUGIN.operation_factory("Transformations", "to_grayscale")
     with pytest.raises(NotImplementedError, match="not yet implemented"):
         PLUGIN.operation_factory("Transformations", "cast_dtype")
+    for aug_op in ("random_crop", "horizontal_flip", "color_jitter"):
+        with pytest.raises(NotImplementedError, match="not yet implemented"):
+            PLUGIN.operation_factory("Augmentations", aug_op)
 
 
 def test_operation_factory_returns_filter_ops_after_C_f() -> None:
@@ -143,6 +151,17 @@ def test_operation_factory_returns_featurization_ops_after_C_i() -> None:
     for op_name in ("label_from_path", "image_size_stats"):
         handle = PLUGIN.operation_factory("Featurizations", op_name)
         assert hasattr(handle, "fit") and hasattr(handle, "apply"), op_name
+
+
+def test_operation_factory_returns_visualization_ops_after_C_k() -> None:
+    """Story C.k wires the three visualization ops through the factory."""
+    for op_name in (
+        "class_distribution_histogram",
+        "sample_grid",
+        "mean_image_per_class",
+    ):
+        handle = PLUGIN.operation_factory("Visualizations", op_name)
+        assert hasattr(handle, "render"), op_name
 
 
 def test_discover_plugins_returns_image_classification() -> None:

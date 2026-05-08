@@ -31,6 +31,11 @@ from datarefinery.plugins.image_classification.operations.transformations import
     NormalizeOp,
     ResizeOp,
 )
+from datarefinery.plugins.image_classification.operations.visualizations import (
+    ClassDistributionHistogramOp,
+    MeanImagePerClassOp,
+    SampleGridOp,
+)
 
 _FILTER_OPS: dict[str, Operation] = {
     "filter_by_label": filter_by_label,
@@ -50,6 +55,12 @@ _TRANSFORMATION_OPS: dict[str, Operation] = {
 _FEATURIZATION_OPS: dict[str, Operation] = {
     "label_from_path": LabelFromPathOp(),
     "image_size_stats": ImageSizeStatsOp(),
+}
+
+_VISUALIZATION_OPS: dict[str, Operation] = {
+    "class_distribution_histogram": ClassDistributionHistogramOp(),
+    "sample_grid": SampleGridOp(),
+    "mean_image_per_class": MeanImagePerClassOp(),
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -214,10 +225,11 @@ class ImageClassificationPlugin:
             return _TRANSFORMATION_OPS[op_name]
         if section == "Featurizations" and op_name in _FEATURIZATION_OPS:
             return _FEATURIZATION_OPS[op_name]
+        if section == "Visualizations" and op_name in _VISUALIZATION_OPS:
+            return _VISUALIZATION_OPS[op_name]
         raise NotImplementedError(
             f"image_classification operation factory not yet implemented "
-            f"(section={section!r}, op={op_name!r}); remaining operations "
-            f"land in Stories C.j-C.k"
+            f"(section={section!r}, op={op_name!r})"
         )
 
     def is_stub(self) -> bool:

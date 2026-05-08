@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2026-05-08
+
+### Added
+
+- Visualizations: reporting + exploration modes (Story C.k, FR-13):
+  - `src/datarefinery/pipeline/stages/visualizations.py` exposes
+    `apply_reporting_visualizations(splits, viz_ops, *, plugin,
+    output_dir, label_field) -> VisualizationsResult`. The runner
+    iterates `mode == "reporting"` ops, calls
+    `plugin.operation_factory("Visualizations", op.op).render(...)`,
+    and writes PNG bytes to `<output_dir>/<op.name>.png`.
+    `exploration`-mode ops are skipped. Failures wrap as
+    `MaterializeError` per FR-13 ("reporting visualization that fails
+    -> hard error during materialization"); non-bytes returns also
+    hard-error.
+  - `src/datarefinery/reporting/__init__.py` and
+    `src/datarefinery/reporting/visualizations.py` expose
+    `render_visualization(splits, op, *, plugin, label_field) ->
+    RenderedVisualization` for exploration-mode use (typically called
+    by the `inspect` CLI verb in Story D.h). Returns the same handle
+    output without persisting; failures propagate unwrapped per the
+    "exploring, not materializing" semantics.
+  - Visualization handle protocol is `(.render(splits, params, *,
+    label_field) -> bytes)` returning PNG bytes.
+    `RenderedVisualization` carries `name`, `op`, `png_bytes`, and
+    `path` (`None` for exploration mode).
+  - `src/datarefinery/plugins/image_classification/operations/visualizations.py`
+    implements three viz handles with Pillow alone (no matplotlib in
+    deps):
+    - `ClassDistributionHistogramOp`: per-class bar chart on a
+      400x300 canvas; class iteration is stably ordered for
+      seed-deterministic PNG bytes.
+    - `SampleGridOp`: tiles the first N records' images into a
+      square-ish grid; with `per_class=True`, takes the first N from
+      each class (validator check 18 enforces param shape; the op
+      requires `Labels.field` only when `per_class=True`).
+    - `MeanImagePerClassOp`: per-class mean image (resized to 32x32
+      thumbnails) tiled in a row.
+  - All three are deterministic by record order: no RNG, stable class
+    sort by `(type, repr)`, and Pillow's PNG encoder is byte-stable
+    for identical pixel inputs.
+  - `image_classification.plugin.operation_factory` now dispatches
+    Visualizations ops via `_VISUALIZATION_OPS`; the only remaining
+    factory exemptions are `to_grayscale`, `cast_dtype`, and the
+    three augmentation ops (which are policy-only in v1 per FR-11).
+  - `tests/unit/test_visualizations_stage.py` covers writes-png-per-
+    op, skips-exploration-in-reporting-mode, creates-output-directory,
+    empty-op-list pass-through, byte determinism for all three ops,
+    sensitivity to input changes, per-class sampling, no-records
+    blank rendering, missing-`Labels.field` rejection, FR-13
+    reporting-failure hard error, non-bytes return hard error,
+    exploration-API no-persist + unwrapped error propagation +
+    non-bytes TypeError, and pixel-level decoding-and-shape smoke
+    checks (20 tests).
+  - `tests/plugin_contract/test_image_classification.py` adds a
+    Visualizations factory-callable assertion and asserts that
+    augmentation ops still raise `NotImplementedError` (policy-only
+    per FR-11).
+
 ## [0.3.8] - 2026-05-08
 
 ### Added

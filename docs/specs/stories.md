@@ -397,18 +397,18 @@ Augmentation policies are recorded in the manifest and surfaced in the report; v
 - [x] Update CHANGELOG.md
 - [x] Verify: augmentation policy tests pass.
 
-### Story C.k: v0.3.9 Visualizations: Exploration and Reporting (FR-13) [Planned]
+### Story C.k: v0.3.9 Visualizations: Exploration and Reporting (FR-13) [Done]
 
 Reporting visualizations rendered into the instance; exploration visualizations rendered on demand.
 
-- [ ] Add `src/datarefinery/pipeline/stages/visualizations.py` and `src/datarefinery/reporting/visualizations.py`.
-- [ ] Reporting-mode renderer writes to `report/visualizations/` during materialize; exploration-mode renderer is a library API for `inspect`.
-- [ ] Image plugin visualizations: class-distribution histogram, sample grid, mean-image-per-class.
-- [ ] Edge case: reporting-mode failure raises `MaterializeError` (per FR-13).
-- [ ] Unit tests: reporting-mode renders deterministic PNG bytes for fixed input; exploration-mode returns objects without persisting.
-- [ ] Bump version to v0.3.9
-- [ ] Update CHANGELOG.md
-- [ ] Verify: visualization unit tests pass.
+- [x] Add `src/datarefinery/pipeline/stages/visualizations.py` and `src/datarefinery/reporting/visualizations.py`.
+- [x] Reporting-mode renderer writes to `report/visualizations/` during materialize; exploration-mode renderer is a library API for `inspect`.
+- [x] Image plugin visualizations: class-distribution histogram, sample grid, mean-image-per-class. *Implemented with Pillow alone (no matplotlib in v1 deps); class-distribution histogram uses `ImageDraw.rectangle` for bars and `draw.text` for labels.*
+- [x] Edge case: reporting-mode failure raises `MaterializeError` (per FR-13).
+- [x] Unit tests: reporting-mode renders deterministic PNG bytes for fixed input; exploration-mode returns objects without persisting.
+- [x] Bump version to v0.3.9
+- [x] Update CHANGELOG.md
+- [x] Verify: visualization unit tests pass.
 
 ### Story C.l: v0.3.10 Pipeline Workers: Deterministic Parallelism [Planned]
 
