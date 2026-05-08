@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-05-07
+
+### Added
+
+- Splits stage (Story C.e, FR-7):
+  - `src/datarefinery/pipeline/stages/splits.py` exposes
+    `apply_splits(records, section, *, seed) -> SplitResult` plus a
+    `resolve_seed(section, fallback)` helper for callers to pick the
+    section seed over the recipe-level fallback. `SplitResult` is a
+    frozen dataclass listing `splits: Mapping[str, list[Record]]`,
+    `unassigned: list[Record]`, the pass-through `class_balance` tag,
+    and any sparse-class `warnings`.
+  - Two splitting modes: ratio-based (cumulative-fraction
+    partitioning; sub-1.0 ratio sums leave a recorded `unassigned`
+    remainder per features.md FR-7 edge case) and key-based
+    (`mapping[str(record[field])]` lookup; unmapped or missing-field
+    records raise `MaterializeError` with sample indices).
+  - Stratification (`stratify_by`) honored in ratio mode by
+    partitioning each class's records by the same ratio shape.
+    Sparse-class detection emits a per-class warning when any class
+    has fewer records than the number of positive-ratio splits.
+    Class iteration is stably ordered by `(type, repr)` so stratified
+    output is seed-deterministic across hash-randomization variants.
+  - `class_balance` is a tag passed through unchanged - resampling is
+    ModelFoundry-side per features.md FR-7 #4; this stage does no
+    resampling.
+  - Determinism: shuffles use `numpy.random.default_rng(seed)`; same
+    seed + same record order produces byte-identical partitions.
+  - `tests/unit/test_splits_stage.py` covers ratio partitioning, seed
+    determinism, sub-1.0 remainder, partition completeness with awkward
+    counts, stratified class distribution, sparse-class warning, no-warn
+    when classes are dense, stratified determinism, key-based
+    partitioning, unmapped-record and missing-field hard errors,
+    empty-target-split behavior, `class_balance` pass-through, no-
+    resampling invariant, seed precedence helper, and empty-input
+    edge case (18 tests).
+
 ## [0.3.2] - 2026-05-07
 
 ### Added

@@ -319,17 +319,17 @@ Assertion evaluation for declared contracts and expectations.
 - [x] Update CHANGELOG.md
 - [x] Verify: contract evaluation tests pass.
 
-### Story C.e: v0.3.3 Splits Stage (FR-7) [Planned]
+### Story C.e: v0.3.3 Splits Stage (FR-7) [Done]
 
 Train/val/test partitioning with stratification, key-based assignment, and class-balance strategies.
 
-- [ ] Add `src/datarefinery/pipeline/stages/__init__.py`, `src/datarefinery/pipeline/stages/splits.py`.
-- [ ] Implement ratio-based and key-based splits via scikit-learn splitters; stratification honored; class-balance strategy tags applied without resampling at this layer (resampling is ModelFoundry-side).
-- [ ] Unsplit-remainder recorded; stratification with sparse classes warns; key-based with unmapped records raises `MaterializeError`.
-- [ ] Unit tests: deterministic partitioning given seed; stratification distribution; sparse-class warning; unmapped-records hard error.
-- [ ] Bump version to v0.3.3
-- [ ] Update CHANGELOG.md
-- [ ] Verify: split-determinism unit tests pass for fixed seed.
+- [x] Add `src/datarefinery/pipeline/stages/__init__.py`, `src/datarefinery/pipeline/stages/splits.py`.
+- [x] Implement ratio-based and key-based splits via scikit-learn splitters; stratification honored; class-balance strategy tags applied without resampling at this layer (resampling is ModelFoundry-side). *Implemented with `numpy.random.default_rng` shuffles + per-class stratified partitioning rather than literal sklearn splitters; sklearn's `train_test_split` is two-way and N-way stratification is cleaner this way. Determinism contract is the same.*
+- [x] Unsplit-remainder recorded; stratification with sparse classes warns; key-based with unmapped records raises `MaterializeError`.
+- [x] Unit tests: deterministic partitioning given seed; stratification distribution; sparse-class warning; unmapped-records hard error.
+- [x] Bump version to v0.3.3
+- [x] Update CHANGELOG.md
+- [x] Verify: split-determinism unit tests pass for fixed seed.
 
 ### Story C.f: v0.3.4 Filters Stage (FR-8) [Planned]
 
