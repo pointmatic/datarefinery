@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-08
+
+### Added
+
+- Public library entry point (Story D.a) — Phase D opens:
+  - `src/datarefinery/core/datarefinery.py` with the `DataRefinery`
+    class. Construction (`from_recipe`) loads the recipe, applies any
+    requested variant overlay, discovers and binds the declared plugin,
+    and runs the FR-2 validator exactly once; the report is memoized
+    behind `validate()` so subsequent calls are zero-cost. The class
+    exposes `recipe`, `plugin`, `seed`, `variant`, `config`, `validate`,
+    `materialize`, `report`, `clean`, and a `cache_key(raw_input_hashes)`
+    method. Verbs whose CLI counterparts ship in later stories
+    (`status` → D.f, `inspect` → D.h, `check` → D.b) are present as
+    `NotImplementedError` stubs so the public class shape is stable.
+  - `src/datarefinery/core/instance.py` with `Instance` frozen
+    dataclass (`path`, `manifest`, `recipe`, `fitted_statistics`,
+    `report_path`, `is_partial`) and `Instance.load(path)`.
+    `fitted_statistics` is exposed lazily — construction performs no
+    fitted-statistics I/O. `Instance.render_report()` re-renders the
+    instance's `report.md` from persisted state without rerunning the
+    pipeline (FR-15.4).
+  - Top-level `materialize(recipe_path, *, config, variant, seed)`
+    convenience matching the tech-spec signature; raises
+    `NotImplementedError` pointing at Story D.e (the CLI verb wires the
+    disk-backed input loader). Library callers use
+    `DataRefinery.from_recipe(...).materialize(raw_records=...,
+    raw_input_hashes=...)` until D.e ships.
+  - Public re-exports in `datarefinery/__init__.py`: `DataRefinery`,
+    `Instance`, `materialize`, `__version__`.
+- Per-instance recipe persistence:
+  - `<instance>/recipe.json` is now written by `pipeline.runner` as the
+    canonicalized recipe used for the run. `Instance.load()` reads it
+    back, parses it through `Recipe.model_validate_json`, and verifies
+    the canonical hash matches `manifest.recipe_hash` — a tampered or
+    inconsistent instance directory raises `MaterializeError`.
+  - `cache.layout.recipe_path(instance)` helper.
+- `PipelineRunner` accepts an optional `variant` keyword and records it
+  in `manifest.variant` so future tooling can attribute an instance to
+  its source variant.
+
+### Tests
+
+- 15 new unit tests in `tests/unit/test_datarefinery.py` covering
+  public re-exports, validation memoization (the FR-2 validator is
+  invoked exactly once per `from_recipe`), seed override, unknown-plugin
+  rejection, `cache_key` composition, the materialize → `Instance.load`
+  round-trip, recipe-hash mismatch detection, lazy
+  `fitted_statistics`, `clean` routing through the configured cache
+  root, and `NotImplementedError` stubs for the deferred verbs.
+
 ## [0.3.13] - 2026-05-08
 
 ### Added

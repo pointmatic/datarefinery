@@ -471,18 +471,18 @@ Render the human-readable report and the structured drift placeholder consumed b
 
 Co-equal surfaces. Each CLI verb is a thin typer wrapper around a method on `DataRefinery` or a module-level function. Every verb gets a smoke test in Phase E; this phase lands the verbs themselves.
 
-### Story D.a: v0.4.0 DataRefinery Class and Instance Loader [Planned]
+### Story D.a: v0.4.0 DataRefinery Class and Instance Loader [Done]
 
 Library entry point that owns the loaded recipe and exposes verb methods.
 
-- [ ] Add `src/datarefinery/core/datarefinery.py` with `DataRefinery` class (per tech-spec signature: `from_recipe`, `validate`, `materialize`, `status`, `inspect`, `report`, `clean`, `check`, `recipe`, `cache_key`).
-- [ ] Add `src/datarefinery/core/instance.py` with `Instance` frozen dataclass (`path`, `manifest`, `recipe`, `fitted_statistics`, `report_path`, `is_partial`) and `Instance.load(path)`.
-- [ ] Top-level `materialize(recipe_path, *, config, variant, seed) -> Instance` convenience.
-- [ ] Public API re-exports in `datarefinery/__init__.py`: `DataRefinery`, `Instance`, `materialize`, `__version__`.
-- [ ] Unit tests: `DataRefinery.from_recipe(...)` runs validation once; `Instance.load(...)` parses manifest and exposes fitted-statistics lazily.
-- [ ] Bump version to v0.4.0
-- [ ] Update CHANGELOG.md
-- [ ] Verify: library API round-trip tests pass.
+- [x] Add `src/datarefinery/core/datarefinery.py` with `DataRefinery` class (per tech-spec signature: `from_recipe`, `validate`, `materialize`, `status`, `inspect`, `report`, `clean`, `check`, `recipe`, `cache_key`). *`status`, `inspect`, and `check` raise `NotImplementedError` pointing at their owning CLI-verb stories (D.f, D.h, D.b); they exist so the public class shape is stable. `cache_key` is exposed as a method (not a property) because input hashes are required to produce a full `CacheKey` and disk-backed input loading lives in D.e.*
+- [x] Add `src/datarefinery/core/instance.py` with `Instance` frozen dataclass (`path`, `manifest`, `recipe`, `fitted_statistics`, `report_path`, `is_partial`) and `Instance.load(path)`. *Required adding `<instance>/recipe.json` to the runner's per-instance output (and a `recipe_path()` helper in `cache/layout.py`) so `Instance.load` can reconstruct the canonicalized recipe; mismatch between persisted `recipe.json` and `manifest.recipe_hash` raises `MaterializeError`.*
+- [x] Top-level `materialize(recipe_path, *, config, variant, seed) -> Instance` convenience. *Signature matches the tech-spec; body raises `NotImplementedError` pointing at D.e because disk-backed input loading is the materialize CLI verb's responsibility. Library callers use `DataRefinery.from_recipe(...).materialize(raw_records=..., raw_input_hashes=...)` until D.e ships.*
+- [x] Public API re-exports in `datarefinery/__init__.py`: `DataRefinery`, `Instance`, `materialize`, `__version__`.
+- [x] Unit tests: `DataRefinery.from_recipe(...)` runs validation once; `Instance.load(...)` parses manifest and exposes fitted-statistics lazily.
+- [x] Bump version to v0.4.0
+- [x] Update CHANGELOG.md
+- [x] Verify: library API round-trip tests pass.
 
 ### Story D.b: v0.4.1 CLI verb: check (FR-18) [Planned]
 

@@ -41,6 +41,7 @@ from datarefinery.cache.layout import (
     fitted_stats_dir,
     instance_dir,
     manifest_path,
+    recipe_path,
     report_dir,
 )
 from datarefinery.core.config import RuntimeConfig
@@ -102,11 +103,14 @@ class PipelineRunner:
         plugin: Plugin,
         config: RuntimeConfig,
         seed: int,
+        *,
+        variant: str | None = None,
     ) -> None:
         self.recipe = recipe
         self.plugin = plugin
         self.config = config
         self.seed = seed
+        self.variant = variant
 
     def run(
         self,
@@ -255,6 +259,11 @@ class PipelineRunner:
             current_stage = "Dataset"
             _write_dataset(dataset_dir(temp_dir), split_map)
 
+            current_stage = "Recipe"
+            recipe_path(temp_dir).write_text(
+                self.recipe.model_dump_json(indent=2), encoding="utf-8"
+            )
+
             current_stage = "Manifest"
             elapsed = time.monotonic() - start
             manifest = Manifest(
@@ -264,7 +273,7 @@ class PipelineRunner:
                 recipe_hash=cache_key.recipe_hash,
                 input_hash=cache_key.input_hash,
                 seed=cache_key.seed,
-                variant=None,
+                variant=self.variant,
                 created_at=datetime.now(UTC),
                 elapsed_seconds=elapsed,
                 record_counts={

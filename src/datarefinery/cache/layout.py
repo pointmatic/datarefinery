@@ -31,6 +31,7 @@ from datarefinery.cache.identity import CacheKey
 INSTANCES_DIR = "instances"
 TMP_DIR_NAME = ".tmp"
 MANIFEST_FILE = "manifest.json"
+RECIPE_FILE = "recipe.json"
 DATASET_SUBDIR = "dataset"
 FITTED_STATS_SUBDIR = "fitted_statistics"
 REPORT_SUBDIR = "report"
@@ -58,6 +59,10 @@ def tmp_dir(cache_root: Path, run_id: str) -> Path:
 
 def manifest_path(instance: Path) -> Path:
     return instance / MANIFEST_FILE
+
+
+def recipe_path(instance: Path) -> Path:
+    return instance / RECIPE_FILE
 
 
 def dataset_dir(instance: Path) -> Path:
