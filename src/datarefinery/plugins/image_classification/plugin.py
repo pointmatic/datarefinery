@@ -15,6 +15,10 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
+from datarefinery.plugins.image_classification.operations.featurizations import (
+    ImageSizeStatsOp,
+    LabelFromPathOp,
+)
 from datarefinery.plugins.image_classification.operations.filters import (
     filter_by_label,
     random_sample,
@@ -41,6 +45,11 @@ _TRANSFORMATION_OPS: dict[str, Operation] = {
     "resize": ResizeOp(),
     "normalize": NormalizeOp(),
     "mean_subtract": MeanSubtractOp(),
+}
+
+_FEATURIZATION_OPS: dict[str, Operation] = {
+    "label_from_path": LabelFromPathOp(),
+    "image_size_stats": ImageSizeStatsOp(),
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -203,10 +212,12 @@ class ImageClassificationPlugin:
             return _GENERATION_OPS[op_name]
         if section == "Transformations" and op_name in _TRANSFORMATION_OPS:
             return _TRANSFORMATION_OPS[op_name]
+        if section == "Featurizations" and op_name in _FEATURIZATION_OPS:
+            return _FEATURIZATION_OPS[op_name]
         raise NotImplementedError(
             f"image_classification operation factory not yet implemented "
             f"(section={section!r}, op={op_name!r}); remaining operations "
-            f"land in Stories C.i-C.k"
+            f"land in Stories C.j-C.k"
         )
 
     def is_stub(self) -> bool:

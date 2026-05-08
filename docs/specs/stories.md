@@ -370,19 +370,19 @@ Deterministic transformations including fit-on-train statistics persistence.
 - [x] Update CHANGELOG.md
 - [x] Verify: transformation + fitted-stats round-trip tests pass.
 
-### Story C.i: v0.3.7 Featurizations + Derived Labels (FR-12, FR-22) [Planned]
+### Story C.i: v0.3.7 Featurizations + Derived Labels (FR-12, FR-22) [Done]
 
 Same machinery for featurizations and derived labels (e.g., label from filename pattern).
 
-- [ ] Add `src/datarefinery/pipeline/stages/featurizations.py`.
-- [ ] Implement deterministic featurization runner referencing declared inputs (including filenames/metadata).
-- [ ] Wire `Labels` derivation through the featurization runner per FR-22.
-- [ ] Image plugin featurizations (`label_from_path`, basic stats featurizers) implemented.
-- [ ] Edge case: name collision with existing field → hard error.
-- [ ] Unit tests: derived label resolved from `parent_directory_name`; collision hard-errors.
-- [ ] Bump version to v0.3.7
-- [ ] Update CHANGELOG.md
-- [ ] Verify: featurization + derived-label unit tests pass.
+- [x] Add `src/datarefinery/pipeline/stages/featurizations.py`.
+- [x] Implement deterministic featurization runner referencing declared inputs (including filenames/metadata).
+- [x] Wire `Labels` derivation through the featurization runner per FR-22. *No special-casing needed: a derived label is a `FeaturizationOp` whose `output_field` matches `Labels.field`. Verified end-to-end via `label_from_path` test.*
+- [x] Image plugin featurizations (`label_from_path`, basic stats featurizers) implemented.
+- [x] Edge case: name collision with existing field → hard error.
+- [x] Unit tests: derived label resolved from `parent_directory_name`; collision hard-errors.
+- [x] Bump version to v0.3.7
+- [x] Update CHANGELOG.md
+- [x] Verify: featurization + derived-label unit tests pass.
 
 ### Story C.j: v0.3.28 Augmentations Declaration (FR-11) [Planned]
 

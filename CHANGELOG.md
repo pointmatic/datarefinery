@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2026-05-08
+
+### Added
+
+- Featurizations stage + derived-label machinery (Story C.i, FR-12,
+  FR-22):
+  - `src/datarefinery/pipeline/stages/featurizations.py` exposes
+    `apply_featurizations(splits, ops, *, plugin, fitted_stats,
+    label_field) -> FeaturizationsResult`. Operation handle protocol
+    is `(.fit_on_train, .fit, .apply)` with kwargs `inputs`,
+    `output_field`, `label_field`. The stage decides whether to fit
+    via `OperationSpec.fit_on_train`; fitted values are persisted
+    once via `FittedStatistics` and applied across every declared
+    split (FR-12 #3 mirrors FR-10's discipline). Unknown ops, missing
+    `fit_source`, or undeclared `splits`/`fit_source` references
+    raise `MaterializeError`.
+  - Field-collision hard error per FR-12 edge case: under the
+    uniform-schema invariant, the stage checks the first record of
+    each target split before applying; an existing key collision
+    raises `MaterializeError` (no records mutated).
+  - FR-22 derived-label wiring: when `Labels.source.kind == "derived"`,
+    the recipe author writes a `FeaturizationOp` whose
+    `output_field` matches `Labels.field`. The stage runs that
+    featurization like any other; no special-casing needed - the
+    same machinery produces derived labels.
+  - `src/datarefinery/plugins/image_classification/operations/featurizations.py`
+    implements two featurization handles:
+    - `LabelFromPathOp` (no fit): derives a label from a record's
+      path field. Default `source` is `parent_directory_name` (the
+      ImageFolder convention - `cats/foo.jpg` -> `"cats"`); also
+      supports `filename` and `stem`. Raises `PluginError` on missing
+      input field, empty `inputs`, or unknown `source`.
+    - `ImageSizeStatsOp` (no fit): writes the image's spatial
+      shape (e.g., `[H, W, C]`) under `output_field`. Supports 2-D
+      and 3-D arrays; raises `PluginError` on other ndim.
+  - `image_classification.plugin.operation_factory` now dispatches
+    `Featurizations` ops via `_FEATURIZATION_OPS`; `to_grayscale`,
+    `cast_dtype`, all augmentation ops, and all visualization ops
+    still raise `NotImplementedError` (lands in C.j-C.k).
+  - `tests/unit/test_featurizations_stage.py` covers
+    parent-directory derivation, alternate sources (`filename`),
+    unknown source rejection, missing-input-field error, empty-inputs
+    error, image-size-stats shape extraction (3-D and 2-D),
+    invalid-ndim rejection, multi-record / multi-split determinism,
+    field-collision hard error (FR-12 edge case), no-collision-on-
+    empty-split, fit-on-train support via a fixture plugin
+    (persistence + train-fitted apply across splits + missing-
+    fit_source error), unknown-op error, undeclared-split error,
+    empty-list pass-through, and input-list non-mutation
+    (18 tests).
+  - `tests/plugin_contract/test_image_classification.py` adds a
+    `Featurizations` factory-callable assertion.
+
 ## [0.3.6] - 2026-05-07
 
 ### Added

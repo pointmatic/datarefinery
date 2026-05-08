@@ -138,6 +138,13 @@ def test_operation_factory_returns_transformation_ops_after_C_h() -> None:
         assert hasattr(handle, "fit") and hasattr(handle, "apply"), op_name
 
 
+def test_operation_factory_returns_featurization_ops_after_C_i() -> None:
+    """Story C.i wires label_from_path and image_size_stats through the factory."""
+    for op_name in ("label_from_path", "image_size_stats"):
+        handle = PLUGIN.operation_factory("Featurizations", op_name)
+        assert hasattr(handle, "fit") and hasattr(handle, "apply"), op_name
+
+
 def test_discover_plugins_returns_image_classification() -> None:
     plugins = discover_plugins()
     assert "image_classification" in plugins
