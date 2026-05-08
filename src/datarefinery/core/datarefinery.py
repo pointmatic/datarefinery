@@ -31,6 +31,7 @@ from datarefinery.cache.layout import make_run_id, tmp_dir
 from datarefinery.core.check import CheckReport, build_check_report
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import PluginError
+from datarefinery.core.inspect import InspectionView, build_inspection_view
 from datarefinery.core.instance import Instance
 from datarefinery.core.status import StatusReport, resolve_status
 from datarefinery.pipeline.inputs import hash_inputs, load_raw_records
@@ -238,12 +239,33 @@ class DataRefinery:
         key = compute_cache_key(self._recipe, hashes, self._seed)
         return resolve_status(self._config.cache_root, key)
 
-    def inspect(self, view: str | None = None) -> Any:
-        """Read-only views (FR-20). Implementation lands in D.h."""
-        del view
-        raise NotImplementedError(
-            "DataRefinery.inspect() lands in Story D.h (CLI verb: inspect)"
-        )
+    def inspect(
+        self,
+        instance_path: Path | None = None,
+        view: str | None = None,
+    ) -> InspectionView:
+        """Read-only views over a materialized instance (FR-20).
+
+        ``instance_path`` may be omitted; in that case the loaded
+        recipe + cache config resolve to the bound instance via the
+        same path :meth:`status` uses. A cache miss raises
+        :class:`MaterializeError` (inspect requires a materialized
+        instance).
+        """
+        if instance_path is None:
+            report = self.status()
+            if report.cache_status != "hit":
+                from datarefinery.core.errors import MaterializeError
+
+                raise MaterializeError(
+                    f"inspect: no materialized instance for this recipe "
+                    f"(cache_status={report.cache_status}). Run "
+                    f"`datarefinery materialize <recipe>` first."
+                )
+            instance_path = report.instance_path
+
+        instance = Instance.load(Path(instance_path))
+        return build_inspection_view(instance, self._plugin, view=view)
 
     @staticmethod
     def check(config: RuntimeConfig | None = None) -> CheckReport:

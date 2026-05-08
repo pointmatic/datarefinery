@@ -298,10 +298,5 @@ def test_clean_routes_through_configured_cache_root(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_inspect_raises_for_now(tmp_path: Path) -> None:
-    path = _write_recipe(tmp_path)
-    obj = DataRefinery.from_recipe(path, config=_config(tmp_path))
-    with pytest.raises(NotImplementedError, match=r"Story D\.h"):
-        obj.inspect()
 
 

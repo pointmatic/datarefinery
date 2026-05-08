@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-05-08
+
+### Added
+
+- `datarefinery inspect` CLI verb (Story D.h, FR-20):
+  - `src/datarefinery/core/inspect.py` with `InspectionView` (frozen
+    dataclass: `instance_path`, `exploration_views`, optional
+    `rendered`, `fitted_op_ids`, `record_counts`, `sample_records`),
+    `RenderedView` (in-memory PNG bytes), and
+    `build_inspection_view(instance, plugin, *, view,
+    peek_per_split)`. The FR-20 partial-instance refusal lives here so
+    library and CLI callers are guarded identically.
+  - `DataRefinery.inspect(instance_path=None, view=None)` is now a
+    real method (was a `NotImplementedError` stub): when called
+    without `instance_path`, it resolves the bound recipe to its
+    cached instance via `status()` and raises `MaterializeError` on
+    cache miss.
+  - `src/datarefinery/cli/commands/inspect_cmd.py` registered on the
+    typer app via `app.command("inspect", ...)`. Accepts either a
+    recipe YAML or an instance directory. `--view NAME` renders the
+    named exploration visualization on demand; `--out PATH` writes
+    the PNG bytes (and is rejected without `--view`). No-`--view`
+    mode prints three `rich` tables: overview (instance,
+    exploration views, fitted-stats op ids), records-per-split, and
+    a sample-records peek (first three rows per split from the
+    persisted JSONL).
+
+### Tests
+
+- 8 new CLI smoke tests in `tests/cli/test_inspect_cmd.py`: list+peek
+  mode, `--view --out` PNG round-trip (with PNG signature check),
+  `--view` without `--out`, unknown-view error, partial-instance
+  refusal (manifest mutated to `is_partial=True` reaches the
+  documented refusal path), recipe-path resolution to the cached
+  instance, recipe-path cache miss errors, and `--out` without
+  `--view` validation.
+
 ## [0.4.6] - 2026-05-08
 
 ### Added

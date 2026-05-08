@@ -22,6 +22,7 @@ from datarefinery.cli._exit_codes import (
 )
 from datarefinery.cli.commands.check_cmd import check as check_cmd
 from datarefinery.cli.commands.init_cmd import init as init_cmd
+from datarefinery.cli.commands.inspect_cmd import inspect as inspect_cmd
 from datarefinery.cli.commands.materialize_cmd import materialize as materialize_cmd
 from datarefinery.cli.commands.report_cmd import report as report_cmd
 from datarefinery.cli.commands.status_cmd import status as status_cmd
@@ -152,6 +153,10 @@ app.command(
     "report",
     help="Re-render report.md, drift.json, and reporting visualizations (FR-15).",
 )(report_cmd)
+app.command(
+    "inspect",
+    help="Read-only views of a materialized instance (FR-20).",
+)(inspect_cmd)
 
 
 def _render_error(message: str, *, title: str) -> None:

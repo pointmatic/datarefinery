@@ -542,16 +542,16 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: report smoke test passes.
 
-### Story D.h: v0.4.7 CLI verb: inspect (FR-20) [Planned]
+### Story D.h: v0.4.7 CLI verb: inspect (FR-20) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/inspect_cmd.py` invoking `DataRefinery.inspect()`.
-- [ ] `--view NAME` renders a named exploration visualization; `--out PATH` writes to file (image/HTML).
-- [ ] Default (no `--view`) lists exploration visualizations and structured peek of fitted statistics + sample records.
-- [ ] Refuses to operate on a partial (FAILED) instance with the documented pointer.
-- [ ] Smoke test: list and render at least one exploration visualization on fixture instance.
-- [ ] Bump version to v0.4.7
-- [ ] Update CHANGELOG.md
-- [ ] Verify: inspect smoke test passes.
+- [x] Add `src/datarefinery/cli/commands/inspect_cmd.py` invoking `DataRefinery.inspect()`. *Library: new `core/inspect.py` exposes `InspectionView` (frozen dataclass: `instance_path`, `exploration_views`, optional `rendered`, `fitted_op_ids`, `record_counts`, `sample_records`) and `build_inspection_view(instance, plugin, *, view, peek_per_split)`. `DataRefinery.inspect(instance_path=None, view=None)` resolves the instance via `status()` when no path is given (cache miss raises `MaterializeError`).*
+- [x] `--view NAME` renders a named exploration visualization; `--out PATH` writes to file (image/HTML). *PNG-only in v1; HTML rendering is reserved for plugin ops that emit it post-v1. `--out` without `--view` is rejected; rendering without `--out` prints a one-line byte-count summary.*
+- [x] Default (no `--view`) lists exploration visualizations and structured peek of fitted statistics + sample records. *Three rich tables: overview (instance, exploration views, fitted-stats op ids), records-per-split, and sample-records peek (first 3 rows per split, sourced from the persisted JSONL — serializable fields only, no image bytes).*
+- [x] Refuses to operate on a partial (FAILED) instance with the documented pointer. *Refusal lives in `build_inspection_view` (library API), so library and CLI callers are guarded identically. Message names whether the partial is from a failure (`failed_stage`) or a `--stage` partial-run (`completed_through`) and points at re-materialize / `datarefinery clean`.*
+- [x] Smoke test: list and render at least one exploration visualization on fixture instance. *8 tests covering both modes (list + render), `--out` PNG signature check, unknown-view error, partial-instance refusal (manifest mutated to `is_partial=True`), recipe-path resolution, cache-miss recipe path, and the `--out` without `--view` validation.*
+- [x] Bump version to v0.4.7
+- [x] Update CHANGELOG.md
+- [x] Verify: inspect smoke test passes.
 
 ### Story D.i: v0.4.8 CLI verb: clean (FR-21) [Planned]
 
