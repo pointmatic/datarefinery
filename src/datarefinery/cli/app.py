@@ -22,6 +22,7 @@ from datarefinery.cli._exit_codes import (
 )
 from datarefinery.cli.commands.check_cmd import check as check_cmd
 from datarefinery.cli.commands.init_cmd import init as init_cmd
+from datarefinery.cli.commands.materialize_cmd import materialize as materialize_cmd
 from datarefinery.cli.commands.validate_cmd import validate as validate_cmd
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import DataRefineryError
@@ -137,6 +138,10 @@ def main(
 app.command("check", help="Report environment soundness (FR-18).")(check_cmd)
 app.command("validate", help="Validate a recipe (FR-2).")(validate_cmd)
 app.command("init", help="Scaffold a starter recipe from raw inputs (FR-17).")(init_cmd)
+app.command(
+    "materialize",
+    help="Run the pipeline end-to-end against the recipe's inputs (FR-3).",
+)(materialize_cmd)
 
 
 def _render_error(message: str, *, title: str) -> None:

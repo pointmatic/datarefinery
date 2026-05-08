@@ -307,7 +307,3 @@ def test_status_inspect_raise_for_now(tmp_path: Path) -> None:
         obj.inspect()
 
 
-def test_top_level_materialize_stub_points_at_d_e(tmp_path: Path) -> None:
-    path = _write_recipe(tmp_path)
-    with pytest.raises(NotImplementedError, match=r"Story D\.e"):
-        dr.materialize(path)

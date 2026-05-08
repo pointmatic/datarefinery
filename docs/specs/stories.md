@@ -512,15 +512,15 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: init smoke test passes; produced recipe is parsed clean by `validate`.
 
-### Story D.e: v0.4.4 CLI verb: materialize (FR-3) [Planned]
+### Story D.e: v0.4.4 CLI verb: materialize (FR-3) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/materialize_cmd.py` invoking `DataRefinery.materialize()`.
-- [ ] CLI shows `rich` per-stage progress bars; final summary includes cache hit/miss, instance path, elapsed seconds, key counts.
-- [ ] Verb-specific options: `--stage NAME` (partial run; result not promoted; manifest marked partial).
-- [ ] Smoke test: `datarefinery materialize` end-to-end on fixture; rerun shows `cache=hit`.
-- [ ] Bump version to v0.4.4
-- [ ] Update CHANGELOG.md
-- [ ] Verify: materialize smoke test passes; second run hits cache.
+- [x] Add `src/datarefinery/cli/commands/materialize_cmd.py` invoking `DataRefinery.materialize()`. *Required landing the disk-backed input loader (`src/datarefinery/pipeline/inputs.py`) deferred from Stories C.m and D.a; `image_classification` reads `image_folder` sources, hashes per-source content for cache identity, and only attaches a `label` field to records when `Labels.source.kind=="direct"` (so derived-label recipes don't collide at the featurization stage). `tabular`/`text` plugins refuse with `PluginError` per their stub status. The top-level `materialize(recipe_path, ...)` convenience is now functional (was a `NotImplementedError` stub).*
+- [x] CLI shows `rich` per-stage progress bars; final summary includes cache hit/miss, instance path, elapsed seconds, key counts. *Progress driven by a `progress_callback` plumbed through `PipelineRunner.run`; cache-hit/miss read from `DataRefinery.last_run`. Summary renders three rich tables (top-level, records-per-split, optional warnings).*
+- [x] Verb-specific options: `--stage NAME` (partial run; result not promoted; manifest marked partial). *`PipelineRunner.run` gained a `stop_after` parameter validated against the new `STAGE_NAMES` tuple; partial runs write a `Manifest` with `is_partial=True` and the new `completed_through` field, leaving the temp dir in place. Manifest schema bump is pre-prod-permissible (no canonical-bytes change).*
+- [x] Smoke test: `datarefinery materialize` end-to-end on fixture; rerun shows `cache=hit`. *5 smoke tests covering miss → cache→ hit round-trip, partial-stage run with persisted manifest, invalid stage rejection, and missing-recipe usage error.*
+- [x] Bump version to v0.4.4
+- [x] Update CHANGELOG.md
+- [x] Verify: materialize smoke test passes; second run hits cache.
 
 ### Story D.f: v0.4.5 CLI verb: status (FR-19) [Planned]
 

@@ -49,6 +49,7 @@ class Manifest(BaseModel):
     elapsed_seconds: float
     is_partial: bool = False
     failed_stage: str | None = None
+    completed_through: str | None = None
     record_counts: dict[str, int] = Field(default_factory=dict)
     warnings: list[ManifestWarning] = Field(default_factory=list)
 

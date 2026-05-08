@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -45,6 +45,7 @@ from datarefinery.cache.layout import (
     report_dir,
 )
 from datarefinery.core.config import RuntimeConfig
+from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.contracts import (
     evaluate_input_contracts,
     evaluate_output_expectations,
@@ -83,6 +84,23 @@ from datarefinery.reporting.report import (
 )
 
 Record = Mapping[str, Any]
+ProgressCallback = Callable[[str], None]
+
+#: Stage names accepted by the ``stop_after`` partial-run option, in
+#: execution order. The runner refuses any other value with
+#: :class:`MaterializeError` rather than silently running to completion.
+STAGE_NAMES: tuple[str, ...] = (
+    "InputContracts",
+    "Filters/pre_split",
+    "Splits",
+    "Filters/post_split",
+    "Generation",
+    "Transformations",
+    "Featurizations",
+    "Augmentations",
+    "OutputExpectations",
+    "Visualizations",
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +110,7 @@ class RunnerResult:
     instance_dir: Path
     cache_hit: bool
     manifest: Manifest
+    is_partial: bool = False
 
 
 class PipelineRunner:
@@ -118,17 +137,33 @@ class PipelineRunner:
         *,
         raw_records: list[Record],
         raw_input_hashes: Mapping[str, str],
+        stop_after: str | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> RunnerResult:
         """Execute the pipeline against ``raw_records`` into ``temp_dir``.
 
         Returns a :class:`RunnerResult` indicating whether the run hit
         cache or materialized fresh. On cache hit, ``temp_dir`` is not
         touched.
+
+        ``progress_callback`` is invoked with each pipeline-stage name at
+        the moment that stage starts (suitable for driving a `rich`
+        progress bar). ``stop_after`` is one of :data:`STAGE_NAMES`;
+        when set, the runner stops cleanly after that stage, writes a
+        partial manifest (``is_partial=True``,
+        ``completed_through=<stage>``) into ``temp_dir``, and does NOT
+        promote into the final cache layout.
         """
+        if stop_after is not None and stop_after not in STAGE_NAMES:
+            raise MaterializeError(
+                f"PipelineRunner.run: stop_after={stop_after!r} not "
+                f"recognized; valid stages: {list(STAGE_NAMES)}"
+            )
+
         cache_key = compute_cache_key(self.recipe, raw_input_hashes, self.seed)
         final_dir = instance_dir(self.config.cache_root, cache_key)
 
-        if manifest_path(final_dir).exists():
+        if manifest_path(final_dir).exists() and stop_after is None:
             return RunnerResult(
                 instance_dir=final_dir,
                 cache_hit=True,
@@ -142,9 +177,18 @@ class PipelineRunner:
         warnings: list[ManifestWarning] = []
         label_field = self.recipe.Labels.field
         current_stage: str = "init"
+        split_map: dict[str, list[Record]] = {}
+        fitted_op_ids: list[str] = []
+        records: list[Record] = list(raw_records)
+
+        def _emit(stage: str) -> None:
+            nonlocal current_stage
+            current_stage = stage
+            if progress_callback is not None:
+                progress_callback(stage)
 
         try:
-            current_stage = "InputContracts"
+            _emit("InputContracts")
             ic = evaluate_input_contracts(
                 raw_records, self.recipe.InputContracts
             )
@@ -152,8 +196,12 @@ class PipelineRunner:
             warnings.extend(
                 _wrap(current_stage, (w.message for w in ic.warnings))
             )
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Filters/pre_split"
+            _emit("Filters/pre_split")
             pre_filter = apply_pre_split_filters(
                 raw_records,
                 self.recipe.Filters,
@@ -162,15 +210,19 @@ class PipelineRunner:
             )
             warnings.extend(_wrap(current_stage, pre_filter.warnings))
             records = pre_filter.records
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Splits"
+            _emit("Splits")
             splits = apply_splits(
                 records,
                 self.recipe.Splits,
                 seed=resolve_seed(self.recipe.Splits, self.seed),
             )
             warnings.extend(_wrap(current_stage, splits.warnings))
-            split_map: dict[str, list[Record]] = dict(splits.splits)
+            split_map = dict(splits.splits)
             if splits.unassigned:
                 warnings.append(
                     ManifestWarning(
@@ -181,8 +233,12 @@ class PipelineRunner:
                         ),
                     )
                 )
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Filters/post_split"
+            _emit("Filters/post_split")
             post_filter = apply_post_split_filters(
                 split_map,
                 self.recipe.Filters,
@@ -192,8 +248,12 @@ class PipelineRunner:
             for split_name, fr in post_filter.items():
                 split_map[split_name] = fr.records
                 warnings.extend(_wrap(current_stage, fr.warnings))
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Generation"
+            _emit("Generation")
             gen_result = apply_generation(
                 split_map,
                 self.recipe.Generation,
@@ -203,8 +263,12 @@ class PipelineRunner:
             )
             split_map = dict(gen_result.splits)
             warnings.extend(_wrap(current_stage, gen_result.warnings))
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Transformations"
+            _emit("Transformations")
             fitted_stats = FittedStatistics(fitted_stats_dir(temp_dir))
             tx_result = apply_transformations(
                 split_map,
@@ -214,9 +278,13 @@ class PipelineRunner:
                 label_field=label_field,
             )
             split_map = dict(tx_result.splits)
-            fitted_op_ids: list[str] = list(tx_result.fitted_op_ids)
+            fitted_op_ids = list(tx_result.fitted_op_ids)
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Featurizations"
+            _emit("Featurizations")
             feat_result = apply_featurizations(
                 split_map,
                 self.recipe.Featurizations,
@@ -226,15 +294,23 @@ class PipelineRunner:
             )
             split_map = dict(feat_result.splits)
             fitted_op_ids.extend(feat_result.fitted_op_ids)
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Augmentations"
+            _emit("Augmentations")
             collect_augmentation_policies(self.recipe.Augmentations)
             # Policies are descriptive only in v1 (FR-11); the
             # serialized block is recorded in the manifest's eventual
             # `augmentations` field via the runner's report writer
             # (Story C.n) - here we just defensively re-validate.
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "OutputExpectations"
+            _emit("OutputExpectations")
             all_records = [
                 r for split in split_map.values() for r in split
             ]
@@ -245,8 +321,12 @@ class PipelineRunner:
             warnings.extend(
                 _wrap(current_stage, (w.message for w in oe.warnings))
             )
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
-            current_stage = "Visualizations"
+            _emit("Visualizations")
             viz_dir = report_dir(temp_dir) / "visualizations"
             apply_reporting_visualizations(
                 split_map,
@@ -255,6 +335,10 @@ class PipelineRunner:
                 output_dir=viz_dir,
                 label_field=label_field,
             )
+            if stop_after == current_stage:
+                return self._partial_finish(
+                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                )
 
             current_stage = "Dataset"
             _write_dataset(dataset_dir(temp_dir), split_map)
@@ -305,6 +389,58 @@ class PipelineRunner:
 
         return RunnerResult(
             instance_dir=final_dir, cache_hit=False, manifest=manifest
+        )
+
+    def _partial_finish(
+        self,
+        temp_dir: Path,
+        cache_key: Any,
+        completed_through: str,
+        split_map: Mapping[str, list[Record]],
+        warnings: list[ManifestWarning],
+        start: float,
+    ) -> RunnerResult:
+        """Write a partial manifest and return without promoting.
+
+        Used by the ``--stage`` partial-run option. The temp dir is left
+        in place so callers can inspect the partially-materialized
+        artifacts; ``RunnerResult.is_partial`` is set so the CLI can
+        surface the partial status.
+        """
+        elapsed = time.monotonic() - start
+        record_counts = (
+            {name: len(rs) for name, rs in split_map.items()}
+            if split_map
+            else {}
+        )
+        manifest = Manifest(
+            datarefinery_version=__version__,
+            plugin=self.plugin.name,
+            plugin_version=str(self.plugin.schema_version),
+            recipe_hash=cache_key.recipe_hash,
+            input_hash=cache_key.input_hash,
+            seed=cache_key.seed,
+            variant=self.variant,
+            created_at=datetime.now(UTC),
+            elapsed_seconds=elapsed,
+            is_partial=True,
+            completed_through=completed_through,
+            record_counts=record_counts,
+            warnings=warnings,
+        )
+        # Persist enough state to make the temp dir inspectable. We
+        # write the recipe so `Instance.load` can reconstruct it; the
+        # full report/dataset/visualizations are intentionally skipped
+        # because the run did not reach those stages.
+        recipe_path(temp_dir).write_text(
+            self.recipe.model_dump_json(indent=2), encoding="utf-8"
+        )
+        write_manifest(manifest_path(temp_dir), manifest)
+        return RunnerResult(
+            instance_dir=temp_dir,
+            cache_hit=False,
+            manifest=manifest,
+            is_partial=True,
         )
 
 

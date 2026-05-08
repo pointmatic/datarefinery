@@ -21,7 +21,7 @@ caller-supplied input hashes as the explicit contract.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,8 @@ from datarefinery.core.check import CheckReport, build_check_report
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import PluginError
 from datarefinery.core.instance import Instance
-from datarefinery.pipeline.runner import PipelineRunner
+from datarefinery.pipeline.inputs import load_raw_records
+from datarefinery.pipeline.runner import PipelineRunner, RunnerResult
 from datarefinery.plugins.base import Plugin
 from datarefinery.plugins.discovery import discover_plugins
 from datarefinery.recipe.loader import load as load_recipe
@@ -63,6 +64,7 @@ class DataRefinery:
         self._seed = seed
         self._variant = variant
         self._validation_report = validation_report
+        self._last_run: RunnerResult | None = None
 
     # ------------------------------------------------------------------
     # Construction
@@ -148,16 +150,39 @@ class DataRefinery:
     def materialize(
         self,
         *,
-        raw_records: Sequence[Record],
-        raw_input_hashes: Mapping[str, str],
+        raw_records: Sequence[Record] | None = None,
+        raw_input_hashes: Mapping[str, str] | None = None,
+        stop_after: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
     ) -> Instance:
         """Run the pipeline end-to-end and return the loaded instance.
 
-        Raw-input loading is the caller's responsibility in v1 — the
-        materialize CLI verb (Story D.e) wires disk-backed loaders.
-        Library callers can synthesize records in-memory or call
-        domain-specific loaders directly.
+        With no inputs supplied the pipeline-input loader inflates the
+        recipe's ``Input`` sources from disk (currently the
+        image_classification ``image_folder`` loader; tabular and text
+        plugins refuse). Library callers may pass ``raw_records`` /
+        ``raw_input_hashes`` explicitly to bypass disk loading.
+
+        ``stop_after`` selects a partial run by stage name (one of
+        :data:`pipeline.runner.STAGE_NAMES`); the result is left in the
+        temp directory unpromoted, with ``manifest.is_partial=True``.
+        ``progress_callback`` is invoked at the start of each stage.
         """
+        if (raw_records is None) != (raw_input_hashes is None):
+            raise ValueError(
+                "DataRefinery.materialize: pass both raw_records and "
+                "raw_input_hashes, or neither (to load from disk)"
+            )
+        records: list[Record]
+        hashes: dict[str, str]
+        if raw_records is None:
+            loaded, hashes = load_raw_records(self._recipe, self._plugin)
+            records = list(loaded)
+        else:
+            assert raw_input_hashes is not None
+            records = [dict(r) for r in raw_records]
+            hashes = dict(raw_input_hashes)
+
         runner = PipelineRunner(
             recipe=self._recipe,
             plugin=self._plugin,
@@ -165,12 +190,20 @@ class DataRefinery:
             seed=self._seed,
             variant=self._variant,
         )
-        result = runner.run(
+        result: RunnerResult = runner.run(
             tmp_dir(self._config.cache_root, make_run_id()),
-            raw_records=list(raw_records),
-            raw_input_hashes=raw_input_hashes,
+            raw_records=records,
+            raw_input_hashes=hashes,
+            stop_after=stop_after,
+            progress_callback=progress_callback,
         )
+        self._last_run = result
         return Instance.load(result.instance_dir)
+
+    @property
+    def last_run(self) -> RunnerResult | None:
+        """The most recent :class:`RunnerResult`, or ``None`` if not yet run."""
+        return self._last_run
 
     def report(self, instance_path: Path) -> Instance:
         """Re-render the report for a previously materialized instance."""
@@ -218,19 +251,16 @@ def materialize(
 ) -> Instance:
     """One-shot top-level convenience matching the tech-spec signature.
 
-    Disk-backed input loading lands with the materialize CLI verb in
-    Story D.e; until then this convenience raises ``NotImplementedError``
-    pointing at the explicit
-    :meth:`DataRefinery.materialize` method, which accepts
-    caller-supplied ``raw_records`` + ``raw_input_hashes``.
+    Loads the recipe, applies the requested variant, runs FR-2
+    validation, inflates the recipe's input sources from disk, and
+    materializes the pipeline. Library callers who want to provide
+    pre-loaded records bypass this and call
+    ``DataRefinery.from_recipe(...).materialize(raw_records=...,
+    raw_input_hashes=...)`` directly.
     """
-    del recipe_path, config, variant, seed
-    raise NotImplementedError(
-        "Top-level materialize() requires disk-backed input loading, "
-        "which lands in Story D.e (CLI verb: materialize). Use "
-        "DataRefinery.from_recipe(...).materialize(raw_records=..., "
-        "raw_input_hashes=...) in the meantime."
-    )
+    return DataRefinery.from_recipe(
+        Path(recipe_path), config=config, variant=variant, seed=seed
+    ).materialize()
 
 
 # ---------------------------------------------------------------------------

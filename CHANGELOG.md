@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-05-08
+
+### Added
+
+- `datarefinery materialize` CLI verb (Story D.e, FR-3) — closes the
+  init → validate → materialize golden path:
+  - `src/datarefinery/cli/commands/materialize_cmd.py` registered on
+    the typer app via `app.command("materialize", ...)`. Renders a
+    `rich` progress bar (driven by per-stage callbacks from the
+    runner) and a three-table summary on completion: top-level
+    metadata (cache hit/miss, instance path, hashes, seed, variant,
+    elapsed), records-per-split counts, and optional warnings.
+  - `--stage NAME` selects a partial run that stops after the named
+    stage and leaves the result in the temp directory (no promote)
+    with the manifest marked partial. Valid stage names are listed
+    in the `--help` output.
+- Disk-backed input loader (`src/datarefinery/pipeline/inputs.py`)
+  deferred from Stories C.m and D.a:
+  - `load_raw_records(recipe, plugin)` inflates `recipe.Input.sources`
+    into records and a per-source SHA-256 content-hash dict for cache
+    identity. The `image_classification` ImageFolder loader walks
+    `<root>/<class>/<file>.{png,jpg,jpeg}` and only attaches a
+    `label` field when `Labels.source.kind=="direct"` (so
+    derived-label recipes leave the field for the featurization
+    stage to populate).
+  - `tabular` and `text` plugins refuse with `PluginError` until
+    their full implementations land post-v1.
+- `PipelineRunner` enhancements:
+  - `progress_callback: Callable[[str], None] | None` parameter on
+    `.run(...)`; invoked at the start of each stage.
+  - `stop_after: str | None` parameter validated against the new
+    public `STAGE_NAMES` tuple; partial runs write a manifest with
+    the new `completed_through: str | None` field on
+    `Manifest`, set `is_partial=True`, and skip atomic promote.
+  - `RunnerResult` gained `is_partial: bool` so callers can
+    distinguish a partial run from a completed one.
+  - `PipelineRunner` accepts an optional `variant` keyword and
+    records it in `manifest.variant` (was hard-coded to `None`).
+- `DataRefinery.materialize()` upgrades:
+  - Optional `raw_records` / `raw_input_hashes` (kept for library
+    callers); when omitted the disk loader runs.
+  - New `stop_after` and `progress_callback` keywords pass through
+    to the runner.
+  - New `last_run` property exposes the most recent `RunnerResult`
+    (so the CLI can surface cache hit/miss).
+- Top-level `materialize(recipe_path, *, config, variant, seed)` now
+  performs disk-backed loading internally (was a
+  `NotImplementedError` stub pointing at this story).
+
+### Tests
+
+- 5 new CLI smoke tests in `tests/cli/test_materialize_cmd.py`:
+  cache-miss → instance produced (manifest, recipe.json, dataset
+  jsonl per split, report.md, drift.json), rerun cache-hit on the
+  second invocation, partial stage run with persisted partial
+  manifest (`is_partial=True`, `completed_through="Splits"`),
+  invalid stage name rejected, missing recipe is a usage error.
+
 ## [0.4.3] - 2026-05-08
 
 ### Added
