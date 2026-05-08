@@ -22,6 +22,11 @@ from datarefinery.plugins.image_classification.operations.filters import (
 from datarefinery.plugins.image_classification.operations.generation import (
     duplicate_minority_class,
 )
+from datarefinery.plugins.image_classification.operations.transformations import (
+    MeanSubtractOp,
+    NormalizeOp,
+    ResizeOp,
+)
 
 _FILTER_OPS: dict[str, Operation] = {
     "filter_by_label": filter_by_label,
@@ -30,6 +35,12 @@ _FILTER_OPS: dict[str, Operation] = {
 
 _GENERATION_OPS: dict[str, Operation] = {
     "duplicate_minority_class": duplicate_minority_class,
+}
+
+_TRANSFORMATION_OPS: dict[str, Operation] = {
+    "resize": ResizeOp(),
+    "normalize": NormalizeOp(),
+    "mean_subtract": MeanSubtractOp(),
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -190,10 +201,12 @@ class ImageClassificationPlugin:
             return _FILTER_OPS[op_name]
         if section == "Generation" and op_name in _GENERATION_OPS:
             return _GENERATION_OPS[op_name]
+        if section == "Transformations" and op_name in _TRANSFORMATION_OPS:
+            return _TRANSFORMATION_OPS[op_name]
         raise NotImplementedError(
             f"image_classification operation factory not yet implemented "
             f"(section={section!r}, op={op_name!r}); remaining operations "
-            f"land in Stories C.h-C.k"
+            f"land in Stories C.i-C.k"
         )
 
     def is_stub(self) -> bool:

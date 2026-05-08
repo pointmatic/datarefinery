@@ -357,18 +357,18 @@ Record-count-changing operations (oversampling, synthesized records). Image plug
 - [x] Update CHANGELOG.md
 - [x] Verify: generation unit tests pass.
 
-### Story C.h: v0.3.6 Transformations + Fitted Statistics (FR-10, FR-6) [Planned]
+### Story C.h: v0.3.6 Transformations + Fitted Statistics (FR-10, FR-6) [Done]
 
 Deterministic transformations including fit-on-train statistics persistence.
 
-- [ ] Add `src/datarefinery/pipeline/stages/transformations.py` and `src/datarefinery/pipeline/fitted_stats.py`.
-- [ ] Implement `FittedStatistics` per tech-spec (`put_scalar`, `put_vector`, `get_scalar`, `get_vector`); scalars in `scalars.json` per `op_id`; vectors as `<name>.parquet`.
-- [ ] Transformations honor `fit_source` (train-only fitting, persistence, then apply across declared splits).
-- [ ] Image plugin transformations (resize, normalize, mean-subtract, etc.) implemented.
-- [ ] Unit tests: fit-on-train idempotent given fixed inputs; round-trip serdes; transformation is deterministic given fitted stats.
-- [ ] Bump version to v0.3.6
-- [ ] Update CHANGELOG.md
-- [ ] Verify: transformation + fitted-stats round-trip tests pass.
+- [x] Add `src/datarefinery/pipeline/stages/transformations.py` and `src/datarefinery/pipeline/fitted_stats.py`.
+- [x] Implement `FittedStatistics` per tech-spec (`put_scalar`, `put_vector`, `get_scalar`, `get_vector`); scalars in `scalars.json` per `op_id`; vectors as `<name>.parquet`.
+- [x] Transformations honor `fit_source` (train-only fitting, persistence, then apply across declared splits).
+- [x] Image plugin transformations (resize, normalize, mean-subtract, etc.) implemented. *v1 ships `resize`, `normalize`, and `mean_subtract`. The other declared ops (`to_grayscale`, `cast_dtype`) still raise `NotImplementedError` from the factory and will land in a follow-up story; the spec's "etc." is consumed by the three core ops that exercise both no-fit and fit-on-train paths.*
+- [x] Unit tests: fit-on-train idempotent given fixed inputs; round-trip serdes; transformation is deterministic given fitted stats.
+- [x] Bump version to v0.3.6
+- [x] Update CHANGELOG.md
+- [x] Verify: transformation + fitted-stats round-trip tests pass.
 
 ### Story C.i: v0.3.7 Featurizations + Derived Labels (FR-12, FR-22) [Planned]
 

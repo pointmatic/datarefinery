@@ -5,6 +5,74 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2026-05-07
+
+### Added
+
+- Transformations stage + FittedStatistics persistence (Story C.h,
+  FR-10 / FR-6):
+  - `src/datarefinery/pipeline/fitted_stats.py` exposes
+    `FittedStatistics(root)` with `put_scalar`/`get_scalar` (storing
+    `float`/`int`/`str`/`bool` values in `<root>/<op_id>/scalars.json`
+    as a sorted JSON object) and `put_vector`/`get_vector` (storing
+    `pyarrow.Table` instances as `<root>/<op_id>/<name>.parquet`).
+    Multiple `put_scalar` calls for the same `op_id` accumulate into
+    one JSON file; later writes overwrite by name. Reads raise
+    `MaterializeError` for missing or malformed inputs (including
+    non-object `scalars.json`, non-scalar JSON values, and
+    non-`pyarrow.Table` vector inputs). Never opaque pickles
+    (FR-6 #3).
+  - `src/datarefinery/pipeline/stages/transformations.py` exposes
+    `apply_transformations(splits, ops, *, plugin, fitted_stats,
+    label_field) -> TransformationsResult`. The handle protocol for
+    Transformations operations is `(.fit, .apply)`; the stage decides
+    whether to fit using `OperationSpec.fit_on_train`. Fit phase runs
+    against the declared `fit_source` split, persists results via the
+    supplied `FittedStatistics`, and the same fitted values flow into
+    the apply phase across every declared `splits` entry (FR-10 #2).
+    `MaterializeError` covers unknown ops, fit-on-train without
+    `fit_source`, and `fit_source`/`splits` referencing undeclared
+    splits.
+  - `FittedValues(scalars, vectors)` is the data carrier between fit
+    and apply. Recipe-supplied `mean`/`std` for `normalize` short-
+    circuit the per-split fit so authored values flow into the
+    persisted output (useful for tabular pipelines; image recipes
+    typically omit them).
+  - `src/datarefinery/plugins/image_classification/operations/transformations.py`
+    implements three transformation handles:
+    - `ResizeOp` (no fit): resizes each record's NumPy `image` field
+      via Pillow with the recipe-specified `size` and `method`
+      (`nearest`/`bilinear`/`bicubic`/`lanczos`); raises `PluginError`
+      on invalid params.
+    - `NormalizeOp` (fit-on-train): per-channel mean/std fitted on
+      the train split; apply does `(x - mean) / std` with a
+      zero-variance guard. Honors recipe-pinned mean/std when both
+      are supplied.
+    - `MeanSubtractOp` (fit-on-train, mean only): per-channel mean
+      fitted on train; apply does `x - mean`.
+    The remaining declared ops (`to_grayscale`, `cast_dtype`) still
+    raise `NotImplementedError` from the factory.
+  - `image_classification.plugin.operation_factory` now dispatches
+    `Transformations` ops via `_TRANSFORMATION_OPS`.
+  - `tests/unit/test_fitted_stats.py` covers scalar/vector round-trip,
+    multi-scalar same-file accumulation, sorted-key layout, value
+    overwrite, missing-op/missing-name read errors, non-scalar reject,
+    malformed/non-object JSON, vector type guard, per-`op_id`
+    directory layout, and post-promote independent-instance read
+    pattern (16 tests).
+  - `tests/unit/test_transformations_stage.py` covers resize-no-fit,
+    no-stats-persisted-for-resize, invalid resize params,
+    normalize-fits-on-train-only-and-persists, apply-uses-train-stats
+    (val/test do not refit), determinism, zero-variance guard,
+    recipe-pinned mean/std, mean_subtract persists only mean and
+    centers around zero, unknown-op error, fit-on-train-without-
+    fit_source error, fit_source/splits-undeclared errors, empty-list
+    pass-through, FittedValues default, input non-mutation, and
+    pyarrow.Table persisted-stats invariant (19 tests).
+  - `tests/plugin_contract/test_image_classification.py` updated to
+    assert resize/normalize/mean_subtract handles are returned and
+    `to_grayscale`/`cast_dtype` still raise `NotImplementedError`.
+
 ## [0.3.5] - 2026-05-07
 
 ### Added

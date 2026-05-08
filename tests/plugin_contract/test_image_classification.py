@@ -111,8 +111,11 @@ def test_label_from_path_default_source_is_parent_directory_name() -> None:
 
 
 def test_operation_factory_raises_not_implemented_for_unimplemented_ops() -> None:
+    """Ops still pending implementation should raise NotImplementedError."""
     with pytest.raises(NotImplementedError, match="not yet implemented"):
-        PLUGIN.operation_factory("Transformations", "resize")
+        PLUGIN.operation_factory("Transformations", "to_grayscale")
+    with pytest.raises(NotImplementedError, match="not yet implemented"):
+        PLUGIN.operation_factory("Transformations", "cast_dtype")
 
 
 def test_operation_factory_returns_filter_ops_after_C_f() -> None:
@@ -126,6 +129,13 @@ def test_operation_factory_returns_generation_ops_after_C_g() -> None:
     assert callable(
         PLUGIN.operation_factory("Generation", "duplicate_minority_class")
     )
+
+
+def test_operation_factory_returns_transformation_ops_after_C_h() -> None:
+    """Story C.h wires resize, normalize, mean_subtract through the factory."""
+    for op_name in ("resize", "normalize", "mean_subtract"):
+        handle = PLUGIN.operation_factory("Transformations", op_name)
+        assert hasattr(handle, "fit") and hasattr(handle, "apply"), op_name
 
 
 def test_discover_plugins_returns_image_classification() -> None:
