@@ -121,6 +121,13 @@ def test_operation_factory_returns_filter_ops_after_C_f() -> None:
     assert callable(PLUGIN.operation_factory("Filters", "random_sample"))
 
 
+def test_operation_factory_returns_generation_ops_after_C_g() -> None:
+    """Story C.g wires duplicate_minority_class through the factory."""
+    assert callable(
+        PLUGIN.operation_factory("Generation", "duplicate_minority_class")
+    )
+
+
 def test_discover_plugins_returns_image_classification() -> None:
     plugins = discover_plugins()
     assert "image_classification" in plugins

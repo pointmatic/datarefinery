@@ -19,10 +19,17 @@ from datarefinery.plugins.image_classification.operations.filters import (
     filter_by_label,
     random_sample,
 )
+from datarefinery.plugins.image_classification.operations.generation import (
+    duplicate_minority_class,
+)
 
 _FILTER_OPS: dict[str, Operation] = {
     "filter_by_label": filter_by_label,
     "random_sample": random_sample,
+}
+
+_GENERATION_OPS: dict[str, Operation] = {
+    "duplicate_minority_class": duplicate_minority_class,
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -181,10 +188,12 @@ class ImageClassificationPlugin:
     def operation_factory(self, section: str, op_name: str) -> Operation:
         if section == "Filters" and op_name in _FILTER_OPS:
             return _FILTER_OPS[op_name]
+        if section == "Generation" and op_name in _GENERATION_OPS:
+            return _GENERATION_OPS[op_name]
         raise NotImplementedError(
             f"image_classification operation factory not yet implemented "
             f"(section={section!r}, op={op_name!r}); remaining operations "
-            f"land in Stories C.g-C.k"
+            f"land in Stories C.h-C.k"
         )
 
     def is_stub(self) -> bool:

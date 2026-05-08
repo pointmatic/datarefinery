@@ -344,18 +344,18 @@ Pre-split (default) and post-split filter operations, with sampling seeded.
 - [x] Update CHANGELOG.md
 - [x] Verify: filter unit tests pass.
 
-### Story C.g: v0.3.5 Generation Stage (FR-9) [Planned]
+### Story C.g: v0.3.5 Generation Stage (FR-9) [Done]
 
 Record-count-changing operations (oversampling, synthesized records). Image plugin SMOTE-equivalent or duplication for v1.
 
-- [ ] Add `src/datarefinery/pipeline/stages/generation.py`.
-- [ ] Implement generation runner respecting `applies_at` (default train-only post-split).
-- [ ] Generated records validated against `Output` schema; mismatches raise `MaterializeError`.
-- [ ] Manifest captures pre/post counts.
-- [ ] Unit tests: generation increases record count deterministically; output-schema mismatch hard-errors.
-- [ ] Bump version to v0.3.5
-- [ ] Update CHANGELOG.md
-- [ ] Verify: generation unit tests pass.
+- [x] Add `src/datarefinery/pipeline/stages/generation.py`.
+- [x] Implement generation runner respecting `applies_at` (default train-only post-split).
+- [x] Generated records validated against `Output` schema; mismatches raise `MaterializeError`.
+- [x] Manifest captures pre/post counts. *Stage exposes `counts_before`/`counts_after` on `GenerationResult`; the actual manifest write lands with the runner in C.m.*
+- [x] Unit tests: generation increases record count deterministically; output-schema mismatch hard-errors.
+- [x] Bump version to v0.3.5
+- [x] Update CHANGELOG.md
+- [x] Verify: generation unit tests pass.
 
 ### Story C.h: v0.3.6 Transformations + Fitted Statistics (FR-10, FR-6) [Planned]
 

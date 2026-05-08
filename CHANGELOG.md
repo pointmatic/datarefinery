@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.5] - 2026-05-07
+
+### Added
+
+- Generation stage + image plugin duplication op (Story C.g, FR-9):
+  - `src/datarefinery/pipeline/stages/generation.py` exposes
+    `apply_generation(splits, generation_ops, *, plugin,
+    output_record_schema, label_field)` returning a frozen
+    `GenerationResult` carrying the updated `splits` (fresh lists; the
+    caller's inputs are not mutated), `counts_before`/`counts_after`
+    per split (consumed by the runner for manifest pre/post counts),
+    and any `warnings`. Generation dispatches via
+    `plugin.operation_factory("Generation", op.name)` - the model has
+    no separate `op` field, so `GenerationOp.name` doubles as the
+    lookup key. The canonical Generation operation signature is
+    `(records, *, seed, inputs, output_schema, label_field) ->
+    list[Record]` returning *new* records to add; the stage
+    concatenates onto the split's existing records.
+  - Each generated record is validated against `Output.record_schema`;
+    any record missing a required Output field raises
+    `MaterializeError` with the op name, split, and missing fields
+    listed.
+  - `applies_at` is honored (default `["train"]` via the model);
+    non-train splits emit a per-op warning per features.md FR-9 edge
+    case ("atypical but legitimate, flagged in the report"). An
+    `applies_at` referencing an undeclared split raises
+    `MaterializeError` (validator check 15 normally enforces this;
+    the stage fails loudly if invoked without that gate).
+  - `src/datarefinery/plugins/image_classification/operations/generation.py`
+    implements `duplicate_minority_class`: brings each non-majority
+    class up to the majority count by sample-with-replacement using
+    `numpy.random.default_rng(seed)`. Class iteration is stably
+    ordered so output is seed-deterministic across hash-randomization
+    variants. Requires `Labels.field`; raises `PluginError` otherwise.
+    v1 simplification: target count is the majority class size (no
+    user-tunable target).
+  - `image_classification.plugin.operation_factory` now dispatches
+    `Generation` ops via `_GENERATION_OPS`; remaining sections still
+    raise `NotImplementedError` (lands in C.h-C.k).
+  - `tests/unit/test_generation_stage.py` covers minority→majority
+    rebalancing, pre/post counts, seed determinism, seed sensitivity,
+    no-op when balanced, missing-`label_field` error, default
+    train-only `applies_at`, non-train warning, undeclared-split hard
+    error, output-schema mismatch hard error (via a fixture plugin
+    that drops a field), empty-list pass-through, input-list non-
+    mutation, and frozen-result guarantee (13 tests).
+  - `tests/plugin_contract/test_image_classification.py` adds an
+    assertion that `Generation` ops are callable through the factory.
+
 ## [0.3.4] - 2026-05-07
 
 ### Added
