@@ -331,18 +331,18 @@ Train/val/test partitioning with stratification, key-based assignment, and class
 - [x] Update CHANGELOG.md
 - [x] Verify: split-determinism unit tests pass for fixed seed.
 
-### Story C.f: v0.3.4 Filters Stage (FR-8) [Planned]
+### Story C.f: v0.3.4 Filters Stage (FR-8) [Done]
 
 Pre-split (default) and post-split filter operations, with sampling seeded.
 
-- [ ] Add `src/datarefinery/pipeline/stages/filters.py`.
-- [ ] Implement predicate-based filters and seeded sampling filters; `applies_at` per recipe.
-- [ ] Wire image plugin's filter ops (e.g., `filter_by_label`, `random_sample`).
-- [ ] Edge cases: empty-class warning; unseeded sampler caught by validator (already covered in B.e).
-- [ ] Unit tests: predicate filtering preserves expected records; sampling is reproducible given seed.
-- [ ] Bump version to v0.3.4
-- [ ] Update CHANGELOG.md
-- [ ] Verify: filter unit tests pass.
+- [x] Add `src/datarefinery/pipeline/stages/filters.py`.
+- [x] Implement predicate-based filters and seeded sampling filters; `applies_at` per recipe.
+- [x] Wire image plugin's filter ops (e.g., `filter_by_label`, `random_sample`).
+- [x] Edge cases: empty-class warning; unseeded sampler caught by validator (already covered in B.e).
+- [x] Unit tests: predicate filtering preserves expected records; sampling is reproducible given seed.
+- [x] Bump version to v0.3.4
+- [x] Update CHANGELOG.md
+- [x] Verify: filter unit tests pass.
 
 ### Story C.g: v0.3.5 Generation Stage (FR-9) [Planned]
 

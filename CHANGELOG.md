@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-05-07
+
+### Added
+
+- Filters stage + first image plugin operations (Story C.f, FR-8):
+  - `src/datarefinery/pipeline/stages/filters.py` exposes
+    `apply_pre_split_filters(records, filter_ops, *, plugin, label_field)`
+    and `apply_post_split_filters(splits, filter_ops, *, plugin,
+    label_field)` returning frozen `FilterResult`s with `records`,
+    `warnings`, and `removed` count. Filters dispatch through
+    `plugin.operation_factory("Filters", op_name)`; the canonical filter
+    operation signature is
+    `(records, params, *, label_field) -> list[Record]`. Pre-split
+    filters honor the default `stages=["pre_split"]`; post-split
+    filters apply only to splits listed in `FilterOp.splits`.
+  - Empty-class warnings: when a filter pass reduces a class's record
+    count from positive to zero, a warning is emitted (FR-8 edge case).
+    Per-split warnings include the split name; warnings are skipped
+    when no `label_field` is supplied.
+  - `src/datarefinery/plugins/image_classification/operations/filters.py`
+    implements the image plugin's two filter operations:
+    - `filter_by_label(records, params, *, label_field)`: include or
+      exclude records by label-set membership; defaults `action` to
+      `"include"`; raises `PluginError` if `label_field` is `None` or
+      `action` is not `"include"`/`"exclude"`.
+    - `random_sample(records, params, *, label_field)`: reproducible
+      sampling via `numpy.random.default_rng(seed)`. Requires exactly
+      one of `fraction` (in `[0, 1]`) or `n` (non-negative); requires
+      integer `seed`. Output preserves original record order so
+      downstream stages see a stable subsequence.
+  - `image_classification.plugin.operation_factory` now dispatches
+    `Filters` ops via `_FILTER_OPS`; remaining sections still raise
+    `NotImplementedError` (lands in C.g-C.k).
+  - `tests/unit/test_filters_stage.py` covers include/exclude, default
+    action, unknown action, missing-`label_field` error, sampling
+    reproducibility, seed sensitivity, order-preservation,
+    `n > total`, fraction/`n` exclusivity, missing-seed and
+    out-of-range fraction errors, pre/post stage dispatch, multi-stage
+    runs, in-order multi-filter pipelines, empty-class warnings (with
+    and without label field), per-split warning naming, missing-`op`
+    predicate error, frozen-result, and empty-list pass-through
+    (24 tests).
+  - `tests/plugin_contract/test_image_classification.py` updated to
+    assert filter ops now return callables while other sections still
+    raise `NotImplementedError`.
+
 ## [0.3.3] - 2026-05-07
 
 ### Added

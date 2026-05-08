@@ -15,6 +15,15 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
+from datarefinery.plugins.image_classification.operations.filters import (
+    filter_by_label,
+    random_sample,
+)
+
+_FILTER_OPS: dict[str, Operation] = {
+    "filter_by_label": filter_by_label,
+    "random_sample": random_sample,
+}
 
 SUPPORTED_SECTIONS = frozenset(
     {
@@ -170,10 +179,12 @@ class ImageClassificationPlugin:
         self.supported_operations = _supported_operations()
 
     def operation_factory(self, section: str, op_name: str) -> Operation:
+        if section == "Filters" and op_name in _FILTER_OPS:
+            return _FILTER_OPS[op_name]
         raise NotImplementedError(
             f"image_classification operation factory not yet implemented "
-            f"(section={section!r}, op={op_name!r}); operations land in "
-            f"Stories C.f-C.k"
+            f"(section={section!r}, op={op_name!r}); remaining operations "
+            f"land in Stories C.g-C.k"
         )
 
     def is_stub(self) -> bool:

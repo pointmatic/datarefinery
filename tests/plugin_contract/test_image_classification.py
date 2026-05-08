@@ -110,9 +110,15 @@ def test_label_from_path_default_source_is_parent_directory_name() -> None:
     assert spec.parameters["source"].default == "parent_directory_name"
 
 
-def test_operation_factory_raises_not_implemented_for_now() -> None:
+def test_operation_factory_raises_not_implemented_for_unimplemented_ops() -> None:
     with pytest.raises(NotImplementedError, match="not yet implemented"):
         PLUGIN.operation_factory("Transformations", "resize")
+
+
+def test_operation_factory_returns_filter_ops_after_C_f() -> None:
+    """Story C.f wires filter_by_label and random_sample through the factory."""
+    assert callable(PLUGIN.operation_factory("Filters", "filter_by_label"))
+    assert callable(PLUGIN.operation_factory("Filters", "random_sample"))
 
 
 def test_discover_plugins_returns_image_classification() -> None:
