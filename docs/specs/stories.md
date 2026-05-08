@@ -423,19 +423,21 @@ Opt-in `ProcessPoolExecutor` with the per-record seeding + reorder-by-record-id 
 - [x] Update CHANGELOG.md
 - [x] Verify: worker determinism unit tests pass under all three worker counts.
 
-### Story C.m: v0.3.11 PipelineRunner: Stage Sequencing (FR-3) [Planned]
+### Story C.m: v0.3.11 PipelineRunner: Stage Sequencing (FR-3) [Done]
 
 The conductor: validate → cache check → temp dir → stages 1–11 → manifest → atomic promote.
 
-- [ ] Add `src/datarefinery/pipeline/runner.py` with `PipelineRunner(recipe, plugin, config, seed)` and `.run(temp_dir)`.
-- [ ] Sequence stages in recipe-declared order with the default sequence from tech-spec (Input → InputContracts → Filters → Splits → Generation → Transformations → Featurizations → (Augmentations declared) → OutputExpectations → reporting Visualizations → manifest).
-- [ ] Cache hit short-circuit: if `<final_dir>/manifest.json` exists, return without temp work.
-- [ ] On stage failure: `mark_failed(temp_dir, exc, stage)` then re-raise.
-- [ ] On success: write `manifest.json` then `atomic_promote(temp_dir, final_dir)`.
-- [ ] Integration test: end-to-end run on the fixture image dataset produces a complete instance directory; rerun with same inputs produces `cache=hit` (no work).
-- [ ] Bump version to v0.3.11
-- [ ] Update CHANGELOG.md
-- [ ] Verify: integration runner test passes; failure-injection at one stage leaves `FAILED` marker and never touches the final cache path.
+- [x] Add `src/datarefinery/pipeline/runner.py` with `PipelineRunner(recipe, plugin, config, seed)` and `.run(temp_dir)`. *Signature is `.run(temp_dir, *, raw_records, raw_input_hashes)` - the runner accepts pre-loaded records to keep input I/O out of the orchestrator (CLI verb in D.e wires disk loading).*
+- [x] Sequence stages in recipe-declared order with the default sequence from tech-spec (Input → InputContracts → Filters → Splits → Generation → Transformations → Featurizations → (Augmentations declared) → OutputExpectations → reporting Visualizations → manifest). *Pre-split and post-split filter passes are both run; post-split slot inserted between Splits and Generation.*
+- [x] Cache hit short-circuit: if `<final_dir>/manifest.json` exists, return without temp work.
+- [x] On stage failure: `mark_failed(temp_dir, exc, stage)` then re-raise.
+- [x] On success: write `manifest.json` then `atomic_promote(temp_dir, final_dir)`.
+- [x] Integration test: end-to-end run on the fixture image dataset produces a complete instance directory; rerun with same inputs produces `cache=hit` (no work). *Fixture is synthetic in-memory records (uniform numpy arrays); real disk-backed image_folder loading defers to a follow-up story / D.e.*
+- [x] Bump version to v0.3.11
+- [x] Update CHANGELOG.md
+- [x] Verify: integration runner test passes; failure-injection at one stage leaves `FAILED` marker and never touches the final cache path.
+
+**v1 dataset-persistence simplification:** Per-split JSON-lines under `<instance>/dataset/<split>.jsonl` with serializable fields only - numpy `image` arrays are dropped (the recipe's `path` field carries the on-disk reference). Full-fidelity dataset persistence (image bytes, parquet+metadata) is a follow-up story.
 
 ### Story C.n: v0.3.12 Reporting: report.md and drift.json (FR-15) [Planned]
 

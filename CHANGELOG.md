@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.11] - 2026-05-08
+
+### Added
+
+- PipelineRunner conductor (Story C.m, FR-3) - Phase C orchestration:
+  - `src/datarefinery/pipeline/manifest.py` defines pydantic
+    `Manifest` (frozen, `extra="forbid"`) carrying full
+    `recipe_hash`/`input_hash` (SHA-256 hex), `seed`, `variant`,
+    `created_at`, `elapsed_seconds`, `is_partial`, `failed_stage`,
+    `record_counts`, and `warnings`. `MANIFEST_SCHEMA_VERSION = 1` is
+    a separate counter from the recipe schema version per tech-spec.
+    `write_manifest`/`read_manifest` round-trip via JSON.
+  - `src/datarefinery/pipeline/runner.py` exposes `PipelineRunner(
+    recipe, plugin, config, seed)` with `run(temp_dir, *,
+    raw_records, raw_input_hashes) -> RunnerResult`. Sequences:
+    `InputContracts` -> pre-split `Filters` -> `Splits` -> post-split
+    `Filters` -> `Generation` -> `Transformations` -> `Featurizations`
+    -> `Augmentations` (policy capture) -> `OutputExpectations` ->
+    reporting `Visualizations` -> dataset persistence -> manifest
+    write -> `atomic_promote(temp_dir, final_dir)`.
+  - Cache-hit short-circuit: if `<final_dir>/manifest.json` exists,
+    return without touching the temp dir; the persisted manifest is
+    re-read and returned alongside the path.
+  - Failure path: any stage exception triggers
+    `mark_failed(temp_dir, exc, current_stage)` and re-raises;
+    `final_dir` is never touched and no partial manifest is promoted.
+  - Warning aggregation: stage warnings (split unassigned, sparse
+    classes, empty-class filters, generation non-train splits, etc.)
+    are accumulated as `ManifestWarning(stage=..., message=...)` and
+    persisted on the manifest.
+  - v1 scope notes: raw input loading is the caller's responsibility
+    (`run` accepts `raw_records` + per-source `raw_input_hashes`);
+    the CLI `materialize` verb (Story D.e) wires disk-based loading.
+    Dataset persistence is intentionally minimal - per-split
+    JSON-lines under `<instance>/dataset/<split>.jsonl` with each
+    record's serializable fields; numpy arrays, bytes, and other
+    non-JSON-native values are dropped (image bytes are accessed via
+    the source `path` field, not embedded in the materialized
+    dataset).
+  - `tests/integration/test_runner.py` covers end-to-end
+    materialization (manifest + dataset/<split>.jsonl + report
+    visualization PNGs), well-formed manifest fields and shape,
+    `normalize` fitted-stats persistence (`mean.parquet` and
+    `std.parquet`), temp-dir cleanup after promote, instance path
+    matches `compute_cache_key` derivation, cache-hit short-circuit
+    on second run (returns cached manifest, leaves temp untouched),
+    different seed misses cache, visualization-failure injection
+    leaves `FAILED` marker with `stage="Visualizations"` and never
+    creates the final `manifest.json`, and dataset JSON-lines omits
+    numpy `image` arrays while preserving `record_id` and `label`
+    (11 tests).
+
 ## [0.3.10] - 2026-05-08
 
 ### Added
