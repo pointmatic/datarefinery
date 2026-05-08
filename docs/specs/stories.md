@@ -494,14 +494,14 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: `pyve run datarefinery check` exits 0 and lists installed plugins.
 
-### Story D.c: v0.4.2 CLI verb: validate (FR-2) [Planned]
+### Story D.c: v0.4.2 CLI verb: validate (FR-2) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/validate_cmd.py` invoking `DataRefinery.validate()`.
-- [ ] CLI renders a `rich` table per check (id, status, location, message); exits 1 on any failure.
-- [ ] Smoke test: a clean fixture recipe exits 0; a recipe violating each check exits 1 with all 18 entries reported.
-- [ ] Bump version to v0.4.2
-- [ ] Update CHANGELOG.md
-- [ ] Verify: CLI smoke tests for validate pass.
+- [x] Add `src/datarefinery/cli/commands/validate_cmd.py` invoking `DataRefinery.validate()`. *Verb honors the shared `--variant` option from the root callback so an overlay is applied before validation runs.*
+- [x] CLI renders a `rich` table per check (id, status, location, message); exits 1 on any failure. *Status is color-coded (green pass, yellow warn, red fail); a summary line below the table reports passed/warning/failure counts.*
+- [x] Smoke test: a clean fixture recipe exits 0; a recipe violating each check exits 1 with all 18 entries reported. *Multi-violation case exercises checks 4 and 6 simultaneously to confirm the no-short-circuit invariant; a separate test asserts every check id (1-18) renders even when the recipe is clean.*
+- [x] Bump version to v0.4.2
+- [x] Update CHANGELOG.md
+- [x] Verify: CLI smoke tests for validate pass.
 
 ### Story D.d: v0.4.3 CLI verb: init (FR-17) [Planned]
 

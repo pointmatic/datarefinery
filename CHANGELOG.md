@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-05-08
+
+### Added
+
+- `datarefinery validate` CLI verb (Story D.c, FR-2):
+  - `src/datarefinery/cli/commands/validate_cmd.py` registered on the
+    typer app via `app.command("validate", ...)`. Takes a recipe path
+    argument, calls `DataRefinery.from_recipe(...).validate()`, and
+    renders the 18-entry `ValidationReport` as a `rich` table (id,
+    status, descriptor, location, message) with a summary line.
+  - Status column is color-coded (green pass, yellow warn, red fail).
+  - Honors the shared `--variant` option from the root callback — the
+    overlay is applied to the recipe before validation runs.
+  - Exits 0 on a clean recipe (warnings allowed); exits 1 on any check
+    failure (per the documented user-error exit code).
+
+### Tests
+
+- 5 new CLI smoke tests in `tests/cli/test_validate_cmd.py` covering
+  the clean-recipe exit-zero path, the multi-violation exit-one path
+  (no short-circuit), full 18-row rendering, missing-file usage error,
+  and `--variant` overlay flow-through.
+
 ## [0.4.1] - 2026-05-08
 
 ### Added
