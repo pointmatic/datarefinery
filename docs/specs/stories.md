@@ -503,14 +503,14 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: CLI smoke tests for validate pass.
 
-### Story D.d: v0.4.3 CLI verb: init (FR-17) [Planned]
+### Story D.d: v0.4.3 CLI verb: init (FR-17) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/init_cmd.py` with `--enhance` flag and `--input`, `--output` paths.
-- [ ] Errors when `--enhance` requested without `[llm]` extra; documents the install snippet in the error.
-- [ ] Smoke test: `datarefinery init --input <fixture> --output recipe.yaml` produces a valid recipe.
-- [ ] Bump version to v0.4.3
-- [ ] Update CHANGELOG.md
-- [ ] Verify: init smoke test passes; produced recipe is parsed clean by `validate`.
+- [x] Add `src/datarefinery/cli/commands/init_cmd.py` with `--enhance` flag and `--input`, `--output` paths. *Also exposes `--plugin` (defaults to `image_classification`) so the dispatcher's tabular/text refusal surface is reachable from the CLI; `--input` is constrained to existing directories at the typer layer.*
+- [x] Errors when `--enhance` requested without `[llm]` extra; documents the install snippet in the error. *Already implemented by `scaffolder.llm.enhance`; the CLI inherits it. Smoke test asserts the scaffolder does not write a partial recipe on failure.*
+- [x] Smoke test: `datarefinery init --input <fixture> --output recipe.yaml` produces a valid recipe. *Round-trip test runs `init` then pipes the output through `datarefinery validate`, asserting exit 0 and "passed" rendering.*
+- [x] Bump version to v0.4.3
+- [x] Update CHANGELOG.md
+- [x] Verify: init smoke test passes; produced recipe is parsed clean by `validate`.
 
 ### Story D.e: v0.4.4 CLI verb: materialize (FR-3) [Planned]
 

@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-05-08
+
+### Added
+
+- `datarefinery init` CLI verb (Story D.d, FR-17):
+  - `src/datarefinery/cli/commands/init_cmd.py` registered on the
+    typer app via `app.command("init", ...)`. Wraps
+    `datarefinery.scaffolder.init.scaffold(...)`. Options: `--input`
+    / `-i` (raw-inputs root, must exist as a directory), `--output`
+    / `-o` (recipe YAML path; parent directories created on demand
+    by the scaffolder), `--plugin` (defaults to
+    `image_classification`; non-image categories raise the
+    documented v1 refusal), `--enhance` (opt-in optional LLM
+    enhancement; missing `[llm]` extra raises `PluginError` with the
+    `pip install 'datarefinery[llm]'` install snippet, inherited
+    from `scaffolder.llm.enhance`).
+  - On success the verb prints a green confirmation plus a
+    `datarefinery validate <output>` next-step pointer.
+
+### Tests
+
+- 6 new CLI smoke tests in `tests/cli/test_init_cmd.py` covering
+  the basic write, the init→validate round-trip (scaffolded recipe
+  passes every FR-2 check), parent-directory creation, the
+  `--enhance` missing-extra error path (via propagated `PluginError`),
+  the non-image plugin refusal, and the missing-input usage error.
+
 ## [0.4.2] - 2026-05-08
 
 ### Added
