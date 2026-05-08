@@ -20,6 +20,7 @@ from datarefinery.cli._exit_codes import (
     EXIT_SYSTEM,
     exit_code_for,
 )
+from datarefinery.cli.commands.check_cmd import check as check_cmd
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import DataRefineryError
 from datarefinery.logging import get_logger
@@ -129,6 +130,9 @@ def main(
 
     get_logger("cli")
     return None
+
+
+app.command("check", help="Report environment soundness (FR-18).")(check_cmd)
 
 
 def _render_error(message: str, *, title: str) -> None:

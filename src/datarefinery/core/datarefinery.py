@@ -28,6 +28,7 @@ from typing import Any
 from datarefinery.cache.cleaner import CleanReport, CleanSelector, clean
 from datarefinery.cache.identity import CacheKey, compute_cache_key
 from datarefinery.cache.layout import make_run_id, tmp_dir
+from datarefinery.core.check import CheckReport, build_check_report
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import PluginError
 from datarefinery.core.instance import Instance
@@ -198,12 +199,14 @@ class DataRefinery:
         )
 
     @staticmethod
-    def check(config: RuntimeConfig | None = None) -> Any:
-        """Environment soundness report (FR-18). Implementation lands in D.b."""
-        del config
-        raise NotImplementedError(
-            "DataRefinery.check() lands in Story D.b (CLI verb: check)"
-        )
+    def check(config: RuntimeConfig | None = None) -> CheckReport:
+        """Probe runtime soundness (FR-18) and return a structured report.
+
+        Static because environment soundness does not require a loaded
+        recipe. The CLI verb in `datarefinery.cli.commands.check_cmd`
+        wraps this and renders the result as a `rich` table.
+        """
+        return build_check_report(config)
 
 
 def materialize(

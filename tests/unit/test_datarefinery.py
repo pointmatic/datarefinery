@@ -298,15 +298,13 @@ def test_clean_routes_through_configured_cache_root(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_status_inspect_check_raise_for_now(tmp_path: Path) -> None:
+def test_status_inspect_raise_for_now(tmp_path: Path) -> None:
     path = _write_recipe(tmp_path)
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path))
     with pytest.raises(NotImplementedError, match=r"Story D\.f"):
         obj.status()
     with pytest.raises(NotImplementedError, match=r"Story D\.h"):
         obj.inspect()
-    with pytest.raises(NotImplementedError, match=r"Story D\.b"):
-        DataRefinery.check()
 
 
 def test_top_level_materialize_stub_points_at_d_e(tmp_path: Path) -> None:

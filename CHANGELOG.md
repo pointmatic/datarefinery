@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-05-08
+
+### Added
+
+- `datarefinery check` CLI verb (Story D.b, FR-18):
+  - `src/datarefinery/core/check.py` with `build_check_report()` and
+    frozen `CheckReport`, `PluginInfo`, `DependencyStatus` dataclasses.
+    Reports DataRefinery version, Python version, platform, plugin
+    entry-point group, extra plugin discovery paths, every discovered
+    plugin (name, schema version, stub-vs-active, source module),
+    optional `[llm]` extra (`lmentry`), and optional accelerators
+    (Metal/MPS, CUDA). Plugin-discovery errors are caught and recorded
+    in `failures` so the report remains constructible.
+  - `DataRefinery.check(config=None)` is now a static delegator
+    returning the same `CheckReport`.
+  - Accelerator probe is gated on `importlib.util.find_spec("torch")`
+    and only imports torch if installed; otherwise both Metal and CUDA
+    are reported missing with the documented "torch not installed"
+    detail.
+  - `src/datarefinery/cli/commands/__init__.py` (new package) and
+    `src/datarefinery/cli/commands/check_cmd.py` render the report as a
+    stack of `rich` tables on stdout. The verb is registered on the
+    typer app via `app.command("check", ...)`. Exits 0 on a healthy
+    environment (with warning rows for missing optional deps), exits 2
+    on a soundness failure (e.g., plugin discovery raising
+    `PluginError`).
+
+### Tests
+
+- 10 new unit tests in `tests/unit/test_check.py` covering the
+  structured-report shape, plugin enumeration, optional-extra and
+  accelerator probes (with the torch-not-installed branch documented),
+  the `passed` property, frozen-dataclass invariants, plugin-discovery
+  failure capture, and `RuntimeConfig.plugin_path` flow-through.
+- 6 new CLI smoke tests in `tests/cli/test_check_cmd.py` covering
+  exit-zero on a healthy environment, plugin and extras rendering, and
+  the exit-2 path when discovery fails.
+
 ## [0.4.0] - 2026-05-08
 
 ### Added

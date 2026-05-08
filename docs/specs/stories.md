@@ -484,15 +484,15 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: library API round-trip tests pass.
 
-### Story D.b: v0.4.1 CLI verb: check (FR-18) [Planned]
+### Story D.b: v0.4.1 CLI verb: check (FR-18) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/__init__.py`, `src/datarefinery/cli/commands/check_cmd.py`.
-- [ ] Reports Python version, package version, plugin discovery (names + paths), optional acceleration availability (Metal / CUDA), optional extras (`lmentry`).
-- [ ] Returns 0 with warnings on missing optional deps; returns 2 on missing required.
-- [ ] Unit + smoke test: `datarefinery check` exits 0 on a healthy environment.
-- [ ] Bump version to v0.4.1
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `pyve run datarefinery check` exits 0 and lists installed plugins.
+- [x] Add `src/datarefinery/cli/commands/__init__.py`, `src/datarefinery/cli/commands/check_cmd.py`.
+- [x] Reports Python version, package version, plugin discovery (names + paths), optional acceleration availability (Metal / CUDA), optional extras (`lmentry`). *Library: `core/check.py` exposes `build_check_report()` returning a frozen `CheckReport` (with `PluginInfo` and `DependencyStatus` rows). `DataRefinery.check()` is now a static delegator. Accelerator probe is torch-gated: if `torch` isn't installed, both Metal and CUDA report missing with the documented "torch not installed" message rather than guessing from `platform`.*
+- [x] Returns 0 with warnings on missing optional deps; returns 2 on missing required. *CLI exits via `EXIT_OK`/`EXIT_SYSTEM`. The current "required" failure surface is plugin discovery erroring out (also covered by `_SYSTEM_ERROR_TYPES` if a `PluginError` propagates); discovery exceptions are caught inside `build_check_report` and recorded in `failures` so the report itself remains constructible and the verb can render the failure rather than crash.*
+- [x] Unit + smoke test: `datarefinery check` exits 0 on a healthy environment.
+- [x] Bump version to v0.4.1
+- [x] Update CHANGELOG.md
+- [x] Verify: `pyve run datarefinery check` exits 0 and lists installed plugins.
 
 ### Story D.c: v0.4.2 CLI verb: validate (FR-2) [Planned]
 
