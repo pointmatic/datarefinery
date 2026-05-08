@@ -553,14 +553,14 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: inspect smoke test passes.
 
-### Story D.i: v0.4.8 CLI verb: clean (FR-21) [Planned]
+### Story D.i: v0.4.8 CLI verb: clean (FR-21) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/clean_cmd.py` invoking `DataRefinery.clean()`.
-- [ ] Selectors: `--by-recipe HASH`, `--by-age DAYS`, `--orphans`, `--all`. `--all` requires interactive confirmation; `--yes` allows non-TTY use.
-- [ ] Smoke test: each selector against a fixture cache.
-- [ ] Bump version to v0.4.8
-- [ ] Update CHANGELOG.md
-- [ ] Verify: clean smoke tests pass.
+- [x] Add `src/datarefinery/cli/commands/clean_cmd.py` invoking `DataRefinery.clean()`. *Verb wraps `cache.cleaner.clean()` directly using the configured `cache_root` from `RuntimeConfig`; `DataRefinery.clean()` itself is the same library entry. Refuses with `CacheError` if no selector is given (FR-21 "no silent broad delete").*
+- [x] Selectors: `--by-recipe HASH`, `--by-age DAYS`, `--orphans`, `--all`. `--all` requires interactive confirmation; `--yes` allows non-TTY use. *Confirmation uses `typer.confirm` when stdin is a TTY; non-TTY contexts (CI, piped invocations) without `--yes` raise `CacheError` with a documented message rather than blocking on a prompt that can never be answered. The `--by-recipe` value is a hash prefix; the cleaner already truncates to the first 16 chars so users can paste either the short shard or the full hash.*
+- [x] Smoke test: each selector against a fixture cache. *7 tests covering each selector, the no-selector refusal, and the `--all` confirmation guard in non-TTY (refused) and `--yes` (wipes cache) modes.*
+- [x] Bump version to v0.4.8
+- [x] Update CHANGELOG.md
+- [x] Verify: clean smoke tests pass.
 
 ### Story D.j: v0.4.9 Integration: `init → validate → materialize` Golden Path [Planned]
 

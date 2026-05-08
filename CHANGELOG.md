@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-05-08
+
+### Added
+
+- `datarefinery clean` CLI verb (Story D.i, FR-21):
+  - `src/datarefinery/cli/commands/clean_cmd.py` registered on the
+    typer app via `app.command("clean", ...)`. Selectors:
+    `--by-recipe HASH`, `--by-age DAYS`, `--orphans`, `--all`. The
+    library `cache.cleaner.clean(...)` already supported all of these
+    via `CleanSelector`; this verb is a thin typer wrapper plus the
+    FR-21 confirmation guard.
+  - `--all` requires either an interactive TTY confirmation (via
+    `typer.confirm`) or `--yes` for non-TTY use (CI, piped
+    invocations). Refusing without `--yes` in a non-TTY context
+    raises `CacheError` with a documented message rather than
+    blocking on a prompt that can never be answered.
+  - Refuses with `CacheError` when no selector is given, matching the
+    FR-21 "no silent broad delete" rule.
+  - Renders a `rich` table summary (cache root, removed count,
+    skipped count) plus per-path tables on success.
+
+### Tests
+
+- 7 new CLI smoke tests in `tests/cli/test_clean_cmd.py`: no-selector
+  refusal, `--by-recipe` removes only the matching recipe shard,
+  `--by-age` removes backdated instances, `--orphans` removes old
+  temp dirs in `.tmp/`, `--all` without `--yes` in non-TTY refuses
+  (cache untouched), `--all --yes` wipes the cache, and the summary
+  table renders.
+
 ## [0.4.7] - 2026-05-08
 
 ### Added
