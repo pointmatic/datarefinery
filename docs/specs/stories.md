@@ -384,18 +384,18 @@ Same machinery for featurizations and derived labels (e.g., label from filename 
 - [x] Update CHANGELOG.md
 - [x] Verify: featurization + derived-label unit tests pass.
 
-### Story C.j: v0.3.28 Augmentations Declaration (FR-11) [Planned]
+### Story C.j: v0.3.8 Augmentations Declaration (FR-11) [Done]
 
 Augmentation policies are recorded in the manifest and surfaced in the report; v1 does not pre-materialize augmented examples.
 
-- [ ] Add `src/datarefinery/pipeline/stages/augmentations.py`.
-- [ ] Validate that declared augmentations apply only to train (validator check 5 already enforces; this story consumes it).
-- [ ] Manifest captures augmentation policy summary (op name, params, seed) for each declared augmentation.
-- [ ] Image plugin augmentation specs (random_crop, horizontal_flip, color_jitter) declared as policy-only ops.
-- [ ] Unit tests: augmentation policy round-trips through manifest; non-train declaration is rejected before this stage runs.
-- [ ] Bump version to v0.3.8
-- [ ] Update CHANGELOG.md
-- [ ] Verify: augmentation policy tests pass.
+- [x] Add `src/datarefinery/pipeline/stages/augmentations.py`.
+- [x] Validate that declared augmentations apply only to train (validator check 5 already enforces; this story consumes it). *Stage adds a defensive re-check raising `MaterializeError` if a non-train split slipped past validation.*
+- [x] Manifest captures augmentation policy summary (op name, params, seed) for each declared augmentation. *Stage exposes `to_manifest_list()` and a `manifest_block(result)` helper producing canonical JSON; the actual manifest write lands with the runner in C.m.*
+- [x] Image plugin augmentation specs (random_crop, horizontal_flip, color_jitter) declared as policy-only ops. *OperationSpecs already declared in C.b; `operation_factory` continues to raise `NotImplementedError` for Augmentations because v1 doesn't pre-materialize them.*
+- [x] Unit tests: augmentation policy round-trips through manifest; non-train declaration is rejected before this stage runs.
+- [x] Bump version to v0.3.8
+- [x] Update CHANGELOG.md
+- [x] Verify: augmentation policy tests pass.
 
 ### Story C.k: v0.3.9 Visualizations: Exploration and Reporting (FR-13) [Planned]
 

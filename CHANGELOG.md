@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2026-05-08
+
+### Added
+
+- Augmentations declaration stage (Story C.j, FR-11):
+  - `src/datarefinery/pipeline/stages/augmentations.py` exposes
+    `collect_augmentation_policies(augmentation_ops) ->
+    AugmentationsResult` and the `manifest_block(result)` helper that
+    renders the augmentation list as stable canonical JSON for the
+    runner's manifest. Each declared `AugmentationOp` becomes a frozen
+    `AugmentationPolicy` carrying `name`, `op`, `params`, `splits`,
+    and `seed`.
+  - v1 does NOT pre-materialize augmented examples (FR-11 #2, #3) -
+    the recipe declares augmentation policies that ModelFoundry
+    honors on-the-fly during training. This stage's only side effect
+    is producing the manifest summary; no image bytes change.
+  - Defensive train-only re-check: validator check 5 enforces
+    `splits=["train"]` for augmentations; this stage raises
+    `MaterializeError` if a non-train split somehow reached it.
+  - Image plugin's three augmentation OperationSpecs (`random_crop`,
+    `horizontal_flip`, `color_jitter`) declared in C.b remain
+    policy-only; no factory wiring (the plugin's
+    `operation_factory` still raises `NotImplementedError` for
+    Augmentations).
+  - `AugmentationPolicy.to_manifest_dict()` and
+    `AugmentationsResult.to_manifest_list()` produce
+    JSON-serializable dicts with sorted param keys for byte-stable
+    manifest output.
+  - `tests/unit/test_augmentations_stage.py` covers policy
+    collection, params/splits/seed verbatim capture, empty-list
+    pass-through, manifest dict shape, sorted param keys, stable JSON
+    formatting, full round-trip preservation, `seed=None` round-trip,
+    non-train and test-only defensive rejection, empty-splits
+    permitted, and frozen-result guarantees (13 tests).
+- Story title typo fix in `docs/specs/stories.md` for C.j: was
+  `v0.3.28`, corrected to `v0.3.8` to match the bump-version task line.
+
 ## [0.3.7] - 2026-05-08
 
 ### Added
