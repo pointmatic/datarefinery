@@ -532,15 +532,15 @@ Library entry point that owns the loaded recipe and exposes verb methods.
 - [x] Update CHANGELOG.md
 - [x] Verify: status smoke test passes.
 
-### Story D.g: v0.4.6 CLI verb: report (FR-15 re-render) [Planned]
+### Story D.g: v0.4.6 CLI verb: report (FR-15 re-render) [Done]
 
-- [ ] Add `src/datarefinery/cli/commands/report_cmd.py` invoking `Instance.render_report()`.
-- [ ] Re-renders `report.md`, `drift.json`, and reporting visualizations from existing fitted statistics + manifest; never reruns the pipeline.
-- [ ] Edge case: stale fitted-stats vs manifest hashes → `MaterializeError` with the documented inconsistency message.
-- [ ] Smoke test: `datarefinery report` against fixture instance updates the report files in place.
-- [ ] Bump version to v0.4.6
-- [ ] Update CHANGELOG.md
-- [ ] Verify: report smoke test passes.
+- [x] Add `src/datarefinery/cli/commands/report_cmd.py` invoking `Instance.render_report()`. *Discovers the plugin matching the instance's recipe via `discover_plugins(extra_paths=config.plugin_path)` so visualization op factories are available without the caller wiring them up.*
+- [x] Re-renders `report.md`, `drift.json`, and reporting visualizations from existing fitted statistics + manifest; never reruns the pipeline. *Required extending `reporting.report.re_render_report` (was report.md-only per the C.n note) and adding `pipeline.inputs.reload_dataset(instance_dir, plugin)` which reads the persisted JSONL splits and re-inflates the image arrays via each record's on-disk `path` field. `Instance.render_report()` and `DataRefinery.report()` now both accept/forward an optional `plugin` parameter — without it, only `report.md` is rewritten (drift.json and visualizations require a plugin since they need plugin-specific re-inflation and op factories).*
+- [x] Edge case: stale fitted-stats vs manifest hashes → `MaterializeError` with the documented inconsistency message. *Already wired in `re_render_report`; additionally `Instance.load` itself rejects an instance dir whose persisted `recipe.json` doesn't canonicalize to `manifest.recipe_hash`, so the CLI verb fails fast at load time.*
+- [x] Smoke test: `datarefinery report` against fixture instance updates the report files in place. *Test clobbers report.md, drift.json, and the visualization PNG before invoking the verb and asserts all three are restored byte-identical.*
+- [x] Bump version to v0.4.6
+- [x] Update CHANGELOG.md
+- [x] Verify: report smoke test passes.
 
 ### Story D.h: v0.4.7 CLI verb: inspect (FR-20) [Planned]
 

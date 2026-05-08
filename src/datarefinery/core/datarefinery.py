@@ -207,9 +207,16 @@ class DataRefinery:
         return self._last_run
 
     def report(self, instance_path: Path) -> Instance:
-        """Re-render the report for a previously materialized instance."""
+        """Re-render the report for a previously materialized instance.
+
+        Rewrites ``report.md``, ``drift.json``, and the reporting-mode
+        visualizations from persisted state without rerunning the
+        pipeline. The plugin bound to this :class:`DataRefinery` is
+        passed through so visualization op factories and dataset
+        re-inflation work without the caller wiring them up.
+        """
         instance = Instance.load(Path(instance_path))
-        instance.render_report()
+        instance.render_report(plugin=self._plugin)
         return instance
 
     def clean(

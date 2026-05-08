@@ -17,6 +17,7 @@ post-v1.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from datarefinery.cache.layout import dataset_dir
 from datarefinery.core.errors import PluginError, RecipeError
 from datarefinery.plugins.base import Plugin
 from datarefinery.recipe.models import InputSource, Recipe
@@ -157,6 +159,53 @@ def _hash_image_folder(root: Path) -> str:
 
 def _iter_files(root: Path) -> list[Path]:
     return [p for p in root.rglob("*") if p.is_file()]
+
+
+def reload_dataset(
+    instance_dir: Path,
+    plugin: Plugin,
+) -> dict[str, list[Record]]:
+    """Re-inflate the persisted per-split dataset for report re-rendering.
+
+    Reads ``<instance>/dataset/<split>.jsonl`` and, for plugins whose
+    visualizations need raw bytes, reloads the on-disk artifacts via
+    each record's source-path field. For ``image_classification`` the
+    ``path`` field is read with PIL into a numpy array, restoring the
+    ``image`` key the runner had at materialize time.
+
+    Used by :func:`reporting.report.re_render_report` to drive
+    drift.json + visualization regeneration without rerunning the
+    pipeline.
+    """
+    if plugin.name != "image_classification":
+        raise PluginError(
+            f"reload_dataset: not implemented for plugin {plugin.name!r}"
+        )
+
+    root = dataset_dir(instance_dir)
+    if not root.is_dir():
+        raise RecipeError(
+            f"reload_dataset: no dataset directory at {root}"
+        )
+
+    splits: dict[str, list[Record]] = {}
+    for split_path in sorted(root.glob("*.jsonl")):
+        split_name = split_path.stem
+        records: list[Record] = []
+        with split_path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                if "path" in row:
+                    image_path = Path(row["path"])
+                    if image_path.exists():
+                        with Image.open(image_path) as im:
+                            row["image"] = np.asarray(im)
+                records.append(row)
+        splits[split_name] = records
+    return splits
 
 
 def hash_inputs(recipe: Recipe, plugin: Plugin) -> Mapping[str, str]:

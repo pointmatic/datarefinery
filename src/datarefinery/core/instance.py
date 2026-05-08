@@ -88,9 +88,14 @@ class Instance:
             is_partial=manifest.is_partial,
         )
 
-    def render_report(self) -> None:
-        """Re-render `report.md` from the persisted manifest + recipe.
+    def render_report(self, *, plugin: object | None = None) -> None:
+        """Re-render `report.md` (and optionally `drift.json` + reporting
+        visualizations) from the persisted manifest + recipe.
 
-        Does not rerun the pipeline. See FR-15.4.
+        Does not rerun the pipeline. Pass ``plugin`` to also rewrite
+        ``drift.json`` and the reporting-mode visualizations - those
+        require an :class:`Plugin` instance to look up visualization op
+        factories and to know how to re-inflate plugin-specific record
+        fields. See FR-15.4.
         """
-        re_render_report(self.path, self.recipe)
+        re_render_report(self.path, self.recipe, plugin=plugin)

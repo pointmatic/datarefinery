@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.6] - 2026-05-08
+
+### Added
+
+- `datarefinery report` CLI verb (Story D.g, FR-15.4):
+  - `src/datarefinery/cli/commands/report_cmd.py` registered on the
+    typer app via `app.command("report", ...)`. Loads the materialized
+    instance, discovers the plugin matching `instance.recipe.plugin`,
+    and re-renders `report.md`, `drift.json`, and every reporting-mode
+    visualization in place. Never reruns the pipeline. Prints the
+    paths it touched.
+  - `pipeline.inputs.reload_dataset(instance_dir, plugin)` reads the
+    persisted per-split JSONL files and re-inflates plugin-specific
+    record fields. For `image_classification`, the `image` array is
+    reloaded via PIL from each record's `path` field. (Other plugins
+    are stubs; reload is not implemented for them in v1.)
+  - `reporting.report.re_render_report(instance_dir, recipe, *,
+    plugin=None)` now also rewrites `drift.json` (via
+    `compute_drift_placeholder` over the reloaded splits) and the
+    reporting-mode visualizations (via
+    `apply_reporting_visualizations`) when a `plugin` is supplied.
+    Without a plugin the function still re-renders `report.md`-only,
+    matching the previous behavior — useful for library callers who
+    have already validated stat consistency.
+  - `Instance.render_report(*, plugin=None)` and
+    `DataRefinery.report(instance_path)` forward the plugin through;
+    the latter passes its own bound plugin so library callers don't
+    have to re-discover.
+- The FR-15 "stale fitted-stats" hard error is reachable from two
+  places: `Instance.load` already rejects instance dirs whose
+  persisted `recipe.json` doesn't canonicalize to `manifest.recipe_hash`
+  (Story D.a), and `re_render_report`'s own check guards the
+  call when `Instance.load` is bypassed.
+
+### Tests
+
+- 4 new CLI smoke tests in `tests/cli/test_report_cmd.py`: round-trip
+  re-render restores `report.md`, `drift.json`, and the
+  visualization PNG byte-identically; the verb's announce output
+  names every artifact; tampered persisted recipe → `MaterializeError`;
+  missing instance dir is a usage error.
+
 ## [0.4.5] - 2026-05-08
 
 ### Added

@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 from datarefinery.cache.layout import (
     fitted_stats_dir,
@@ -163,15 +164,31 @@ def list_fitted_op_ids(fitted_root: Path) -> list[str]:
 def re_render_report(
     instance_dir: Path,
     recipe: Recipe,
+    *,
+    plugin: object | None = None,
 ) -> None:
-    """FR-15.4: regenerate ``report.md`` from an existing instance.
+    """FR-15.4: regenerate ``report.md``, ``drift.json``, and reporting
+    visualizations for an existing instance.
 
     Does NOT rerun the pipeline. Reads the persisted manifest, asserts
     its ``recipe_hash`` matches the canonical hash of the recipe we
     were handed (FR-15 edge case: stale fitted-stats vs. manifest is a
-    hard error), then re-renders the markdown. The drift placeholder
-    is left untouched - re-rendering does not regenerate ``drift.json``
-    in v1; that is the runner's job at materialize time.
+    hard error), then:
+
+    1. Re-renders ``report.md`` from the manifest + fitted-stats
+       directory.
+    2. Reloads the persisted dataset (via
+       :func:`pipeline.inputs.reload_dataset`) and rewrites
+       ``drift.json`` from the per-split record lists.
+    3. Re-renders every reporting-mode :class:`VisualizationOp` in the
+       recipe and writes the PNG bytes under
+       ``report/visualizations/``.
+
+    Steps 2 and 3 require a ``plugin`` to be passed (so we can look up
+    visualization op factories and reload plugin-specific record
+    fields). When ``plugin`` is omitted only step 1 runs - useful for
+    library callers that have already validated stat consistency and
+    only want the markdown refreshed.
     """
     instance_dir = Path(instance_dir)
     manifest = read_manifest(manifest_path(instance_dir))
@@ -187,5 +204,46 @@ def re_render_report(
         )
 
     fitted_ids = list_fitted_op_ids(fitted_stats_dir(instance_dir))
+    report_root = report_dir(instance_dir)
     content = render_report_md(recipe, manifest, fitted_op_ids=fitted_ids)
-    write_report(report_dir(instance_dir) / REPORT_FILENAME, content)
+    write_report(report_root / REPORT_FILENAME, content)
+
+    if plugin is None:
+        return
+
+    # Lazy-imported to avoid a hard dependency cycle: the plugin loader
+    # imports the reporting module transitively.
+    from datarefinery.pipeline.inputs import reload_dataset
+    from datarefinery.pipeline.stages.visualizations import (
+        apply_reporting_visualizations,
+    )
+    from datarefinery.plugins.base import Plugin
+    from datarefinery.reporting.drift import (
+        compute_drift_placeholder,
+        write_drift,
+    )
+
+    if not isinstance(plugin, Plugin):
+        raise MaterializeError(
+            f"re_render_report: plugin argument must satisfy the Plugin "
+            f"protocol; got {type(plugin).__name__}"
+        )
+
+    splits = reload_dataset(instance_dir, plugin)
+    # Pydantic-validated `Mapping` parameters are invariant in mypy;
+    # the runtime types are a strict subset, so cast through `Any`.
+    splits_any: Any = splits
+    drift = compute_drift_placeholder(
+        splits_any,
+        plugin_name=plugin.name,
+        label_field=recipe.Labels.field,
+    )
+    write_drift(report_root / DRIFT_FILENAME, drift)
+
+    apply_reporting_visualizations(
+        splits_any,
+        recipe.Visualizations,
+        plugin=plugin,
+        output_dir=report_root / "visualizations",
+        label_field=recipe.Labels.field,
+    )
