@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-08
+
+### Added
+
+- CIFAR-10-shaped test-fixture synthesizer (Story E.a) — opens Phase E:
+  - `tests/fixtures/build_cifar10_shaped.py` exposes
+    `build_cifar10_shaped(root, *, num_classes, per_class,
+    image_size, seed)` plus default constants. The default config
+    produces 10 class folders × 5 PNGs each = 50 8×8 RGB images via a
+    seeded `numpy.random.default_rng`, byte-stable across runs.
+  - `tests/conftest.py` provides a session-scoped
+    `cifar10_shaped_dir` pytest fixture so the synthesis cost (<1s
+    locally) is paid once per session instead of per test.
+  - Module docstring documents the "do not check in real CIFAR-10
+    here" rule with rationale (size, licensing, repo bloat) and
+    points contributors at a one-shot local download for tests that
+    genuinely need the real dataset.
+- Migrated `tests/integration/test_golden_path.py` (Phase D's closing
+  integration test) to consume the new session fixture, proving its
+  reusability and keeping per-test isolation via `shutil.copytree`.
+
+### Tests
+
+- 6 new self-tests in `tests/unit/test_cifar10_shaped_fixture.py`
+  cover the default 50-PNGs/10-class layout, 8×8 RGB image
+  dimensions, same-seed byte-identical output, different-seed
+  divergence, the <1s build-time budget called out in the story, and
+  that the session fixture is consumable by name.
+
 ## [0.4.9] - 2026-05-08
 
 ### Added

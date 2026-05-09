@@ -23,11 +23,10 @@ This closes Phase D.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
-import numpy as np
 import yaml
-from PIL import Image
 from typer.testing import CliRunner
 
 from datarefinery.cache.layout import (
@@ -41,19 +40,6 @@ from datarefinery.cache.layout import (
 from datarefinery.cli.app import app
 
 runner = CliRunner()
-
-
-def _build_cifar10_shaped_fixture(root: Path) -> Path:
-    """Synthesize 10 class folders x 3 PNGs of 8x8 RGB noise, seeded."""
-    classes = tuple(f"class{i:02d}" for i in range(10))
-    rng = np.random.default_rng(2026)
-    for cls in classes:
-        cls_dir = root / cls
-        cls_dir.mkdir(parents=True, exist_ok=True)
-        for i in range(3):
-            arr = rng.integers(0, 255, (8, 8, 3), dtype=np.uint8)
-            Image.fromarray(arr).save(cls_dir / f"{cls}_{i:03d}.png")
-    return root
 
 
 def _enable_normalize_transformation(recipe_path_yaml: Path) -> None:
@@ -97,8 +83,14 @@ def _list_promoted_instances(cache_root: Path) -> list[Path]:
     ]
 
 
-def test_golden_path_init_validate_materialize_status(tmp_path: Path) -> None:
-    images = _build_cifar10_shaped_fixture(tmp_path / "images")
+def test_golden_path_init_validate_materialize_status(
+    tmp_path: Path, cifar10_shaped_dir: Path
+) -> None:
+    # Copy the session-scoped fixture into this test's tmp_path so the
+    # golden-path test stays isolated from any future test that mutates
+    # the source tree.
+    images = tmp_path / "images"
+    shutil.copytree(cifar10_shaped_dir, images)
     recipe = tmp_path / "recipe.yaml"
     cache = tmp_path / "cache"
 
@@ -161,11 +153,19 @@ def test_golden_path_init_validate_materialize_status(tmp_path: Path) -> None:
     assert "image_classification" in status_result.stdout
     assert "Records per split" in status_result.stdout
 
-    # Sanity: total records across splits == fixture size (10 x 3 = 30).
+    # Sanity: total records across splits matches the fixture size.
+    from tests.fixtures.build_cifar10_shaped import (
+        DEFAULT_NUM_CLASSES,
+        DEFAULT_PER_CLASS,
+    )
+
     from datarefinery.pipeline.manifest import read_manifest
 
     manifest = read_manifest(manifest_path(instance))
-    assert sum(manifest.record_counts.values()) == 30
+    assert (
+        sum(manifest.record_counts.values())
+        == DEFAULT_NUM_CLASSES * DEFAULT_PER_CLASS
+    )
 
     # 5. Rerun materialize hits the cache (no new pipeline work).
     rerun = runner.invoke(

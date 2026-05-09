@@ -577,16 +577,16 @@ End-to-end CLI integration test exercising the documented user journey. **Closes
 
 Phase A–D shipped tests alongside features. Phase E is where we backfill the *contracts* — property-based tests for cache invariants, the determinism integration check, the canonical-hash pinning test, exhaustive failure-mode coverage, and coverage thresholds. The goal is to make every reproducibility guarantee in `concept.md` a test that fails loudly when broken.
 
-### Story E.a: v0.5.0 Test Fixture: CIFAR-10-Shaped Synthesizer [Planned]
+### Story E.a: v0.5.0 Test Fixture: CIFAR-10-Shaped Synthesizer [Done]
 
-A reusable fixture builder that synthesizes a tiny CIFAR-10-shaped dataset at test time (no large binaries committed).
+A reusable fixture builder that synthesizes a tiny CIFAR-10-shaped dataset at test time (no large binaries committed). **Opens Phase E.**
 
-- [ ] Add `tests/fixtures/build_cifar10_shaped.py` synthesizing ~50 images via NumPy RNG (seeded); writes 10 class folders × 5 PNGs via Pillow.
-- [ ] Wrap as a pytest fixture (`tests/conftest.py`) producing a tempdir per test session.
-- [ ] Add a documented "do not check in real CIFAR-10 here" comment.
-- [ ] Bump version to v0.5.0
-- [ ] Update CHANGELOG.md
-- [ ] Verify: fixture builds in <1s and produces 50 PNGs in 10 class folders.
+- [x] Add `tests/fixtures/build_cifar10_shaped.py` synthesizing ~50 images via NumPy RNG (seeded); writes 10 class folders × 5 PNGs via Pillow. *Module exposes `build_cifar10_shaped(root, *, num_classes, per_class, image_size, seed)` plus the four `DEFAULT_*` constants. Default config matches the story task: 10 × 5 = 50 PNGs at 8×8 RGB, seeded for byte-stability.*
+- [x] Wrap as a pytest fixture (`tests/conftest.py`) producing a tempdir per test session. *Fixture name `cifar10_shaped_dir` is session-scoped via `tmp_path_factory`. Tests that mutate the source tree should `shutil.copytree` from it (the golden-path test does this).*
+- [x] Add a documented "do not check in real CIFAR-10 here" comment. *Module docstring spells out the rationale (size, licensing, repo bloat) and points users at a one-shot local download for tests that genuinely need the real dataset.*
+- [x] Bump version to v0.5.0
+- [x] Update CHANGELOG.md
+- [x] Verify: fixture builds in <1s and produces 50 PNGs in 10 class folders. *6 self-tests in `tests/unit/test_cifar10_shaped_fixture.py` cover the layout, image dimensions and mode, same-seed determinism, different-seed divergence, the <1s build budget, and that the session fixture is consumable by name. Also migrated the Phase D golden-path test to consume the fixture as proof of reusability.*
 
 ### Story E.b: v0.5.1 Hypothesis: Cache-Identity Invariance and Sensitivity [Planned]
 
