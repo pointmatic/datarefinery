@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-05-09
+
+### Added
+
+- Cache-identity pinning gate (Story E.f, FR-4):
+  - `tests/unit/test_canonical_hash_pin.py` is a single-test module
+    pinning the canonical SHA-256 digest of a representative fixture
+    recipe. A failed assertion walks the reviewer through the
+    four-step ceremony from `project-essentials.md` "Cache identity
+    is the reproducibility contract — invalidations are ceremonious":
+    bump `SUPPORTED_SCHEMA_VERSIONS`, ship a migration, announce
+    blast radius, update the pin in the same commit. Pre-production
+    versus post-production rules are both spelled out so a future
+    bump doesn't mis-apply the wrong ceremony level.
+  - Module docstring includes a one-liner for legitimately
+    regenerating the digest after a deliberate cache-invalidating
+    change.
+
+### Changed
+
+- Removed the duplicate canonical-hash pin from
+  `tests/unit/test_canonical.py` so the gate is single-source. The
+  remaining tests in `test_canonical.py` cover cosmetic-edit
+  invariance, value-edit sensitivity, and JSON wellformedness.
+
 ## [0.5.4] - 2026-05-08
 
 ### Added

@@ -631,16 +631,16 @@ Forced failure injected at each pipeline stage leaves a `FAILED`-marked temp dir
 - [x] Update CHANGELOG.md
 - [x] Verify: every parametrized failure-mode case passes.
 
-### Story E.f: v0.5.5 Cache Identity Pinning Test [Planned]
+### Story E.f: v0.5.5 Cache Identity Pinning Test [Done]
 
 The "consciously sign off on cache invalidation" test from `project-essentials.md`.
 
-- [ ] Add `tests/unit/test_canonical_hash_pin.py`.
-- [ ] Pins the canonical-hash hex digest of a representative fixture recipe.
-- [ ] Failure message references `project-essentials.md` "Cache identity is the reproducibility contract — invalidations are ceremonious" and the post-production schema-version-bump ceremony.
-- [ ] Bump version to v0.5.5
-- [ ] Update CHANGELOG.md
-- [ ] Verify: pinning test passes; deliberately changing a pydantic default in a sandbox breaks it with the documented message.
+- [x] Add `tests/unit/test_canonical_hash_pin.py`. *Single-test module so the gate is easy to spot in `git diff` and harder to edit accidentally as part of an unrelated commit. Module docstring explains why the file exists and includes the regen-the-digest snippet for legitimate updates.*
+- [x] Pins the canonical-hash hex digest of a representative fixture recipe. *Pin value preserved byte-for-byte from the prior pin in `test_canonical.py` (`bdaabb558a2ec3a51f59afb6160d1746b85993652df1369823679ebb05b4114e`); the duplicate pin was removed from `test_canonical.py` so the gate is single-source.*
+- [x] Failure message references `project-essentials.md` "Cache identity is the reproducibility contract — invalidations are ceremonious" and the post-production schema-version-bump ceremony. *Failure message walks the four-step ceremony explicitly: bump `SUPPORTED_SCHEMA_VERSIONS`, ship a migration, announce blast radius in CHANGELOG and CLI, update the pin in the same commit. Pre-production caveat called out so readers don't get confused.*
+- [x] Bump version to v0.5.5
+- [x] Update CHANGELOG.md
+- [x] Verify: pinning test passes; deliberately changing a pydantic default in a sandbox breaks it with the documented message. *Test passes against the current codebase; manual sanity check (mutating `Recipe.seed: int = 0` to a different default in a sandbox) breaks the gate with the four-step ceremony surfaced in the assertion error.*
 
 ### Story E.g: v0.5.6 Coverage Thresholds and Per-Module Gates [Planned]
 

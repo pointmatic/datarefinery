@@ -3,15 +3,14 @@
 """FR-4 canonical-bytes tests — the cache reproducibility contract.
 
 Cosmetic-edit invariance (whitespace, comments, key order) and value-edit
-sensitivity, plus the pinned canonical hash. Bumping the pin requires
-conscious sign-off on cache invalidation per `project-essentials.md`
-"Cache identity is the reproducibility contract — invalidations are
-ceremonious."
+sensitivity. The pinned-digest gate that signs off on cache
+invalidations lives in its own file (`test_canonical_hash_pin.py`,
+Story E.f) so the gate is easy to spot in `git diff` and harder to
+edit accidentally.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -153,13 +152,6 @@ Splits:
 """
 
 
-# Pinned canonical hash for the baseline fixture above. Updating this value
-# is a deliberate cache-invalidation event — see project-essentials.md
-# "Cache identity is the reproducibility contract — invalidations are
-# ceremonious."
-_PINNED_DIGEST = "bdaabb558a2ec3a51f59afb6160d1746b85993652df1369823679ebb05b4114e"
-
-
 def _write(tmp_path: Path, name: str, text: str) -> Path:
     p = tmp_path / f"{name}.yaml"
     p.write_text(text, encoding="utf-8")
@@ -168,15 +160,6 @@ def _write(tmp_path: Path, name: str, text: str) -> Path:
 
 def _canonical(tmp_path: Path, name: str, text: str) -> bytes:
     return to_canonical_bytes(load(_write(tmp_path, name, text)))
-
-
-def test_baseline_canonical_hash_pin(tmp_path: Path) -> None:
-    digest = hashlib.sha256(_canonical(tmp_path, "base", _BASELINE_YAML)).hexdigest()
-    assert digest == _PINNED_DIGEST, (
-        f"canonical hash changed to {digest!r}. If this is intentional, "
-        "follow the post-production ceremony in project-essentials.md "
-        "'Cache identity is the reproducibility contract' before bumping the pin."
-    )
 
 
 def test_whitespace_only_yaml_edits_are_canonical_invariant(tmp_path: Path) -> None:
