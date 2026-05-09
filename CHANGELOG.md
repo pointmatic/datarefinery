@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-05-08
+
+### Added
+
+- Per-stage failure-mode integration tests (Story E.e):
+  - `tests/integration/test_failure_modes.py` parametrizes a forced
+    failure across 10 stage labels (`InputContracts`,
+    `Filters/pre_split`, `Splits`, `Filters/post_split`, `Generation`,
+    `Transformations`, `Featurizations`, `Augmentations`,
+    `OutputExpectations`, `Visualizations`). Plugin-op failures are
+    injected via a `_FailingPlugin` wrapper around the
+    `image_classification` plugin that raises from
+    `operation_factory` whenever the named op is requested.
+    Stage-driver failures use recipe shapes that trip the runner's
+    own raise sites (record_count_min contract, key_assignment with
+    unmapped records, non-train augmentation declaration).
+  - Each case asserts the runner re-raises, the temp dir survives
+    with a `FAILED` JSON marker naming the expected `current_stage`
+    label, and the final cache path is never written to.
+  - Tests bypass the FR-2 validator and instantiate
+    `PipelineRunner` directly so failure recipes that intentionally
+    violate FR-2 checks (e.g., the non-train augmentation case used
+    to reach the augmentations-stage defensive guard) reach the
+    runner unchanged.
+
 ## [0.5.3] - 2026-05-08
 
 ### Added

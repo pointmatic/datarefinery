@@ -620,16 +620,16 @@ End-to-end check that the full pipeline produces byte-identical instances regard
 - [x] Update CHANGELOG.md
 - [x] Verify: determinism integration test passes locally.
 
-### Story E.e: v0.5.4 Failure-Mode Tests at Every Stage [Planned]
+### Story E.e: v0.5.4 Failure-Mode Tests at Every Stage [Done]
 
 Forced failure injected at each pipeline stage leaves a `FAILED`-marked temp directory and never touches the final cache.
 
-- [ ] Add `tests/integration/test_failure_modes.py`.
-- [ ] Parametrize across: input contract failure, filter failure, split failure, generation failure, transformation failure, featurization failure, augmentation declaration failure, output expectation failure, reporting visualization failure.
-- [ ] Inject failures via plugin operation that raises; assert temp dir + `FAILED` marker + final cache untouched.
-- [ ] Bump version to v0.5.4
-- [ ] Update CHANGELOG.md
-- [ ] Verify: every parametrized failure-mode case passes.
+- [x] Add `tests/integration/test_failure_modes.py`. *Tests bypass the FR-2 validator and instantiate `PipelineRunner` directly because some failure recipes intentionally violate FR-2 checks (e.g., the augmentations-stage failure relies on declaring a non-train augmentation, which validator check 5 would reject upstream).*
+- [x] Parametrize across: input contract failure, filter failure, split failure, generation failure, transformation failure, featurization failure, augmentation declaration failure, output expectation failure, reporting visualization failure. *10 cases — pre-split filter and post-split filter run as separate parametrize entries since they hit distinct `current_stage` labels (`Filters/pre_split` vs `Filters/post_split`). Plugin-op failures use a `_FailingPlugin` wrapper that raises from `operation_factory` for a named op; stage-driver failures use recipe shapes that trip the runner's own raise sites (record_count_min contract, key_assignment with unmapped records, non-train augmentation).*
+- [x] Inject failures via plugin operation that raises; assert temp dir + `FAILED` marker + final cache untouched. *Marker payload is parsed and `stage` is asserted against the expected `current_stage` label; the final cache path is checked via `compute_cache_key` + `instance_dir` to confirm `manifest.json` was never written there.*
+- [x] Bump version to v0.5.4
+- [x] Update CHANGELOG.md
+- [x] Verify: every parametrized failure-mode case passes.
 
 ### Story E.f: v0.5.5 Cache Identity Pinning Test [Planned]
 
