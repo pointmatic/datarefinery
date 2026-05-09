@@ -588,16 +588,16 @@ A reusable fixture builder that synthesizes a tiny CIFAR-10-shaped dataset at te
 - [x] Update CHANGELOG.md
 - [x] Verify: fixture builds in <1s and produces 50 PNGs in 10 class folders. *6 self-tests in `tests/unit/test_cifar10_shaped_fixture.py` cover the layout, image dimensions and mode, same-seed determinism, different-seed divergence, the <1s build budget, and that the session fixture is consumable by name. Also migrated the Phase D golden-path test to consume the fixture as proof of reusability.*
 
-### Story E.b: v0.5.1 Hypothesis: Cache-Identity Invariance and Sensitivity [Planned]
+### Story E.b: v0.5.1 Hypothesis: Cache-Identity Invariance and Sensitivity [Done]
 
 Property-based proof that cosmetic edits never invalidate the cache and semantic edits always do.
 
-- [ ] Add `tests/unit/test_cache_identity_properties.py`.
-- [ ] Hypothesis strategy generating YAML edits restricted to whitespace, comments, key-order permutations, quote-style swaps; assert `compute_cache_key` is invariant.
-- [ ] Hypothesis strategy generating semantic edits (changed scalars, added/removed list items, added/removed sections); assert `compute_cache_key` differs.
-- [ ] Bump version to v0.5.1
-- [ ] Update CHANGELOG.md
-- [ ] Verify: both property tests pass on a 1000-example run.
+- [x] Add `tests/unit/test_cache_identity_properties.py`.
+- [x] Hypothesis strategy generating YAML edits restricted to whitespace, comments, key-order permutations, quote-style swaps; assert `compute_cache_key` is invariant. *Cosmetic strategy operates by deep-copying a baseline dict, recursively shuffling every nested mapping's key order via a Hypothesis-drawn seed, re-emitting through `yaml.safe_dump` with varying `indent` and `default_flow_style`, and splicing in random blank/comment lines. Quote-style swaps emerge naturally from `yaml.safe_dump`'s flow toggles.*
+- [x] Hypothesis strategy generating semantic edits (changed scalars, added/removed list items, added/removed sections); assert `compute_cache_key` differs. *Strategy is `st.one_of` across 10 mutators: changed `recipe.seed`, changed `Splits.seed`, changed split ratios, renamed `Labels.field`, changed input source path, added `Filters` entry, added `InputContracts` entry, added `Visualizations` entry, added `SampleData` section, toggled `label_from`. The rare regenerate-baseline case is detected and skipped via a canonical-hash equality check.*
+- [x] Bump version to v0.5.1
+- [x] Update CHANGELOG.md
+- [x] Verify: both property tests pass on a 1000-example run. *`@settings(max_examples=1000, deadline=None)`; total runtime ~4s.*
 
 ### Story E.c: v0.5.2 Hypothesis: Split Determinism [Planned]
 

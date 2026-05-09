@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-05-08
+
+### Added
+
+- Hypothesis property tests for cache identity (Story E.b, FR-4):
+  - `tests/unit/test_cache_identity_properties.py` with two property
+    tests, each running for 1000 examples per
+    `@settings(max_examples=1000)`:
+    - **Cosmetic invariance.** A composite strategy deep-copies the
+      baseline recipe dict, recursively shuffles every nested
+      mapping's key order via a Hypothesis-drawn seed, re-emits
+      through `yaml.safe_dump` with varying `indent` and
+      `default_flow_style`, and splices in random blank/comment
+      lines. The recipe-portion of `compute_cache_key` must remain
+      identical across every generated text variant.
+    - **Semantic divergence.** Ten mutator strategies (combined with
+      `st.one_of`) that change `recipe.seed`, `Splits.seed`, split
+      ratios, `Labels.field`, input source path, or add a `Filters`,
+      `InputContracts`, `Visualizations`, or `SampleData` entry, or
+      toggle `label_from`. Each must produce a different cache key
+      than the baseline; the rare strategy-regenerates-baseline case
+      is detected via a canonical-hash equality check and skipped.
+  - These complement the example-based fixtures in
+    `tests/unit/test_canonical.py` and the canonical-hash pin —
+    together they make every reproducibility guarantee in
+    `project-essentials.md` "Cache identity is the reproducibility
+    contract" a test that fails loudly when broken.
+
 ## [0.5.0] - 2026-05-08
 
 ### Added
