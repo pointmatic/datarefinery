@@ -609,16 +609,16 @@ For a fixed seed, repeated splitting of a generated record list must yield ident
 - [x] Update CHANGELOG.md
 - [x] Verify: split-determinism property test passes. *Both pass; combined runtime ~6s.*
 
-### Story E.d: v0.5.3 Determinism Integration Test (workers=1, 2, 4) [Planned]
+### Story E.d: v0.5.3 Determinism Integration Test (workers=1, 2, 4) [Done]
 
 End-to-end check that the full pipeline produces byte-identical instances regardless of worker count.
 
-- [ ] Add `tests/integration/test_determinism_workers.py`.
-- [ ] Run the same fixture pipeline three times with `workers=1`, `workers=2`, `workers=4`; diff the resulting instance directories (excluding `created_at` and `elapsed_seconds`); assert byte-identical.
-- [ ] Mark slow; documented in `pyproject.toml` so CI runs it on demand if needed.
-- [ ] Bump version to v0.5.3
-- [ ] Update CHANGELOG.md
-- [ ] Verify: determinism integration test passes locally.
+- [x] Add `tests/integration/test_determinism_workers.py`. *Includes a sanity-guard test that confirms the two normalized fields (`created_at`, `elapsed_seconds`) actually vary across independent runs — without it the determinism check could pass for the wrong reason if the fields turned stable.*
+- [x] Run the same fixture pipeline three times with `workers=1`, `workers=2`, `workers=4`; diff the resulting instance directories (excluding `created_at` and `elapsed_seconds`); assert byte-identical. *Each worker count uses a fresh `--cache-root` so subsequent runs don't short-circuit on cache hit. `manifest.json` strips the two run-specific fields and `report.md` strips the corresponding "Created at:" / "Elapsed:" lines (since the report renders those manifest values directly).*
+- [x] Mark slow; documented in `pyproject.toml` so CI runs it on demand if needed. *`pyproject.toml` now declares the `slow` marker; `pytest -m 'not slow'` skips both tests in this file. Local runtime is small today (~0.5s) because v1 stage drivers don't yet thread through `pipeline.workers.run_parallel`; the test will become load-bearing once they do.*
+- [x] Bump version to v0.5.3
+- [x] Update CHANGELOG.md
+- [x] Verify: determinism integration test passes locally.
 
 ### Story E.e: v0.5.4 Failure-Mode Tests at Every Stage [Planned]
 

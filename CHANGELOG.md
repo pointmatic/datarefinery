@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-05-08
+
+### Added
+
+- End-to-end determinism integration test (Story E.d):
+  - `tests/integration/test_determinism_workers.py` runs the same
+    fixture pipeline three times at `--workers 1/2/4` (each into a
+    fresh cache root so the second and third runs don't short-circuit
+    on cache hit) and asserts the resulting instance directories are
+    byte-identical. `manifest.json` is normalized by stripping
+    `created_at` and `elapsed_seconds` (intrinsically run-specific),
+    and `report.md` is normalized by stripping the two corresponding
+    "Created at:" / "Elapsed:" lines that render those manifest
+    fields. A second sanity-guard test confirms those two fields
+    actually vary across independent runs — without it the
+    determinism check could pass vacuously if the fields turned
+    stable.
+  - Both tests are marked `slow`; `pytest -m 'not slow'` skips them
+    so CI can run them on demand.
+
+### Changed
+
+- `pyproject.toml` now declares the `slow` pytest marker so
+  `--strict-markers` passes for the new tests and so `pytest -m
+  'not slow'` is the documented opt-out.
+
 ## [0.5.2] - 2026-05-08
 
 ### Added
