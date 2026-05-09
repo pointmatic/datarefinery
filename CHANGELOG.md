@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-05-08
+
+### Added
+
+- Hypothesis property tests for split determinism (Story E.c, FR-7):
+  - `tests/unit/test_splits_determinism.py` with two property tests:
+    - **Repeat-run determinism** (200 examples). For varied record
+      counts (8-120), label sets (2-4 distinct values), ratio shapes
+      (two-way + three-way), seeds, and optional stratification, two
+      independent `apply_splits(...)` calls produce byte-identical
+      partitions.
+    - **Cross-worker determinism** (10 examples). Records are
+      pre-processed through `pipeline.workers.run_parallel(workers=W)`
+      with an identity worker function at `W ∈ {1, 2, 4}`; the result
+      is then split with the same seed. All three worker counts must
+      produce byte-identical partitions, validating the
+      `project-essentials.md` "Determinism contract in
+      `pipeline.workers`" rule that worker count must not leak into
+      downstream stage output. The example budget is small because
+      every example spawns three `ProcessPoolExecutor`s.
+
 ## [0.5.1] - 2026-05-08
 
 ### Added

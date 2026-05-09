@@ -599,15 +599,15 @@ Property-based proof that cosmetic edits never invalidate the cache and semantic
 - [x] Update CHANGELOG.md
 - [x] Verify: both property tests pass on a 1000-example run. *`@settings(max_examples=1000, deadline=None)`; total runtime ~4s.*
 
-### Story E.c: v0.5.2 Hypothesis: Split Determinism [Planned]
+### Story E.c: v0.5.2 Hypothesis: Split Determinism [Done]
 
 For a fixed seed, repeated splitting of a generated record list must yield identical partitions across runs and across worker counts.
 
-- [ ] Add `tests/unit/test_splits_determinism.py` with Hypothesis strategies for record-count, ratio shapes, stratification keys.
-- [ ] Assert: same seed → same partitions across two runs; same seed → same partitions across `workers=1/2/4` (uses `pipeline.workers.run_parallel` from C.l).
-- [ ] Bump version to v0.5.2
-- [ ] Update CHANGELOG.md
-- [ ] Verify: split-determinism property test passes.
+- [x] Add `tests/unit/test_splits_determinism.py` with Hypothesis strategies for record-count, ratio shapes, stratification keys. *Strategies generate 8-120 records with 2-4 distinct labels (so stratification has multi-record classes), and ratio shapes for both two-way and three-way splits with rounding to 4 decimals to keep the totals within `SplitsSection` tolerance.*
+- [x] Assert: same seed → same partitions across two runs; same seed → same partitions across `workers=1/2/4` (uses `pipeline.workers.run_parallel` from C.l). *Repeat-run property runs at 200 examples; cross-worker property runs at 10 examples (each example spawns three `ProcessPoolExecutor`s, so the example budget is intentionally smaller). The cross-worker test pre-processes records through `run_parallel` with an identity fn at each worker count, then splits each pre-processed list with the same seed, and asserts all three partitions are byte-identical.*
+- [x] Bump version to v0.5.2
+- [x] Update CHANGELOG.md
+- [x] Verify: split-determinism property test passes. *Both pass; combined runtime ~6s.*
 
 ### Story E.d: v0.5.3 Determinism Integration Test (workers=1, 2, 4) [Planned]
 
