@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2026-05-09
+
+### Added
+
+- Generic plugin contract harness (Story E.h) — closes Phase E:
+  - `tests/plugin_contract/conftest.py` uses `pytest_generate_tests`
+    to parametrize every test that consumes a `plugin` argument
+    across all plugins discovered via the entry-point group, with
+    plugin names as test ids. Adding a new plugin opts it into the
+    harness automatically — no per-plugin file required.
+  - `tests/plugin_contract/test_protocol.py` ships five
+    cross-plugin assertions:
+    1. `isinstance(plugin, Plugin)` — runtime-protocol satisfaction.
+    2. Non-empty, stripped string name.
+    3. `supported_sections` is a subset of the canonical 13 recipe
+       section names; a plugin that lists a non-canonical section is
+       wrong at the contract layer even before any recipe references
+       it.
+    4. Every `supported_operations` entry round-trips through
+       `OperationSpec.model_validate`; each declares at least one
+       `applicable_sections`, all of which must be canonical.
+    5. `is_stub()` reflects reality — stubs must raise from
+       `operation_factory` for at least one declared op; non-stubs
+       must construct cleanly for at least one declared op. The
+       asymmetry is intentional: a non-stub may ship some
+       not-yet-implemented ops alongside real ones, but a plugin that
+       claims to be a stub and yet successfully constructs operations
+       breaks the materialize-time refusal contract.
+  - Existing per-plugin contract files (`test_image_classification.py`,
+    `test_tabular.py`, `test_text.py`) still cover plugin-specific
+    schema assertions that go beyond the protocol.
+
+### Tests
+
+- 15 new parametrized tests (5 generic assertions × 3 discovered
+  plugins).
+
 ## [0.5.6] - 2026-05-09
 
 ### Added

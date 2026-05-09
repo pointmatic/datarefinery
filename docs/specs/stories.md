@@ -653,15 +653,15 @@ Wire `pytest-cov` per tech-spec coverage strategy.
 - [x] Update CHANGELOG.md
 - [x] Verify: `pyve test --cov` reports ≥95% on each named core module. *Final per-module readout: cache/atomic 100%, cache/identity 100%, pipeline/stages/splits 99%, pipeline/workers 100%, plugins/base 100%, plugins/discovery 96%, recipe/canonical 100%, recipe/loader 98%. Project-wide TOTAL 95% (informational; no gate set pre-prod).*
 
-### Story E.h: v0.5.7 Plugin Contract Test Framework [Planned]
+### Story E.h: v0.5.7 Plugin Contract Test Framework [Done] — closes Phase E
 
 Generic plugin contract harness ensuring every registered plugin (real or stub) declares what it claims.
 
-- [ ] Add `tests/plugin_contract/conftest.py` parametrizing across all discovered plugins.
-- [ ] Each plugin asserts: declared `supported_sections` is a subset of recipe section names; every entry in `supported_operations` has a valid `OperationSpec`; `is_stub()` reflects whether `operation_factory` raises.
-- [ ] Bump version to v0.5.7
-- [ ] Update CHANGELOG.md
-- [ ] Verify: contract harness passes for image_classification, tabular, text plugins.
+- [x] Add `tests/plugin_contract/conftest.py` parametrizing across all discovered plugins. *Uses `pytest_generate_tests` rather than a fixture so the parametrization fans out across every test in the directory that takes a `plugin` argument; plugin names become test ids so failures call out which plugin tripped the contract. Adding a new plugin to the package automatically opts it into the harness — no per-plugin file required just to satisfy the protocol.*
+- [x] Each plugin asserts: declared `supported_sections` is a subset of recipe section names; every entry in `supported_operations` has a valid `OperationSpec`; `is_stub()` reflects whether `operation_factory` raises. *5 generic assertions in `test_protocol.py`: runtime-protocol satisfaction, non-empty name, sections subset of the canonical 13, every op spec is a `OperationSpec` (with `applicable_sections` non-empty and canonical), and the `is_stub` reflects-reality check (stubs must raise from at least one factory call; non-stubs must construct cleanly for at least one declared op).*
+- [x] Bump version to v0.5.7
+- [x] Update CHANGELOG.md
+- [x] Verify: contract harness passes for image_classification, tabular, text plugins. *5 generic assertions × 3 discovered plugins = 15 parametrized tests, all passing.*
 
 ---
 
