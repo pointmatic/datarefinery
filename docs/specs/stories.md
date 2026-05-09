@@ -642,16 +642,16 @@ The "consciously sign off on cache invalidation" test from `project-essentials.m
 - [x] Update CHANGELOG.md
 - [x] Verify: pinning test passes; deliberately changing a pydantic default in a sandbox breaks it with the documented message. *Test passes against the current codebase; manual sanity check (mutating `Recipe.seed: int = 0` to a different default in a sandbox) breaks the gate with the four-step ceremony surfaced in the assertion error.*
 
-### Story E.g: v0.5.6 Coverage Thresholds and Per-Module Gates [Planned]
+### Story E.g: v0.5.6 Coverage Thresholds and Per-Module Gates [Done]
 
 Wire `pytest-cov` per tech-spec coverage strategy.
 
-- [ ] Configure `pyproject.toml` `[tool.coverage]` with per-module thresholds for the core-invariant set: `recipe.loader`, `recipe.canonical`, `cache.identity`, `cache.atomic`, `pipeline.stages.splits`, `pipeline.workers`, `plugins.base`, `plugins.discovery` (≥95%).
-- [ ] No project-wide percentage gate yet (pre-production); add a `# pre-prod: project-wide gate enabled at production release` comment.
-- [ ] CI lint/test workflow (lands in Phase G) wires `--cov-fail-under` for core invariants only.
-- [ ] Bump version to v0.5.6
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `pyve test --cov` reports ≥95% on each named core module.
+- [x] Configure `pyproject.toml` `[tool.coverage]` with per-module thresholds for the core-invariant set: `recipe.loader`, `recipe.canonical`, `cache.identity`, `cache.atomic`, `pipeline.stages.splits`, `pipeline.workers`, `plugins.base`, `plugins.discovery` (≥95%). *`pytest-cov` doesn't natively support per-module `fail_under`, so the threshold list lives in a project-private `[tool.coverage.datarefinery]` table (`core_invariant_modules` + `core_invariant_threshold = 95`); CI in Phase G consumes it via Python rather than a built-in coverage option. `[tool.coverage.run].source` defaults `pyve test --cov` to the package; `[tool.coverage.report]` enables show-missing and excludes `NotImplementedError` / `TYPE_CHECKING` blocks. Back-filled three tests against `plugins.discovery` (extra-path module without `PLUGIN` attr; broken-import error wrapping; non-protocol `PLUGIN` attr) to clear the 88% → 96% gate; the remaining two uncovered lines are the entry-point class-instantiation branch and the `spec_from_file_location` defensive None-spec branch, both genuinely hard to exercise without entry-point setup.*
+- [x] No project-wide percentage gate yet (pre-production); add a `# pre-prod: project-wide gate enabled at production release` comment. *Comment lives in `pyproject.toml` next to the coverage block so the enable-at-1.0 rule is visible without grep'ing CI YAML.*
+- [x] CI lint/test workflow (lands in Phase G) wires `--cov-fail-under` for core invariants only. *Phase G's responsibility; the threshold list this story ships is the input.*
+- [x] Bump version to v0.5.6
+- [x] Update CHANGELOG.md
+- [x] Verify: `pyve test --cov` reports ≥95% on each named core module. *Final per-module readout: cache/atomic 100%, cache/identity 100%, pipeline/stages/splits 99%, pipeline/workers 100%, plugins/base 100%, plugins/discovery 96%, recipe/canonical 100%, recipe/loader 98%. Project-wide TOTAL 95% (informational; no gate set pre-prod).*
 
 ### Story E.h: v0.5.7 Plugin Contract Test Framework [Planned]
 

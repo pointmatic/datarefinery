@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-05-09
+
+### Added
+
+- Coverage configuration and per-module gates (Story E.g):
+  - `[tool.coverage.run]` defaults `pyve test --cov` to the
+    `src/datarefinery` package.
+  - `[tool.coverage.report]` enables show-missing and excludes
+    `pragma: no cover`, `raise NotImplementedError`, and
+    `TYPE_CHECKING:` blocks.
+  - `[tool.coverage.datarefinery]` (project-private TOML table)
+    declares `core_invariant_modules` (the eight modules that gate the
+    FR-4 reproducibility contract — `recipe.loader`,
+    `recipe.canonical`, `cache.identity`, `cache.atomic`,
+    `pipeline.stages.splits`, `pipeline.workers`, `plugins.base`,
+    `plugins.discovery`) and `core_invariant_threshold = 95`. Phase G
+    CI consumes this table via Python; `pytest-cov` doesn't natively
+    support per-module `fail_under`.
+  - The project-wide percentage gate is intentionally unset
+    pre-production; an inline `# pre-prod: project-wide gate enabled
+    at production release` comment marks the spot.
+
+### Tests
+
+- 3 new unit tests in `tests/unit/test_plugins_discovery.py`
+  back-filling coverage of `plugins.discovery`:
+  - Extra-path module without a top-level `PLUGIN` attr is ignored
+    silently.
+  - Extra-path module that fails to import surfaces as `PluginError`.
+  - Top-level `PLUGIN` attr that doesn't satisfy the Plugin protocol
+    raises with a class-named message.
+  - These move the discovery module from 88% → 96% coverage. The two
+    remaining uncovered lines are the entry-point class-instantiation
+    branch and the `spec_from_file_location` defensive None-spec
+    branch — both genuinely hard to exercise without full entry-point
+    setup.
+
 ## [0.5.5] - 2026-05-09
 
 ### Added

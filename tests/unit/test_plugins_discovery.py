@@ -79,6 +79,59 @@ def test_operation_spec_is_frozen() -> None:
         spec.fit_on_train = True  # type: ignore[misc]
 
 
+def test_extra_path_module_without_plugin_attr_is_ignored(
+    tmp_path: Path,
+) -> None:
+    """Lone Python files without a top-level ``PLUGIN`` attribute are
+    skipped silently by discovery."""
+    extra = tmp_path / "extras"
+    extra.mkdir()
+    (extra / "not_a_plugin.py").write_text(
+        "# Copyright (c) 2026 Pointmatic\n"
+        "# SPDX-License-Identifier: Apache-2.0\n"
+        "VALUE = 42\n",
+        encoding="utf-8",
+    )
+    # The fixture dummy plugin is still discovered; the attr-less module
+    # next to it is ignored without raising.
+    plugins = discover_plugins(extra_paths=[_DUMMY_PLUGIN, extra])
+    assert "_test_dummy" in plugins
+
+
+def test_extra_path_with_unimportable_module_raises_plugin_error(
+    tmp_path: Path,
+) -> None:
+    """A Python file in an extra path that fails to import surfaces as
+    ``PluginError`` rather than the raw ``Exception``."""
+    extra = tmp_path / "extras"
+    extra.mkdir()
+    (extra / "broken.py").write_text(
+        "raise ImportError('forced failure for tests')\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PluginError, match="failed to import plugin"):
+        discover_plugins(extra_paths=[extra])
+
+
+def test_register_rejects_object_that_does_not_satisfy_protocol(
+    tmp_path: Path,
+) -> None:
+    """A top-level ``PLUGIN`` attr that lacks the protocol surface
+    raises ``PluginError`` with a class-named message."""
+    extra = tmp_path / "extras"
+    extra.mkdir()
+    (extra / "fake.py").write_text(
+        "# Copyright (c) 2026 Pointmatic\n"
+        "# SPDX-License-Identifier: Apache-2.0\n"
+        "class _Fake:\n"
+        "    name = 'fake'\n"
+        "PLUGIN = _Fake()\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PluginError, match="does not satisfy the Plugin protocol"):
+        discover_plugins(extra_paths=[extra])
+
+
 def test_discovery_with_no_extra_paths_does_not_error() -> None:
     # Empty by default — no plugins are registered under the
     # `datarefinery.plugins` entry-point group at this point in the project

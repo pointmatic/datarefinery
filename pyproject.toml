@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarefinery"
-version = "0.5.5"
+version = "0.5.6"
 description = "Recipe-driven data preparation and caching for machine learning"
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
@@ -87,3 +87,57 @@ addopts = "-ra --strict-markers"
 markers = [
     "slow: marks tests that exercise the full pipeline at multiple worker counts; CI may opt to run these on demand only (e.g. `pytest -m 'not slow'`).",
 ]
+
+# ---------------------------------------------------------------------------
+# Coverage configuration (Story E.g, FR-4 reproducibility-contract gates).
+#
+# `pytest-cov` does not natively support per-module `fail_under`, so the
+# strategy is:
+#
+#   1. `[tool.coverage.run].source` scopes a default `pyve test --cov`
+#      run to the package. Local invocation: `pyve test --cov`.
+#   2. The "core invariant" set listed below is the floor that gates
+#      the cache/reproducibility contract. CI (Phase G, Story G.a)
+#      runs coverage against just these modules with
+#      `--cov-fail-under=95`. The list lives in this file so the
+#      gate is visible without tracing CI YAML.
+#   3. The project-wide percentage gate is intentionally NOT set
+#      pre-production (per features.md "Acceptance Criteria"). It is
+#      enabled at the v1.0.0 production-release event (Story F.d).
+#
+# pre-prod: project-wide gate enabled at production release
+# ---------------------------------------------------------------------------
+
+[tool.coverage.run]
+source = ["src/datarefinery"]
+branch = false
+
+[tool.coverage.report]
+# fail_under is intentionally unset pre-production; CI imposes the
+# core-invariant gate on a per-module basis instead. See above.
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
+# Per-module coverage thresholds for the core-invariant set. CI workflow
+# (Phase G) consumes this list to invoke `coverage report
+# --include=<module>` with `--fail-under=95` per module. The thresholds
+# enforce the FR-4 reproducibility contract and the
+# `project-essentials.md` "Cache identity" + "Determinism contract"
+# rules.
+[tool.coverage.datarefinery]
+core_invariant_modules = [
+    "src/datarefinery/recipe/loader.py",
+    "src/datarefinery/recipe/canonical.py",
+    "src/datarefinery/cache/identity.py",
+    "src/datarefinery/cache/atomic.py",
+    "src/datarefinery/pipeline/stages/splits.py",
+    "src/datarefinery/pipeline/workers.py",
+    "src/datarefinery/plugins/base.py",
+    "src/datarefinery/plugins/discovery.py",
+]
+core_invariant_threshold = 95
