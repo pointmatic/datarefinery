@@ -34,6 +34,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - "v1 scope and non-goals" section sourced from `concept.md`.
   - Cross-links to `docs/specs/concept.md`,
     `docs/specs/features.md`, and `docs/specs/tech-spec.md`.
+- Recipe Authoring Guide at `docs/guides/recipe-authoring.md` (Story
+  F.b; doc-only, shares the F.a release):
+  - Section-by-section walk-through of every recipe surface
+    (`Input`, `Output`, `Labels`, `SampleData`, `InputContracts`,
+    `Filters`, `Generation`, `Splits`, `Transformations`,
+    `Augmentations`, `Featurizations`, `OutputExpectations`,
+    `Visualizations`, `variants`).
+  - Dedicated treatments of fit-on-train discipline (why
+    `fit_source: train` is the only accepted value and where the
+    statistics land on disk), variants (cache-identity implications,
+    when to overlay vs. fork a recipe), `InputContracts` /
+    `OutputExpectations` (assertion-kind table with required keys),
+    and the Filters-vs-Splits decision for class imbalance.
+  - A complete reference recipe that materializes against the
+    CIFAR-10-shaped fixture; the default and `--variant no_augment`
+    materializations were both verified end-to-end. Subsidiary
+    snippets (Filters with `random_sample` and `filter_by_label`)
+    were composed into materializable recipes and verified against
+    the same fixture.
+  - Cross-linked from `README.md` and `docs/specs/concept.md`.
 
 ## [0.5.7] - 2026-05-09
 

@@ -679,13 +679,13 @@ Promote the package to a non-trivial first-impression README. Minor bump reflect
 - [x] Update CHANGELOG.md
 - [x] Verify: README renders cleanly on GitHub; quickstart commands succeed against the fixture.
 
-### Story F.b: Recipe Authoring Guide [Planned]
+### Story F.b: Recipe Authoring Guide [Done]
 
 Doc-only; shares F.a's release.
 
-- [ ] Add `docs/guides/recipe-authoring.md`: section-by-section walk-through, fit-on-train discipline, variants, contracts/expectations, when to use Filters vs Splits for class imbalance.
-- [ ] Cross-link from README and concept.md.
-- [ ] Verify: every code snippet in the guide is materializable against the fixture.
+- [x] Add `docs/guides/recipe-authoring.md`: section-by-section walk-through, fit-on-train discipline, variants, contracts/expectations, when to use Filters vs Splits for class imbalance.
+- [x] Cross-link from README and concept.md.
+- [x] Verify: every code snippet in the guide is materializable against the fixture.
 
 ### Story F.c: Plugin Authoring Guide [Planned]
 

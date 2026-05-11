@@ -215,6 +215,11 @@ Section roles at a glance:
 Select a variant at materialize time with `--variant no_augment`.
 Variants change the canonical hash (and therefore the cache identity).
 
+For a section-by-section walk-through — including fit-on-train
+discipline, variants, contracts/expectations, and the Filters-vs-Splits
+choice for class imbalance — see the
+[Recipe authoring guide](docs/guides/recipe-authoring.md).
+
 ## CLI verbs
 
 ```bash
