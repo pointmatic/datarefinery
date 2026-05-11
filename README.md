@@ -268,7 +268,8 @@ parameter schema, `fit_on_train` flag, applicable splits, and
 applicable recipe sections. The validator cross-checks recipe
 operations against these specs (FR-2 check 18). See
 [`src/datarefinery/plugins/base.py`](src/datarefinery/plugins/base.py)
-for the protocol.
+for the protocol, and the [plugin authoring guide](docs/guides/plugin-authoring.md)
+for a walk-through of writing your own.
 
 ## Library API
 

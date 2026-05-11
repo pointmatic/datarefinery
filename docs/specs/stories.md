@@ -687,15 +687,15 @@ Doc-only; shares F.a's release.
 - [x] Cross-link from README and concept.md.
 - [x] Verify: every code snippet in the guide is materializable against the fixture.
 
-### Story F.c: Plugin Authoring Guide [Planned]
+### Story F.c: Plugin Authoring Guide [Done]
 
 Doc-only; shares F.a's release.
 
-- [ ] Add `docs/guides/plugin-authoring.md`: how to declare a plugin, `OperationSpec` schema, fit-on-train flag, applicable splits, registration via entry-point group.
-- [ ] Reference the tabular/text stubs as starting templates.
-- [ ] Verify: a hand-written hello-plugin following the guide is discovered and validates a minimal recipe.
+- [x] Add `docs/guides/plugin-authoring.md`: how to declare a plugin, `OperationSpec` schema, fit-on-train flag, applicable splits, registration via entry-point group.
+- [x] Reference the tabular/text stubs as starting templates.
+- [x] Verify: a hand-written hello-plugin following the guide is discovered and validates a minimal recipe.
 
-### Story F.d: v1.0.0 Production Release [Planned]
+### Story F.d: v0.6.1 Test Release [Planned]
 
 The declared production-release event. Per `features.md` and `project-essentials.md`, this flips multiple rules to post-production: schema versions become immutable, the cache layout becomes versioned, the drift schema is frozen, and cache-invalidating changes become ceremonious.
 
@@ -703,11 +703,13 @@ The declared production-release event. Per `features.md` and `project-essentials
 - [ ] Freeze `DriftSchema` (bump `schema_version` from 0 to 1; remove the "unstable until production release" notes from drift.py and tech-spec).
 - [ ] Add `recipe.loader.migrations` registry header documentation: "post-production: every cache-invalidating change requires a migration entry here."
 - [ ] Add release notes section in `CHANGELOG.md` titled "**Production Release — Post-production rules are now in effect.**" naming the rule changes.
-- [ ] Tag `v1.0.0`; publish workflow uploads to PyPI.
-- [ ] Bump version to v1.0.0
+- [ ] Bump version to v1.6.1
 - [ ] Update CHANGELOG.md
-- [ ] Verify: tagged release lands on PyPI; `pip install datarefinery==1.0.0` from a clean venv succeeds; `datarefinery check` reports environment soundness; `init → validate → materialize` golden path passes on the installed wheel.
+succeeds; `datarefinery check` reports environment soundness; `init → validate → materialize` golden path passes on the installed wheel.
 
+**Out of Scope**
+- Tag `v0.6.1`; publish workflow uploads to PyPI. (NOTE: PyPI publication is deferred)
+- Verify: tagged release lands on PyPI; `pip install datarefinery==1.0.0` from a clean venv 
 ---
 
 ## Phase G: CI/CD & Automation

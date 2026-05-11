@@ -54,6 +54,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     were composed into materializable recipes and verified against
     the same fixture.
   - Cross-linked from `README.md` and `docs/specs/concept.md`.
+- Plugin Authoring Guide at `docs/guides/plugin-authoring.md` (Story
+  F.c; doc-only, shares the F.a release):
+  - `Plugin` protocol reference: the six required attributes
+    (`name`, `supported_sections`, `supported_operations`,
+    `schema_version`, `operation_factory`, `is_stub`) with a table
+    keyed to each, plus the canonical 13-section list asserted by
+    the cross-plugin contract suite.
+  - `OperationSpec` and `ParameterSpec` walk-through: `parameters`,
+    `fit_on_train`, `applicable_splits`, `applicable_sections` — and
+    how each interacts with validator checks 5, 6, and 18.
+  - Operation-handle shape summary across stages (Filters callables;
+    Transformations / Featurizations `fit` + `apply` objects with
+    `FittedValues`; Visualizations `render`), each pointing at the
+    canonical `pipeline/stages/` Protocol and the
+    `image_classification` operation as the reference
+    implementation.
+  - Discovery and registration: the `datarefinery.plugins`
+    entry-point group for installed packages, and `--plugin-path`
+    for development; discovery rules (uniqueness, protocol
+    attributes, `datarefinery check` listing).
+  - Stub vs. real plugin semantics tied to the cross-plugin contract
+    test assertions.
+  - Hello-plugin walk-through: a minimal `hello` plugin declaring
+    one Featurization `echo` op, plus a minimal recipe targeting it.
+    Verified end-to-end via `datarefinery --plugin-path
+    hello_plugin.py check` (plugin listed `active`) and
+    `validate hello-recipe.yaml` (18/18 checks pass) against the
+    CIFAR-10-shaped fixture.
+  - References to `tabular` and `text` stubs as starting templates,
+    plus a versioning/stability note tied to FR-16's
+    pre-production-vs.-post-production rules.
+  - Cross-linked from `README.md`, `docs/guides/recipe-authoring.md`,
+    and `docs/specs/concept.md`.
 
 ## [0.5.7] - 2026-05-09
 

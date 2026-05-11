@@ -640,6 +640,6 @@ variants:
 - [`tech-spec.md`](../specs/tech-spec.md) covers the cache identity
   algorithm, the canonicalization rules, fitted-statistics layout,
   and the pipeline runner.
-- The plugin-authoring guide (forthcoming, Story F.c) covers writing
+- The [plugin authoring guide](plugin-authoring.md) covers writing
   your own plugin: declaring `OperationSpec`s, the `Plugin` protocol,
   and the entry-point registration.
