@@ -83,9 +83,10 @@ def test_clean_no_selector_is_noop(populated_cache: Path) -> None:
 def test_clean_by_recipe_hash_removes_only_that_recipe(populated_cache: Path) -> None:
     report = clean(populated_cache, CleanSelector(by_recipe_hash=_RECIPE_A))
     assert len(report.removed) == 3  # three instances under recipe_a
-    assert not (populated_cache / "instances" / _RECIPE_A).exists() or list(
-        (populated_cache / "instances" / _RECIPE_A).rglob("manifest.json")
-    ) == []
+    assert (
+        not (populated_cache / "instances" / _RECIPE_A).exists()
+        or list((populated_cache / "instances" / _RECIPE_A).rglob("manifest.json")) == []
+    )
     # recipe_b survives.
     assert (populated_cache / "instances" / _RECIPE_B / _INPUT_X / "0").is_dir()
 
@@ -164,18 +165,14 @@ def test_clean_orphans_does_not_touch_instances(populated_cache: Path) -> None:
         (_RECIPE_A, _INPUT_Y, 0),
         (_RECIPE_B, _INPUT_X, 0),
     ]:
-        assert (
-            populated_cache / "instances" / recipe / input_ / str(seed)
-        ).is_dir()
+        assert (populated_cache / "instances" / recipe / input_ / str(seed)).is_dir()
 
 
 def test_clean_orphans_combined_with_filters(populated_cache: Path) -> None:
     """orphans + by_recipe_hash both fire."""
     report = clean(
         populated_cache,
-        CleanSelector(
-            by_recipe_hash=_RECIPE_B, orphans=True, orphan_age_days=1.0
-        ),
+        CleanSelector(by_recipe_hash=_RECIPE_B, orphans=True, orphan_age_days=1.0),
     )
     removed_names = sorted(p.name for p in report.removed)
     # recipe_b/input_x/0 (named "0") + orphan_old.
@@ -184,9 +181,7 @@ def test_clean_orphans_combined_with_filters(populated_cache: Path) -> None:
 
 
 def test_clean_on_missing_cache_root_returns_empty_report(tmp_path: Path) -> None:
-    report = clean(
-        tmp_path / "no_cache_here", CleanSelector(by_recipe_hash=_RECIPE_A)
-    )
+    report = clean(tmp_path / "no_cache_here", CleanSelector(by_recipe_hash=_RECIPE_A))
     assert report.removed == ()
     assert report.skipped == ()
 

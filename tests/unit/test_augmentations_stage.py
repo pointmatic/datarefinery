@@ -140,9 +140,7 @@ def test_round_trip_through_manifest_preserves_information() -> None:
 
 
 def test_seed_none_round_trips_as_null() -> None:
-    op = AugmentationOp(
-        name="x", op="horizontal_flip", params={}, splits=["train"], seed=None
-    )
+    op = AugmentationOp(name="x", op="horizontal_flip", params={}, splits=["train"], seed=None)
     result = collect_augmentation_policies([op])
     parsed = json.loads(manifest_block(result))
     assert parsed[0]["seed"] is None
@@ -167,9 +165,7 @@ def test_non_train_split_raises_materialize_error() -> None:
 
 
 def test_test_split_only_raises() -> None:
-    op = AugmentationOp(
-        name="bad", op="horizontal_flip", params={}, splits=["test"], seed=1
-    )
+    op = AugmentationOp(name="bad", op="horizontal_flip", params={}, splits=["test"], seed=1)
     with pytest.raises(MaterializeError, match="non-train"):
         collect_augmentation_policies([op])
 
@@ -178,9 +174,7 @@ def test_empty_splits_does_not_raise() -> None:
     """An op with empty splits is allowed (no policy applies anywhere);
     validator check 4 would catch it for non-augmentation sections, but
     augmentations default to ["train"] in the model."""
-    op = AugmentationOp(
-        name="x", op="horizontal_flip", params={}, splits=[], seed=1
-    )
+    op = AugmentationOp(name="x", op="horizontal_flip", params={}, splits=[], seed=1)
     result = collect_augmentation_policies([op])
     assert result.policies[0].splits == ()
 
@@ -193,9 +187,7 @@ def test_empty_splits_does_not_raise() -> None:
 def test_augmentation_policy_is_frozen() -> None:
     from dataclasses import FrozenInstanceError
 
-    p = AugmentationPolicy(
-        name="x", op="y", params={}, splits=("train",), seed=None
-    )
+    p = AugmentationPolicy(name="x", op="y", params={}, splits=("train",), seed=None)
     with pytest.raises(FrozenInstanceError):
         p.name = "z"  # type: ignore[misc]
 

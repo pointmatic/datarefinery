@@ -46,6 +46,4 @@ def apply_variant(recipe: Recipe, variant_name: str | None) -> Recipe:
     try:
         return Recipe.model_validate(base)
     except ValidationError as exc:
-        raise RecipeError(
-            f"variant {variant_name!r} produced an invalid recipe: {exc}"
-        ) from exc
+        raise RecipeError(f"variant {variant_name!r} produced an invalid recipe: {exc}") from exc

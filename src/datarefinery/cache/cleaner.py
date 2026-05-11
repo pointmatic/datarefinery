@@ -86,9 +86,7 @@ def clean(
             prefix = selector.by_input_hash[:16]
             candidates = [p for p in candidates if p.parent.name == prefix]
         if selector.by_seed is not None:
-            candidates = [
-                p for p in candidates if p.name == str(selector.by_seed)
-            ]
+            candidates = [p for p in candidates if p.name == str(selector.by_seed)]
         if selector.by_age_days is not None:
             cutoff = time.time() - selector.by_age_days * 86400
             candidates = [p for p in candidates if p.stat().st_mtime < cutoff]

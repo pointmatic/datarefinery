@@ -54,8 +54,7 @@ def test_supported_sections_cover_recipe_section_set() -> None:
 def test_every_expected_operation_is_declared() -> None:
     declared = set(PLUGIN.supported_operations.keys())
     assert EXPECTED_OPERATIONS == declared, (
-        f"missing: {EXPECTED_OPERATIONS - declared}; "
-        f"unexpected: {declared - EXPECTED_OPERATIONS}"
+        f"missing: {EXPECTED_OPERATIONS - declared}; unexpected: {declared - EXPECTED_OPERATIONS}"
     )
 
 
@@ -72,9 +71,7 @@ def test_every_operation_has_a_valid_operation_spec(op_name: str) -> None:
 
 def test_fit_on_train_ops_are_in_transformations() -> None:
     fit_on_train_ops = {
-        name
-        for name, spec in PLUGIN.supported_operations.items()
-        if spec.fit_on_train
+        name for name, spec in PLUGIN.supported_operations.items() if spec.fit_on_train
     }
     for name in fit_on_train_ops:
         spec = PLUGIN.supported_operations[name]
@@ -134,9 +131,7 @@ def test_operation_factory_returns_filter_ops_after_C_f() -> None:
 
 def test_operation_factory_returns_generation_ops_after_C_g() -> None:
     """Story C.g wires duplicate_minority_class through the factory."""
-    assert callable(
-        PLUGIN.operation_factory("Generation", "duplicate_minority_class")
-    )
+    assert callable(PLUGIN.operation_factory("Generation", "duplicate_minority_class"))
 
 
 def test_operation_factory_returns_transformation_ops_after_C_h() -> None:

@@ -122,9 +122,7 @@ def _cosmetic_yaml_round_trip(draw: st.DrawFn) -> str:
     flow = draw(st.booleans())
     rng = random.Random(seed)
     permuted = _shuffle_keys(copy.deepcopy(BASELINE), rng)
-    text = yaml.safe_dump(
-        permuted, sort_keys=False, default_flow_style=flow, indent=indent
-    )
+    text = yaml.safe_dump(permuted, sort_keys=False, default_flow_style=flow, indent=indent)
     lines = text.splitlines()
     extra = draw(st.lists(_extra_line(), min_size=0, max_size=8))
     for kind in extra:
@@ -174,9 +172,7 @@ def _change_split_seed(d: dict[str, Any], v: int) -> dict[str, Any]:
     return out
 
 
-def _change_split_ratios(
-    d: dict[str, Any], pair: tuple[float, float]
-) -> dict[str, Any]:
+def _change_split_ratios(d: dict[str, Any], pair: tuple[float, float]) -> dict[str, Any]:
     a, b = pair
     out = copy.deepcopy(d)
     out["Splits"]["ratios"] = {
@@ -207,9 +203,7 @@ def _change_input_path(d: dict[str, Any], path: str) -> dict[str, Any]:
 
 def _add_filter(d: dict[str, Any], name: str) -> dict[str, Any]:
     out = copy.deepcopy(d)
-    out.setdefault("Filters", []).append(
-        {"name": name, "predicate": {"kind": "dedup"}}
-    )
+    out.setdefault("Filters", []).append({"name": name, "predicate": {"kind": "dedup"}})
     return out
 
 
@@ -272,13 +266,9 @@ def _semantic_edits() -> st.SearchStrategy[dict[str, Any]]:
         _safe_names.map(lambda n: _change_label_field(BASELINE, n)),
         _safe_names.map(lambda n: _change_input_path(BASELINE, f"/data/{n}")),
         _safe_names.map(lambda n: _add_filter(BASELINE, n)),
-        st.integers(min_value=1, max_value=10000).map(
-            lambda lo: _add_input_contract(BASELINE, lo)
-        ),
+        st.integers(min_value=1, max_value=10000).map(lambda lo: _add_input_contract(BASELINE, lo)),
         _safe_names.map(lambda n: _add_visualization(BASELINE, n)),
-        st.integers(min_value=1, max_value=100).map(
-            lambda n: _add_sample_data(BASELINE, n)
-        ),
+        st.integers(min_value=1, max_value=100).map(lambda n: _add_sample_data(BASELINE, n)),
         st.just(_toggle_label_from(BASELINE)),
     )
 

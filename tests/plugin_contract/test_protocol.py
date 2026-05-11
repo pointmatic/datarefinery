@@ -69,10 +69,7 @@ def test_supported_operations_have_valid_specs(plugin: Plugin) -> None:
         # Each operation must declare at least one recipe section it
         # applies to, and that section must be canonical.
         sections = set(spec.applicable_sections)
-        assert sections, (
-            f"plugin {plugin.name!r} op {op_name!r} declares no "
-            f"applicable_sections"
-        )
+        assert sections, f"plugin {plugin.name!r} op {op_name!r} declares no applicable_sections"
         invalid = sections - _CANONICAL_RECIPE_SECTIONS
         assert not invalid, (
             f"plugin {plugin.name!r} op {op_name!r} declares unknown "

@@ -55,9 +55,7 @@ def report(
 
     console = Console(no_color=no_color)
     rd = report_dir(instance.path)
-    console.print(
-        f"[green]Re-rendered[/green] report for {instance.path}"
-    )
+    console.print(f"[green]Re-rendered[/green] report for {instance.path}")
     console.print(f"  - {rd / REPORT_FILENAME}")
     console.print(f"  - {rd / DRIFT_FILENAME}")
     console.print(f"  - {rd / 'visualizations'}/ (reporting-mode PNGs)")

@@ -172,9 +172,7 @@ def test_split_partitions_are_invariant_across_worker_counts(
 
     partitions: list[dict[str, list[Record]]] = []
     for workers in (1, 2, 4):
-        pre = list(
-            run_parallel(seed=seed, fn=_identity, items=records, workers=workers)
-        )
+        pre = list(run_parallel(seed=seed, fn=_identity, items=records, workers=workers))
         result = apply_splits(pre, section, seed=seed)
         partitions.append(_normalize(result.splits))
 
@@ -194,7 +192,4 @@ def _normalize(splits: Any) -> dict[str, list[str]]:
     by run_parallel's reorder); list order is preserved so a partitioner
     that re-shuffled records would produce a detectable diff.
     """
-    return {
-        name: [r["record_id"] for r in recs]
-        for name, recs in splits.items()
-    }
+    return {name: [r["record_id"] for r in recs] for name, recs in splits.items()}

@@ -49,9 +49,7 @@ def _splits() -> dict[str, list[dict[str, Any]]]:
 
 
 def _viz(name: str, op: str, mode: str, **params: Any) -> VisualizationOp:
-    return VisualizationOp(
-        name=name, op=op, params=params, stage="post_pipeline", mode=mode
-    )
+    return VisualizationOp(name=name, op=op, params=params, stage="post_pipeline", mode=mode)
 
 
 def _is_png(data: bytes) -> bool:
@@ -76,7 +74,9 @@ def test_reporting_writes_png_per_op(tmp_path: Path) -> None:
     assert isinstance(result, VisualizationsResult)
     assert result.output_dir == out_dir
     assert {p.name for p in result.written_paths} == {
-        "hist.png", "grid.png", "means.png",
+        "hist.png",
+        "grid.png",
+        "means.png",
     }
     for path in result.written_paths:
         assert _is_png(path.read_bytes())
@@ -218,9 +218,7 @@ def test_class_distribution_with_no_records_renders_axes_only(
 def test_visualizations_require_label_field(tmp_path: Path) -> None:
     op = _viz("hist", "class_distribution_histogram", "reporting")
     with pytest.raises(MaterializeError, match=r"Labels\.field"):
-        apply_reporting_visualizations(
-            _splits(), [op], plugin=IMAGE_PLUGIN, output_dir=tmp_path
-        )
+        apply_reporting_visualizations(_splits(), [op], plugin=IMAGE_PLUGIN, output_dir=tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -317,9 +315,7 @@ def test_reporting_op_returning_non_bytes_raises_materialize_error(
 
 def test_render_visualization_returns_rendered_with_no_path() -> None:
     op = _viz("hist", "class_distribution_histogram", "exploration")
-    rendered = render_visualization(
-        _splits(), op, plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    rendered = render_visualization(_splits(), op, plugin=IMAGE_PLUGIN, label_field="label")
     assert isinstance(rendered, RenderedVisualization)
     assert rendered.path is None
     assert _is_png(rendered.png_bytes)
@@ -327,9 +323,7 @@ def test_render_visualization_returns_rendered_with_no_path() -> None:
 
 def test_exploration_does_not_write_to_disk(tmp_path: Path) -> None:
     op = _viz("hist", "class_distribution_histogram", "exploration")
-    render_visualization(
-        _splits(), op, plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    render_visualization(_splits(), op, plugin=IMAGE_PLUGIN, label_field="label")
     assert list(tmp_path.iterdir()) == []  # nothing persisted
 
 

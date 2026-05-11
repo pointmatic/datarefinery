@@ -178,9 +178,7 @@ def test_pipeline_is_byte_identical_across_worker_counts(
 
     # Same set of files in every instance directory.
     rels = [_relative_files(d) for d in instance_dirs]
-    assert rels[0] == rels[1] == rels[2], (
-        f"instance file lists differ across worker counts: {rels}"
-    )
+    assert rels[0] == rels[1] == rels[2], f"instance file lists differ across worker counts: {rels}"
 
     # Every file is byte-identical after normalizing the two
     # documented run-specific manifest fields (and their report.md
@@ -189,9 +187,7 @@ def test_pipeline_is_byte_identical_across_worker_counts(
         bytes_w1 = _normalized_bytes(instance_dirs[0], rel)
         bytes_w2 = _normalized_bytes(instance_dirs[1], rel)
         bytes_w4 = _normalized_bytes(instance_dirs[2], rel)
-        assert bytes_w1 == bytes_w2 == bytes_w4, (
-            f"byte mismatch at {rel} across worker counts"
-        )
+        assert bytes_w1 == bytes_w2 == bytes_w4, f"byte mismatch at {rel} across worker counts"
 
 
 @pytest.mark.slow

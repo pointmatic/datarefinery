@@ -76,8 +76,7 @@ def main(
         str | None,
         typer.Option(
             "--log-target",
-            help="Log routing target; reserved no-op stub "
-            "(env: DATAREFINERY_LOG_TARGET).",
+            help="Log routing target; reserved no-op stub (env: DATAREFINERY_LOG_TARGET).",
         ),
     ] = None,
     plugin_path: Annotated[
@@ -165,9 +164,7 @@ app.command(
 
 
 def _render_error(message: str, *, title: str) -> None:
-    Console(stderr=True).print(
-        Panel(message, title=title, border_style="red", expand=False)
-    )
+    Console(stderr=True).print(Panel(message, title=title, border_style="red", expand=False))
 
 
 def main_entry() -> None:

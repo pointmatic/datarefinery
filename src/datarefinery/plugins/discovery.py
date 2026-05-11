@@ -53,9 +53,7 @@ def discover_plugins(
             try:
                 module = _import_isolated_module(module_path)
             except Exception as exc:
-                raise PluginError(
-                    f"failed to import plugin from {module_path}: {exc}"
-                ) from exc
+                raise PluginError(f"failed to import plugin from {module_path}: {exc}") from exc
             plugin_obj = getattr(module, PLUGIN_MODULE_ATTR, None)
             if plugin_obj is None:
                 continue
@@ -86,9 +84,7 @@ def _import_isolated_module(path: Path) -> ModuleType:
 
 def _register(registry: dict[str, Plugin], plugin: object) -> None:
     if not _looks_like_plugin(plugin):
-        raise PluginError(
-            f"{type(plugin).__name__} does not satisfy the Plugin protocol"
-        )
+        raise PluginError(f"{type(plugin).__name__} does not satisfy the Plugin protocol")
     name = plugin.name  # type: ignore[attr-defined]
     if name in registry:
         raise PluginError(f"duplicate plugin name: {name!r}")

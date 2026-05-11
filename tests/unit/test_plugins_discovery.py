@@ -87,9 +87,7 @@ def test_extra_path_module_without_plugin_attr_is_ignored(
     extra = tmp_path / "extras"
     extra.mkdir()
     (extra / "not_a_plugin.py").write_text(
-        "# Copyright (c) 2026 Pointmatic\n"
-        "# SPDX-License-Identifier: Apache-2.0\n"
-        "VALUE = 42\n",
+        "# Copyright (c) 2026 Pointmatic\n# SPDX-License-Identifier: Apache-2.0\nVALUE = 42\n",
         encoding="utf-8",
     )
     # The fixture dummy plugin is still discovered; the attr-less module

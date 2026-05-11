@@ -52,17 +52,14 @@ def load_raw_records(
     """
     if plugin.name == "image_classification":
         attach_label = recipe.Labels.source.kind == "direct"
-        return _load_image_classification(
-            recipe.Input.sources, attach_label=attach_label
-        )
+        return _load_image_classification(recipe.Input.sources, attach_label=attach_label)
     if plugin.name in {"tabular", "text"}:
         raise PluginError(
             f"materialize: input loading for plugin {plugin.name!r} is not "
             f"available in v1; the {plugin.name} plugin is a stub."
         )
     raise PluginError(
-        f"materialize: no disk-backed input loader registered for "
-        f"plugin {plugin.name!r}"
+        f"materialize: no disk-backed input loader registered for plugin {plugin.name!r}"
     )
 
 
@@ -84,12 +81,9 @@ def _load_image_classification(
         root = Path(src.path)
         if not root.is_dir():
             raise RecipeError(
-                f"image_classification loader: source {src.name!r} path "
-                f"{root!s} is not a directory"
+                f"image_classification loader: source {src.name!r} path {root!s} is not a directory"
             )
-        per_source = _load_one_image_folder(
-            src.name, root, seen_ids, attach_label=attach_label
-        )
+        per_source = _load_one_image_folder(src.name, root, seen_ids, attach_label=attach_label)
         records.extend(per_source)
         hashes[src.name] = _hash_image_folder(root)
 
@@ -178,15 +172,11 @@ def reload_dataset(
     pipeline.
     """
     if plugin.name != "image_classification":
-        raise PluginError(
-            f"reload_dataset: not implemented for plugin {plugin.name!r}"
-        )
+        raise PluginError(f"reload_dataset: not implemented for plugin {plugin.name!r}")
 
     root = dataset_dir(instance_dir)
     if not root.is_dir():
-        raise RecipeError(
-            f"reload_dataset: no dataset directory at {root}"
-        )
+        raise RecipeError(f"reload_dataset: no dataset directory at {root}")
 
     splits: dict[str, list[Record]] = {}
     for split_path in sorted(root.glob("*.jsonl")):
@@ -216,10 +206,6 @@ def hash_inputs(recipe: Recipe, plugin: Plugin) -> Mapping[str, str]:
     """
     if plugin.name != "image_classification":
         raise PluginError(
-            f"hash_inputs: no disk-backed loader registered for "
-            f"plugin {plugin.name!r}"
+            f"hash_inputs: no disk-backed loader registered for plugin {plugin.name!r}"
         )
-    return {
-        src.name: _hash_image_folder(Path(src.path))
-        for src in recipe.Input.sources
-    }
+    return {src.name: _hash_image_folder(Path(src.path)) for src in recipe.Input.sources}

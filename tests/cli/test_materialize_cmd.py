@@ -83,9 +83,7 @@ def test_materialize_end_to_end(tmp_path: Path) -> None:
     recipe = _write_recipe(tmp_path, images)
     cache = tmp_path / "cache"
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert result.exit_code == 0, result.stdout
 
     # The summary calls out the cache miss and the instance path.
@@ -122,15 +120,11 @@ def test_materialize_rerun_hits_cache(tmp_path: Path) -> None:
     recipe = _write_recipe(tmp_path, images)
     cache = tmp_path / "cache"
 
-    first = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    first = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert first.exit_code == 0, first.stdout
     assert "miss" in first.stdout
 
-    second = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    second = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert second.exit_code == 0, second.stdout
     assert "hit" in second.stdout
     # Cache hits do not run any pipeline stage; the manifest's

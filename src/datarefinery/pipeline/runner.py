@@ -189,13 +189,9 @@ class PipelineRunner:
 
         try:
             _emit("InputContracts")
-            ic = evaluate_input_contracts(
-                raw_records, self.recipe.InputContracts
-            )
+            ic = evaluate_input_contracts(raw_records, self.recipe.InputContracts)
             ic.raise_for_status()
-            warnings.extend(
-                _wrap(current_stage, (w.message for w in ic.warnings))
-            )
+            warnings.extend(_wrap(current_stage, (w.message for w in ic.warnings)))
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -311,16 +307,10 @@ class PipelineRunner:
                 )
 
             _emit("OutputExpectations")
-            all_records = [
-                r for split in split_map.values() for r in split
-            ]
-            oe = evaluate_output_expectations(
-                all_records, self.recipe.OutputExpectations
-            )
+            all_records = [r for split in split_map.values() for r in split]
+            oe = evaluate_output_expectations(all_records, self.recipe.OutputExpectations)
             oe.raise_for_status()
-            warnings.extend(
-                _wrap(current_stage, (w.message for w in oe.warnings))
-            )
+            warnings.extend(_wrap(current_stage, (w.message for w in oe.warnings)))
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -360,9 +350,7 @@ class PipelineRunner:
                 variant=self.variant,
                 created_at=datetime.now(UTC),
                 elapsed_seconds=elapsed,
-                record_counts={
-                    name: len(records) for name, records in split_map.items()
-                },
+                record_counts={name: len(records) for name, records in split_map.items()},
                 warnings=warnings,
             )
             write_manifest(manifest_path(temp_dir), manifest)
@@ -371,9 +359,7 @@ class PipelineRunner:
             report_root = report_dir(temp_dir)
             write_report(
                 report_root / REPORT_FILENAME,
-                render_report_md(
-                    self.recipe, manifest, fitted_op_ids=fitted_op_ids
-                ),
+                render_report_md(self.recipe, manifest, fitted_op_ids=fitted_op_ids),
             )
             drift = compute_drift_placeholder(
                 split_map,
@@ -387,9 +373,7 @@ class PipelineRunner:
             mark_failed(temp_dir, exc, current_stage)
             raise
 
-        return RunnerResult(
-            instance_dir=final_dir, cache_hit=False, manifest=manifest
-        )
+        return RunnerResult(instance_dir=final_dir, cache_hit=False, manifest=manifest)
 
     def _partial_finish(
         self,
@@ -408,11 +392,7 @@ class PipelineRunner:
         surface the partial status.
         """
         elapsed = time.monotonic() - start
-        record_counts = (
-            {name: len(rs) for name, rs in split_map.items()}
-            if split_map
-            else {}
-        )
+        record_counts = {name: len(rs) for name, rs in split_map.items()} if split_map else {}
         manifest = Manifest(
             datarefinery_version=__version__,
             plugin=self.plugin.name,
@@ -432,9 +412,7 @@ class PipelineRunner:
         # write the recipe so `Instance.load` can reconstruct it; the
         # full report/dataset/visualizations are intentionally skipped
         # because the run did not reach those stages.
-        recipe_path(temp_dir).write_text(
-            self.recipe.model_dump_json(indent=2), encoding="utf-8"
-        )
+        recipe_path(temp_dir).write_text(self.recipe.model_dump_json(indent=2), encoding="utf-8")
         write_manifest(manifest_path(temp_dir), manifest)
         return RunnerResult(
             instance_dir=temp_dir,
@@ -459,9 +437,7 @@ def _read_manifest(final_dir: Path) -> Manifest:
     return read_manifest(manifest_path(final_dir))
 
 
-def _write_dataset(
-    dataset_root: Path, splits: Mapping[str, list[Record]]
-) -> None:
+def _write_dataset(dataset_root: Path, splits: Mapping[str, list[Record]]) -> None:
     """Write per-split JSON-lines summaries.
 
     Each line is one record with non-JSON-native fields (numpy arrays,

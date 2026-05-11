@@ -220,9 +220,7 @@ class DataRefinery:
         instance.render_report(plugin=self._plugin)
         return instance
 
-    def clean(
-        self, selector: CleanSelector, *, force: bool = False
-    ) -> CleanReport:
+    def clean(self, selector: CleanSelector, *, force: bool = False) -> CleanReport:
         """Remove cache entries matching ``selector`` (FR-21)."""
         return clean(self._config.cache_root, selector, force=force)
 
@@ -308,7 +306,6 @@ def _discover_plugin(name: str, extra_paths: tuple[Path, ...]) -> Plugin:
     plugins = discover_plugins(extra_paths=extra_paths or None)
     if name not in plugins:
         raise PluginError(
-            f"recipe references plugin {name!r} but discovery only "
-            f"found {sorted(plugins)!r}"
+            f"recipe references plugin {name!r} but discovery only found {sorted(plugins)!r}"
         )
     return plugins[name]

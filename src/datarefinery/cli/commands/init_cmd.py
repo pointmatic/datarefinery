@@ -72,12 +72,9 @@ def init(
     )
 
     console = Console(no_color=ctx.obj.get("no_color", False) if ctx.obj else False)
+    console.print(f"[green]Scaffolded[/green] {plugin} recipe → {output_path}")
     console.print(
-        f"[green]Scaffolded[/green] {plugin} recipe → {output_path}"
-    )
-    console.print(
-        "Next: review the recipe, then run "
-        f"[bold]datarefinery validate {output_path}[/bold]."
+        f"Next: review the recipe, then run [bold]datarefinery validate {output_path}[/bold]."
     )
 
     raise typer.Exit(code=EXIT_OK)

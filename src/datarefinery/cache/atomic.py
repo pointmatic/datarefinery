@@ -78,12 +78,8 @@ def mark_failed(temp_dir: Path, exc: BaseException, stage: str) -> None:
         "stage": stage,
         "exc_type": type(exc).__name__,
         "message": str(exc),
-        "traceback": "".join(
-            traceback.format_exception(type(exc), exc, exc.__traceback__)
-        ),
-        "marked_at": (
-            datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        ),
+        "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        "marked_at": (datetime.now(UTC).isoformat().replace("+00:00", "Z")),
     }
 
     marker = temp_dir / FAILED_MARKER

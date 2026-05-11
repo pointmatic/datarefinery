@@ -53,13 +53,9 @@ def status(
     if target.is_dir():
         _render_instance_path(console, target)
     elif target.is_file():
-        _render_recipe_path(
-            console, target, config=config, variant=variant, seed=seed
-        )
+        _render_recipe_path(console, target, config=config, variant=variant, seed=seed)
     else:
-        raise MaterializeError(
-            f"status: {target!s} is neither a directory nor a regular file"
-        )
+        raise MaterializeError(f"status: {target!s} is neither a directory nor a regular file")
 
     raise typer.Exit(code=EXIT_OK)
 
@@ -111,11 +107,7 @@ def _render_recipe_path(
     table = Table(title="Status", show_header=False, expand=False)
     table.add_column("key", style="bold cyan")
     table.add_column("value")
-    label = (
-        "[yellow]miss[/yellow]"
-        if report.cache_status == "miss"
-        else "[red]corrupt[/red]"
-    )
+    label = "[yellow]miss[/yellow]" if report.cache_status == "miss" else "[red]corrupt[/red]"
     table.add_row("Cache", label)
     table.add_row("Instance (expected)", str(report.instance_path))
     table.add_row("Recipe hash", report.cache_key.recipe_hash)
@@ -126,9 +118,7 @@ def _render_recipe_path(
     console.print(table)
 
 
-def _summary_table(
-    *, cache_label: str, instance_path: Path, manifest: Manifest
-) -> Table:
+def _summary_table(*, cache_label: str, instance_path: Path, manifest: Manifest) -> Table:
     table = Table(title="Status", show_header=False, expand=False)
     table.add_column("key", style="bold cyan")
     table.add_column("value")

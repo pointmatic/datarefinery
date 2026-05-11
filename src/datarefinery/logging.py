@@ -54,11 +54,7 @@ class JsonFormatter(logging.Formatter):
     """Format each `LogRecord` as a single-line JSON object."""
 
     def format(self, record: logging.LogRecord) -> str:
-        ts = (
-            datetime.fromtimestamp(record.created, UTC)
-            .isoformat()
-            .replace("+00:00", "Z")
-        )
+        ts = datetime.fromtimestamp(record.created, UTC).isoformat().replace("+00:00", "Z")
         payload: dict[str, Any] = {
             "ts": ts,
             "level": record.levelname,
@@ -105,8 +101,6 @@ def get_logger(name: str) -> logging.Logger:
     if package_logger.level == logging.NOTSET:
         package_logger.setLevel(logging.INFO)
     qualified = (
-        name
-        if name == _PACKAGE or name.startswith(f"{_PACKAGE}.")
-        else f"{_PACKAGE}.{name}"
+        name if name == _PACKAGE or name.startswith(f"{_PACKAGE}.") else f"{_PACKAGE}.{name}"
     )
     return logging.getLogger(qualified)

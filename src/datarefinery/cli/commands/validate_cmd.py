@@ -55,16 +55,12 @@ def validate(
     raise typer.Exit(code=EXIT_OK if report.passed else EXIT_USER)
 
 
-def _render(
-    console: Console, recipe_path: Path, report: ValidationReport
-) -> None:
+def _render(console: Console, recipe_path: Path, report: ValidationReport) -> None:
     console.print(_results_table(recipe_path, report.results))
     console.print(_summary_line(report))
 
 
-def _results_table(
-    recipe_path: Path, results: tuple[CheckResult, ...]
-) -> Table:
+def _results_table(recipe_path: Path, results: tuple[CheckResult, ...]) -> Table:
     table = Table(
         title=f"FR-2 validation — {recipe_path}",
         expand=False,
@@ -92,11 +88,5 @@ def _summary_line(report: ValidationReport) -> str:
     if report.passed and warnings == 0:
         return f"[green]{total}/{total} checks passed.[/green]"
     if report.passed:
-        return (
-            f"[yellow]{total - warnings}/{total} checks passed; "
-            f"{warnings} warning(s).[/yellow]"
-        )
-    return (
-        f"[red]{failures} check(s) failed[/red] "
-        f"({warnings} warning(s); {total} total)."
-    )
+        return f"[yellow]{total - warnings}/{total} checks passed; {warnings} warning(s).[/yellow]"
+    return f"[red]{failures} check(s) failed[/red] ({warnings} warning(s); {total} total)."

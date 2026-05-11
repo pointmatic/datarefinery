@@ -102,11 +102,7 @@ def _base_recipe_dict() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "plugin": "image_classification",
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": "/data/train"}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [4, 4, 3]},
@@ -326,13 +322,10 @@ def test_stage_failure_leaves_failed_marker_and_skips_promote(
     # Temp dir survives with a FAILED marker naming the stage.
     assert temp.exists(), f"temp dir was removed; {stage_name=}"
     failed_path = temp / "FAILED"
-    assert failed_path.exists(), (
-        f"FAILED marker missing at {failed_path}; {stage_name=}"
-    )
+    assert failed_path.exists(), f"FAILED marker missing at {failed_path}; {stage_name=}"
     payload_marker = json.loads(failed_path.read_text(encoding="utf-8"))
     assert payload_marker["stage"] == stage_name, (
-        f"FAILED marker stage={payload_marker['stage']!r}; "
-        f"expected {stage_name!r}"
+        f"FAILED marker stage={payload_marker['stage']!r}; expected {stage_name!r}"
     )
 
     # Final cache path was never touched by the failed run.

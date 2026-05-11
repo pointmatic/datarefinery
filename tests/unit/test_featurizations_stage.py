@@ -211,9 +211,7 @@ def test_featurization_is_deterministic(tmp_path: Path) -> None:
     b = apply_featurizations(
         splits2, [op], plugin=IMAGE_PLUGIN, fitted_stats=FittedStatistics(tmp_path / "b")
     )
-    assert [r["label"] for r in a.splits["train"]] == [
-        r["label"] for r in b.splits["train"]
-    ]
+    assert [r["label"] for r in a.splits["train"]] == [r["label"] for r in b.splits["train"]]
 
 
 def test_apply_to_multiple_splits_uses_same_op(tmp_path: Path) -> None:
@@ -376,16 +374,17 @@ def test_fit_on_train_featurizer_persists_and_applies_across_splits(
     }
     fs = FittedStatistics(tmp_path)
     result = apply_featurizations(
-        splits, [op], plugin=_FeatPlugin(), fitted_stats=fs  # type: ignore[arg-type]
+        splits,
+        [op],
+        plugin=_FeatPlugin(),
+        fitted_stats=fs,  # type: ignore[arg-type]
     )
     assert "mf" in result.fitted_op_ids
     # Every record - train and val - sees the train-fitted mean.
     assert all(r["x_mean"] == 20.0 for r in result.splits["train"])
     assert all(r["x_mean"] == 20.0 for r in result.splits["val"])
     # Persisted to fitted_statistics.
-    assert (
-        fs.get_vector("mf", "mean").column("value").to_pylist()[0] == 20.0
-    )
+    assert fs.get_vector("mf", "mean").column("value").to_pylist()[0] == 20.0
 
 
 def test_fit_on_train_without_fit_source_raises(tmp_path: Path) -> None:
@@ -464,7 +463,5 @@ def test_input_split_lists_are_not_mutated(tmp_path: Path) -> None:
     )
     train = [_path_record("/x/c0/y.jpg")]
     splits = {"train": train}
-    apply_featurizations(
-        splits, [op], plugin=IMAGE_PLUGIN, fitted_stats=FittedStatistics(tmp_path)
-    )
+    apply_featurizations(splits, [op], plugin=IMAGE_PLUGIN, fitted_stats=FittedStatistics(tmp_path))
     assert "label" not in train[0]  # original record unchanged

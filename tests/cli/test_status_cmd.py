@@ -39,11 +39,7 @@ def _write_recipe(tmp_path: Path, image_root: Path) -> Path:
         "schema_version": 1,
         "plugin": "image_classification",
         "seed": 7,
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": str(image_root)}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": str(image_root)}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [8, 8, 3]},
@@ -64,9 +60,7 @@ def _write_recipe(tmp_path: Path, image_root: Path) -> Path:
 
 
 def _materialize(cache: Path, recipe: Path) -> None:
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert result.exit_code == 0, result.stdout
 
 
@@ -76,9 +70,7 @@ def test_status_with_recipe_path_reports_hit(tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     _materialize(cache, recipe)
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "status", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "status", str(recipe)])
     assert result.exit_code == 0, result.stdout
     assert "hit" in result.stdout
     assert "image_classification" in result.stdout
@@ -92,9 +84,7 @@ def test_status_with_recipe_path_reports_miss_when_not_materialized(
     recipe = _write_recipe(tmp_path, images)
     cache = tmp_path / "cache"
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "status", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "status", str(recipe)])
     # Cache miss is not an error.
     assert result.exit_code == 0, result.stdout
     assert "miss" in result.stdout
@@ -121,9 +111,7 @@ def test_status_with_instance_path(tmp_path: Path) -> None:
     assert len(instances) == 1
     inst = instances[0]
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "status", str(inst)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "status", str(inst)])
     assert result.exit_code == 0, result.stdout
     assert "hit" in result.stdout
     # Manifest fields render in the table.
@@ -152,9 +140,7 @@ def test_status_corrupt_instance_reports_corrupt(tmp_path: Path) -> None:
     inst = instances[0]
     manifest_path(inst).unlink()
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "status", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "status", str(recipe)])
     assert result.exit_code == 0, result.stdout
     assert "corrupt" in result.stdout
     # The note suggests `datarefinery clean`; rich may wrap the long

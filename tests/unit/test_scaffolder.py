@@ -96,8 +96,7 @@ def test_scaffolded_recipe_includes_label_from_path_featurization(
     scaffold_image_classification(input_path, out)
     recipe = load(out)
     assert any(
-        f.op == "label_from_path" and f.output_field == "label"
-        for f in recipe.Featurizations
+        f.op == "label_from_path" and f.output_field == "label" for f in recipe.Featurizations
     )
 
 
@@ -200,9 +199,7 @@ def test_enhance_without_lmentry_raises_plugin_error(
     monkeypatch.setitem(sys.modules, "lmentry", None)
     input_path = _build_image_folder(tmp_path / "data")
     with pytest.raises(PluginError, match=r"\[llm\]"):
-        scaffold_image_classification(
-            input_path, tmp_path / "recipe.yaml", enhance=True
-        )
+        scaffold_image_classification(input_path, tmp_path / "recipe.yaml", enhance=True)
 
 
 def test_enhance_offline_emits_skipped_note(
@@ -260,9 +257,7 @@ def test_deterministic_path_does_not_import_lmentry(
 # ---------------------------------------------------------------------------
 
 
-def _records_for_scaffolded_paths(
-    input_path: Path, *, image_size: int = 8
-) -> list[dict[str, Any]]:
+def _records_for_scaffolded_paths(input_path: Path, *, image_size: int = 8) -> list[dict[str, Any]]:
     """Synthesize records matching the on-disk layout the scaffolder
     inspected. Image bytes are loaded; the runner itself doesn't yet
     do disk loading (deferred from C.m), so we hand the loaded records
@@ -310,9 +305,7 @@ def test_scaffolded_recipe_materializes_through_runner(tmp_path: Path) -> None:
     recipe = load(recipe_path)
     records = _records_for_scaffolded_paths(input_path)
     payload = ";".join(sorted(r["record_id"] for r in records))
-    input_hashes: Mapping[str, str] = {
-        "train": hashlib.sha256(payload.encode()).hexdigest()
-    }
+    input_hashes: Mapping[str, str] = {"train": hashlib.sha256(payload.encode()).hexdigest()}
 
     cache_root = tmp_path / "cache"
     runner = PipelineRunner(
@@ -322,18 +315,12 @@ def test_scaffolded_recipe_materializes_through_runner(tmp_path: Path) -> None:
         seed=recipe.seed,
     )
     temp = tmp_dir_for(cache_root, "run-1")
-    result = runner.run(
-        temp, raw_records=records, raw_input_hashes=input_hashes
-    )
+    result = runner.run(temp, raw_records=records, raw_input_hashes=input_hashes)
     assert result.cache_hit is False
     assert manifest_path(result.instance_dir).exists()
     # Reporting visualizations from the scaffolded recipe rendered.
-    assert (
-        report_dir(result.instance_dir) / "visualizations" / "class_distribution.png"
-    ).exists()
-    assert (
-        report_dir(result.instance_dir) / "visualizations" / "samples.png"
-    ).exists()
+    assert (report_dir(result.instance_dir) / "visualizations" / "class_distribution.png").exists()
+    assert (report_dir(result.instance_dir) / "visualizations" / "samples.png").exists()
     # Each record acquired a derived label.
     counts = result.manifest.record_counts
     assert sum(counts.values()) == len(records)

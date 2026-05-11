@@ -92,9 +92,7 @@ def apply_reporting_visualizations(
         if op.mode != "reporting":
             continue
         try:
-            handle: VisualizationOpHandle = plugin.operation_factory(
-                "Visualizations", op.op
-            )
+            handle: VisualizationOpHandle = plugin.operation_factory("Visualizations", op.op)
             png = handle.render(splits, op.params, label_field=label_field)
         except Exception as exc:
             raise MaterializeError(
@@ -103,17 +101,12 @@ def apply_reporting_visualizations(
             ) from exc
         if not isinstance(png, (bytes, bytearray)):
             raise MaterializeError(
-                f"Visualizations[{op.name!r}] returned "
-                f"{type(png).__name__}; PNG bytes required"
+                f"Visualizations[{op.name!r}] returned {type(png).__name__}; PNG bytes required"
             )
         path = output_dir / f"{op.name}.png"
         path.write_bytes(bytes(png))
         rendered.append(
-            RenderedVisualization(
-                name=op.name, op=op.op, png_bytes=bytes(png), path=path
-            )
+            RenderedVisualization(name=op.name, op=op.op, png_bytes=bytes(png), path=path)
         )
 
-    return VisualizationsResult(
-        rendered=tuple(rendered), output_dir=output_dir
-    )
+    return VisualizationsResult(rendered=tuple(rendered), output_dir=output_dir)

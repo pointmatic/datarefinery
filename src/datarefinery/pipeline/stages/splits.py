@@ -75,9 +75,7 @@ def apply_splits(
     if section.ratios:
         return _apply_ratios(materialized, section, seed)
     # Validator check 8 prevents this combination; defensive only.
-    raise MaterializeError(
-        "SplitsSection has neither ratios nor key_assignment"
-    )
+    raise MaterializeError("SplitsSection has neither ratios nor key_assignment")
 
 
 # ---------------------------------------------------------------------------
@@ -92,9 +90,7 @@ def _apply_key_assignment(
 ) -> SplitResult:
     ka = section.key_assignment
     assert ka is not None  # narrowed by caller
-    splits: dict[str, list[Record]] = {
-        target: [] for target in set(ka.mapping.values())
-    }
+    splits: dict[str, list[Record]] = {target: [] for target in set(ka.mapping.values())}
     unmapped: list[tuple[int, Any]] = []
     for i, r in enumerate(records):
         key = r.get(ka.field)
@@ -139,9 +135,7 @@ def _apply_ratios(
     rng = np.random.default_rng(seed)
 
     if section.stratify_by is not None:
-        return _stratified_ratios(
-            records, section, seed, rng, split_names, weights
-        )
+        return _stratified_ratios(records, section, seed, rng, split_names, weights)
 
     n = len(records)
     indices = rng.permutation(n)
@@ -182,9 +176,7 @@ def _stratified_ratios(
     n_positive_splits = int(sum(1 for w in weights if w > 0))
 
     # Stable iteration order over classes for cross-run determinism.
-    sorted_classes = sorted(
-        by_class.keys(), key=lambda x: (type(x).__name__, repr(x))
-    )
+    sorted_classes = sorted(by_class.keys(), key=lambda x: (type(x).__name__, repr(x)))
     for cls in sorted_classes:
         cls_indices = by_class[cls]
         cls_n = len(cls_indices)

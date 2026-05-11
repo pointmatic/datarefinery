@@ -41,11 +41,7 @@ def _write_recipe(tmp_path: Path, image_root: Path) -> Path:
         "schema_version": 1,
         "plugin": "image_classification",
         "seed": 7,
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": str(image_root)}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": str(image_root)}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [8, 8, 3]},
@@ -78,9 +74,7 @@ def _materialize(tmp_path: Path) -> tuple[Path, Path, Path]:
     images = _build_image_folder(tmp_path / "data")
     recipe = _write_recipe(tmp_path, images)
     cache = tmp_path / "cache"
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert result.exit_code == 0, result.stdout
 
     instance_root = cache / "instances"
@@ -99,9 +93,7 @@ def _materialize(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 def test_inspect_lists_exploration_views_and_peek(tmp_path: Path) -> None:
     cache, _, inst = _materialize(tmp_path)
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "inspect", str(inst)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "inspect", str(inst)])
     assert result.exit_code == 0, result.stdout
     assert "explore_dist" in result.stdout
     assert "Records per split" in result.stdout
@@ -173,14 +165,10 @@ def test_inspect_refuses_partial_instance(tmp_path: Path) -> None:
     from datarefinery.pipeline.manifest import read_manifest
 
     m = read_manifest(manifest_path(inst))
-    partial = Manifest(
-        **{**m.model_dump(), "is_partial": True, "completed_through": "Splits"}
-    )
+    partial = Manifest(**{**m.model_dump(), "is_partial": True, "completed_through": "Splits"})
     write_manifest(manifest_path(inst), partial)
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "inspect", str(inst)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "inspect", str(inst)])
     assert result.exit_code != 0
     assert isinstance(result.exception, MaterializeError)
     assert "partial" in str(result.exception).lower()
@@ -188,9 +176,7 @@ def test_inspect_refuses_partial_instance(tmp_path: Path) -> None:
 
 def test_inspect_recipe_path_resolves_instance(tmp_path: Path) -> None:
     cache, recipe, _inst = _materialize(tmp_path)
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "inspect", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "inspect", str(recipe)])
     assert result.exit_code == 0, result.stdout
     # Same exploration views surface regardless of how we reach the instance.
     assert "explore_dist" in result.stdout
@@ -200,9 +186,7 @@ def test_inspect_recipe_path_cache_miss_errors(tmp_path: Path) -> None:
     images = _build_image_folder(tmp_path / "data")
     recipe = _write_recipe(tmp_path, images)
     cache = tmp_path / "cache"  # not materialized
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "inspect", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "inspect", str(recipe)])
     assert result.exit_code != 0
     assert isinstance(result.exception, MaterializeError)
 

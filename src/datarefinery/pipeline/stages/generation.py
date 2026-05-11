@@ -73,20 +73,15 @@ def apply_generation(
                 # declared split; if we somehow got here without that
                 # check, fail loudly rather than silently.
                 raise MaterializeError(
-                    f"Generation[{op.name!r}].applies_at references "
-                    f"undeclared split {split_name!r}"
+                    f"Generation[{op.name!r}].applies_at references undeclared split {split_name!r}"
                 )
             if split_name not in {"train"}:
                 warnings.append(
                     f"Generation[{op.name!r}] runs on non-train split "
                     f"{split_name!r}; atypical (FR-9 edge case)"
                 )
-            new_records = _invoke_one(
-                op, out[split_name], plugin, label_field
-            )
-            _validate_against_output_schema(
-                op.name, split_name, new_records, output_fields
-            )
+            new_records = _invoke_one(op, out[split_name], plugin, label_field)
+            _validate_against_output_schema(op.name, split_name, new_records, output_fields)
             out[split_name].extend(new_records)
 
     counts_after = {name: len(recs) for name, recs in out.items()}
@@ -109,9 +104,7 @@ def _invoke_one(
     plugin: Plugin,
     label_field: str | None,
 ) -> list[Record]:
-    callable_: GenerationCallable = plugin.operation_factory(
-        "Generation", op.name
-    )
+    callable_: GenerationCallable = plugin.operation_factory("Generation", op.name)
     return callable_(
         records,
         seed=op.seed,

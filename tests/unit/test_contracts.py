@@ -24,10 +24,7 @@ from datarefinery.recipe.models import Contract, Expectation
 
 
 def _records(n: int = 3, **overrides: Any) -> list[dict[str, Any]]:
-    base = [
-        {"id": i, "value": float(i) / n, "label": f"c{i % 2}"}
-        for i in range(n)
-    ]
+    base = [{"id": i, "value": float(i) / n, "label": f"c{i % 2}"} for i in range(n)]
     for k, v in overrides.items():
         for r in base:
             r[k] = v
@@ -387,9 +384,7 @@ def test_output_expectations_failure_raises_via_status() -> None:
 def test_assertion_result_is_frozen() -> None:
     from dataclasses import FrozenInstanceError
 
-    r = AssertionResult(
-        kind="dtype", field="x", passed=True, severity="error", message="ok"
-    )
+    r = AssertionResult(kind="dtype", field="x", passed=True, severity="error", message="ok")
     with pytest.raises(FrozenInstanceError):
         r.passed = False  # type: ignore[misc]
 

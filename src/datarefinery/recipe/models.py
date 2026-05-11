@@ -83,9 +83,7 @@ class Expectation(_Frozen):
 class FilterOp(_Frozen):
     name: str
     predicate: dict[str, Any]
-    stages: list[Literal["pre_split", "post_split"]] = Field(
-        default_factory=_default_filter_stages
-    )
+    stages: list[Literal["pre_split", "post_split"]] = Field(default_factory=_default_filter_stages)
     splits: list[str] = Field(default_factory=list)
     seed: int | None = None
 

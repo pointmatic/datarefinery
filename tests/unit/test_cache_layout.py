@@ -28,9 +28,7 @@ def test_instances_root() -> None:
 def test_instance_dir_uses_short_hashes_and_seed() -> None:
     key = CacheKey(recipe_hash="a" * 64, input_hash="b" * 64, seed=42)
     path = instance_dir(Path("/cache"), key)
-    assert path == Path(
-        "/cache/instances/aaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbb/42"
-    )
+    assert path == Path("/cache/instances/aaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbb/42")
 
 
 def test_instance_dir_truncates_to_16_chars() -> None:
@@ -40,16 +38,12 @@ def test_instance_dir_truncates_to_16_chars() -> None:
         seed=0,
     )
     path = instance_dir(Path("/c"), key)
-    assert path == Path(
-        "/c/instances/0123456789abcdef/fedcba9876543210/0"
-    )
+    assert path == Path("/c/instances/0123456789abcdef/fedcba9876543210/0")
 
 
 def test_tmp_dir_lives_under_instances_dot_tmp() -> None:
     path = tmp_dir(Path("/cache"), "20260507T143022Z-deadbeef")
-    assert path == Path(
-        "/cache/instances/.tmp/20260507T143022Z-deadbeef"
-    )
+    assert path == Path("/cache/instances/.tmp/20260507T143022Z-deadbeef")
 
 
 def test_manifest_path_is_inside_instance_dir() -> None:

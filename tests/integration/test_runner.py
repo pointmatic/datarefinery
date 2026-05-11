@@ -125,13 +125,9 @@ def test_runner_writes_report_md_and_drift_json(tmp_path: Path) -> None:
         ],
     )
     records = _records(12)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp = tmp_dir_for(cache_root, "run-1")
-    result = runner.run(
-        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     rd = report_dir(result.instance_dir)
     assert (rd / "report.md").exists()
     md = (rd / "report.md").read_text()
@@ -160,13 +156,9 @@ def test_runner_materializes_complete_instance(tmp_path: Path) -> None:
         ]
     )
     records = _records(12)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp = tmp_dir_for(cache_root, "run-1")
-    result = runner.run(
-        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     assert result.cache_hit is False
     inst = result.instance_dir
     assert manifest_path(inst).exists()
@@ -180,13 +172,9 @@ def test_runner_writes_well_formed_manifest(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     recipe = _recipe()
     records = _records(10)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp = tmp_dir_for(cache_root, "run-1")
-    result = runner.run(
-        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     m = read_manifest(manifest_path(result.instance_dir))
     assert m.plugin == "image_classification"
     assert m.seed == 7
@@ -214,13 +202,9 @@ def test_runner_persists_fitted_stats_for_normalize(tmp_path: Path) -> None:
         ]
     )
     records = _records(12)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp = tmp_dir_for(cache_root, "run-1")
-    result = runner.run(
-        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     stats = fitted_stats_dir(result.instance_dir)
     assert (stats / "norm" / "mean.parquet").exists()
     assert (stats / "norm" / "std.parquet").exists()
@@ -230,13 +214,9 @@ def test_runner_temp_dir_is_cleaned_after_promote(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     recipe = _recipe()
     records = _records(8)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp = tmp_dir_for(cache_root, "run-1")
-    runner.run(
-        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     assert not temp.exists()  # promoted away
 
 
@@ -244,13 +224,9 @@ def test_instance_dir_matches_cache_identity(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     recipe = _recipe()
     records = _records(8)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp = tmp_dir_for(cache_root, "run-1")
-    result = runner.run(
-        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     expected_key = compute_cache_key(recipe, _input_hashes(records), 7)
     expected = instance_dir(cache_root, expected_key)
     assert result.instance_dir == expected
@@ -265,20 +241,14 @@ def test_second_run_with_same_inputs_hits_cache(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     recipe = _recipe()
     records = _records(8)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
 
     temp1 = tmp_dir_for(cache_root, "run-1")
-    first = runner.run(
-        temp1, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    first = runner.run(temp1, raw_records=records, raw_input_hashes=_input_hashes(records))
     assert first.cache_hit is False
 
     temp2 = tmp_dir_for(cache_root, "run-2")
-    second = runner.run(
-        temp2, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    second = runner.run(temp2, raw_records=records, raw_input_hashes=_input_hashes(records))
     assert second.cache_hit is True
     assert second.instance_dir == first.instance_dir
     # Cache hit does not touch the temp dir.
@@ -289,18 +259,12 @@ def test_cache_hit_returns_persisted_manifest(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     recipe = _recipe()
     records = _records(8)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp1 = tmp_dir_for(cache_root, "run-1")
-    first = runner.run(
-        temp1, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    first = runner.run(temp1, raw_records=records, raw_input_hashes=_input_hashes(records))
 
     temp2 = tmp_dir_for(cache_root, "run-2")
-    second = runner.run(
-        temp2, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    second = runner.run(temp2, raw_records=records, raw_input_hashes=_input_hashes(records))
     # Cache-hit manifest equals the persisted one (modulo timestamp identity
     # which is preserved since we re-read from disk).
     assert second.manifest.recipe_hash == first.manifest.recipe_hash
@@ -319,13 +283,9 @@ def test_different_seed_misses_cache(tmp_path: Path) -> None:
         recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=8
     )
     temp1 = tmp_dir_for(cache_root, "run-1")
-    a = runner_a.run(
-        temp1, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    a = runner_a.run(temp1, raw_records=records, raw_input_hashes=_input_hashes(records))
     temp2 = tmp_dir_for(cache_root, "run-2")
-    b = runner_b.run(
-        temp2, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    b = runner_b.run(temp2, raw_records=records, raw_input_hashes=_input_hashes(records))
     assert a.instance_dir != b.instance_dir
     assert a.cache_hit is False
     assert b.cache_hit is False
@@ -363,14 +323,10 @@ class _FailingPlugin:
                     del splits, params, label_field
                     raise RuntimeError(f"forced failure in {op_name}")
 
-                def fit(
-                    self, *args: Any, **kwargs: Any
-                ) -> Any:
+                def fit(self, *args: Any, **kwargs: Any) -> Any:
                     raise RuntimeError(f"forced failure in {op_name}")
 
-                def apply(
-                    self, *args: Any, **kwargs: Any
-                ) -> Any:
+                def apply(self, *args: Any, **kwargs: Any) -> Any:
                     raise RuntimeError(f"forced failure in {op_name}")
 
             return _Boom()
@@ -404,9 +360,7 @@ def test_visualization_failure_leaves_failed_marker(tmp_path: Path) -> None:
     temp = tmp_dir_for(cache_root, "run-1")
 
     with pytest.raises(MaterializeError, match="class_distribution_histogram"):
-        runner.run(
-            temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-        )
+        runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
 
     # Temp dir survives with FAILED marker.
     assert temp.exists()
@@ -448,9 +402,7 @@ def test_failure_does_not_leave_partial_promote(tmp_path: Path) -> None:
     )
     temp = tmp_dir_for(cache_root, "run-1")
     with pytest.raises(MaterializeError):
-        runner.run(
-            temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-        )
+        runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
 
     cache_key = compute_cache_key(recipe, _input_hashes(records), 7)
     final_dir = instance_dir(cache_root, cache_key)
@@ -466,19 +418,13 @@ def test_dataset_jsonl_omits_image_arrays(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     recipe = _recipe()
     records = _records(8)
-    runner = PipelineRunner(
-        recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7
-    )
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
     temp = tmp_dir_for(cache_root, "run-1")
-    result = runner.run(
-        temp, raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     train_jsonl = (dataset_dir(result.instance_dir) / "train.jsonl").read_text()
     import json as _json
 
-    lines = [
-        _json.loads(line) for line in train_jsonl.strip().splitlines() if line
-    ]
+    lines = [_json.loads(line) for line in train_jsonl.strip().splitlines() if line]
     for r in lines:
         assert "image" not in r  # numpy arrays are dropped
         assert "record_id" in r

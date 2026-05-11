@@ -43,9 +43,7 @@ Record = Mapping[str, Any]
 class FittedValues:
     """Statistics produced by a transformation's fit phase."""
 
-    scalars: Mapping[str, float | int | str | bool] = field(
-        default_factory=dict
-    )
+    scalars: Mapping[str, float | int | str | bool] = field(default_factory=dict)
     vectors: Mapping[str, pa.Table] = field(default_factory=dict)
 
     @property
@@ -96,21 +94,16 @@ def apply_transformations(
     declared splits. The same fitted values are used across every split
     in ``op.splits`` to honor FR-10 #2.
     """
-    out: dict[str, list[Record]] = {
-        name: list(recs) for name, recs in splits.items()
-    }
+    out: dict[str, list[Record]] = {name: list(recs) for name, recs in splits.items()}
     fitted_op_ids: list[str] = []
 
     for op in transformation_ops:
         spec = plugin.supported_operations.get(op.op)
         if spec is None:
             raise MaterializeError(
-                f"Transformations[{op.name!r}].op={op.op!r} not declared by "
-                f"plugin {plugin.name!r}"
+                f"Transformations[{op.name!r}].op={op.op!r} not declared by plugin {plugin.name!r}"
             )
-        handle: TransformationOpHandle = plugin.operation_factory(
-            "Transformations", op.op
-        )
+        handle: TransformationOpHandle = plugin.operation_factory("Transformations", op.op)
 
         fitted = FittedValues()
         if spec.fit_on_train:
@@ -125,9 +118,7 @@ def apply_transformations(
                     f"Transformations[{op.name!r}].fit_source "
                     f"{op.fit_source!r} not in splits {sorted(out)!r}"
                 )
-            fitted = handle.fit(
-                out[op.fit_source], op.params, label_field=label_field
-            )
+            fitted = handle.fit(out[op.fit_source], op.params, label_field=label_field)
             _persist(fitted_stats, op.name, fitted)
             fitted_op_ids.append(op.name)
 
@@ -144,14 +135,10 @@ def apply_transformations(
                 label_field=label_field,
             )
 
-    return TransformationsResult(
-        splits=out, fitted_op_ids=tuple(fitted_op_ids)
-    )
+    return TransformationsResult(splits=out, fitted_op_ids=tuple(fitted_op_ids))
 
 
-def _persist(
-    fitted_stats: FittedStatistics, op_id: str, fitted: FittedValues
-) -> None:
+def _persist(fitted_stats: FittedStatistics, op_id: str, fitted: FittedValues) -> None:
     for name, value in fitted.scalars.items():
         fitted_stats.put_scalar(op_id, name, value)
     for name, table in fitted.vectors.items():

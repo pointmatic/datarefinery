@@ -24,10 +24,7 @@ from datarefinery.recipe.models import FilterOp
 
 
 def _records(n: int = 10, classes: int = 2) -> list[dict[str, Any]]:
-    return [
-        {"id": i, "label": f"c{i % classes}", "value": i / n}
-        for i in range(n)
-    ]
+    return [{"id": i, "label": f"c{i % classes}", "value": i / n} for i in range(n)]
 
 
 # ---------------------------------------------------------------------------
@@ -122,12 +119,8 @@ def test_random_sample_with_fixed_seed_is_reproducible() -> None:
         predicate={"op": "random_sample", "fraction": 0.5, "seed": 42},
         seed=42,
     )
-    a = apply_pre_split_filters(
-        _records(20), [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
-    b = apply_pre_split_filters(
-        _records(20), [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    a = apply_pre_split_filters(_records(20), [op], plugin=IMAGE_PLUGIN, label_field="label")
+    b = apply_pre_split_filters(_records(20), [op], plugin=IMAGE_PLUGIN, label_field="label")
     assert [r["id"] for r in a.records] == [r["id"] for r in b.records]
 
 
@@ -142,12 +135,8 @@ def test_random_sample_different_seeds_produce_different_subsets() -> None:
         predicate={"op": "random_sample", "fraction": 0.5, "seed": 2},
         seed=2,
     )
-    a = apply_pre_split_filters(
-        _records(20), [op_a], plugin=IMAGE_PLUGIN, label_field="label"
-    )
-    b = apply_pre_split_filters(
-        _records(20), [op_b], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    a = apply_pre_split_filters(_records(20), [op_a], plugin=IMAGE_PLUGIN, label_field="label")
+    b = apply_pre_split_filters(_records(20), [op_b], plugin=IMAGE_PLUGIN, label_field="label")
     assert [r["id"] for r in a.records] != [r["id"] for r in b.records]
 
 
@@ -157,9 +146,7 @@ def test_random_sample_preserves_original_order_of_chosen_records() -> None:
         predicate={"op": "random_sample", "n": 5, "seed": 7},
         seed=7,
     )
-    result = apply_pre_split_filters(
-        _records(20), [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    result = apply_pre_split_filters(_records(20), [op], plugin=IMAGE_PLUGIN, label_field="label")
     ids = [r["id"] for r in result.records]
     assert ids == sorted(ids)
 
@@ -170,9 +157,7 @@ def test_random_sample_n_supersedes_total_count() -> None:
         predicate={"op": "random_sample", "n": 100, "seed": 0},
         seed=0,
     )
-    result = apply_pre_split_filters(
-        _records(10), [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    result = apply_pre_split_filters(_records(10), [op], plugin=IMAGE_PLUGIN, label_field="label")
     assert len(result.records) == 10
 
 
@@ -188,9 +173,7 @@ def test_random_sample_requires_fraction_or_n_not_both() -> None:
         seed=1,
     )
     with pytest.raises(PluginError, match="exactly one of"):
-        apply_pre_split_filters(
-            _records(10), [op], plugin=IMAGE_PLUGIN, label_field="label"
-        )
+        apply_pre_split_filters(_records(10), [op], plugin=IMAGE_PLUGIN, label_field="label")
 
 
 def test_random_sample_requires_seed() -> None:
@@ -199,9 +182,7 @@ def test_random_sample_requires_seed() -> None:
         predicate={"op": "random_sample", "fraction": 0.5},
     )
     with pytest.raises(PluginError, match="seed"):
-        apply_pre_split_filters(
-            _records(10), [op], plugin=IMAGE_PLUGIN, label_field="label"
-        )
+        apply_pre_split_filters(_records(10), [op], plugin=IMAGE_PLUGIN, label_field="label")
 
 
 def test_random_sample_fraction_out_of_range_raises() -> None:
@@ -211,9 +192,7 @@ def test_random_sample_fraction_out_of_range_raises() -> None:
         seed=1,
     )
     with pytest.raises(PluginError, match="in \\[0, 1\\]"):
-        apply_pre_split_filters(
-            _records(10), [op], plugin=IMAGE_PLUGIN, label_field="label"
-        )
+        apply_pre_split_filters(_records(10), [op], plugin=IMAGE_PLUGIN, label_field="label")
 
 
 # ---------------------------------------------------------------------------
@@ -249,9 +228,7 @@ def test_post_split_applies_only_to_named_splits() -> None:
         "train": _records(6, classes=2),
         "val": _records(4, classes=2),
     }
-    out = apply_post_split_filters(
-        splits, [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    out = apply_post_split_filters(splits, [op], plugin=IMAGE_PLUGIN, label_field="label")
     assert all(r["label"] == "c0" for r in out["train"].records)
     assert len(out["val"].records) == 4  # untouched
     assert out["val"].removed == 0
@@ -265,9 +242,7 @@ def test_post_split_filter_with_no_splits_listed_does_nothing() -> None:
         splits=[],  # no splits named -> no application
     )
     splits = {"train": _records(6, classes=2)}
-    out = apply_post_split_filters(
-        splits, [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    out = apply_post_split_filters(splits, [op], plugin=IMAGE_PLUGIN, label_field="label")
     assert len(out["train"].records) == 6
 
 
@@ -331,9 +306,7 @@ def test_no_empty_class_warning_without_label_field() -> None:
         predicate={"op": "random_sample", "fraction": 0.5, "seed": 42},
         seed=42,
     )
-    result = apply_pre_split_filters(
-        _records(20, classes=2), [op], plugin=IMAGE_PLUGIN
-    )
+    result = apply_pre_split_filters(_records(20, classes=2), [op], plugin=IMAGE_PLUGIN)
     assert result.warnings == ()
 
 
@@ -349,9 +322,7 @@ def test_post_split_empty_class_warning_includes_split_name() -> None:
         splits=["train"],
     )
     splits = {"train": _records(6, classes=2)}
-    out = apply_post_split_filters(
-        splits, [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    out = apply_post_split_filters(splits, [op], plugin=IMAGE_PLUGIN, label_field="label")
     assert any("'train'" in w for w in out["train"].warnings)
 
 
@@ -363,9 +334,7 @@ def test_post_split_empty_class_warning_includes_split_name() -> None:
 def test_predicate_missing_op_key_raises_materialize_error() -> None:
     op = FilterOp(name="bad", predicate={"labels": ["c0"]})
     with pytest.raises(MaterializeError, match="missing 'op'"):
-        apply_pre_split_filters(
-            _records(2), [op], plugin=IMAGE_PLUGIN, label_field="label"
-        )
+        apply_pre_split_filters(_records(2), [op], plugin=IMAGE_PLUGIN, label_field="label")
 
 
 def test_filters_run_in_declared_order() -> None:
@@ -400,9 +369,7 @@ def test_filter_result_is_frozen() -> None:
 
 def test_empty_filter_list_is_passthrough() -> None:
     records = _records(5)
-    result = apply_pre_split_filters(
-        records, [], plugin=IMAGE_PLUGIN, label_field="label"
-    )
+    result = apply_pre_split_filters(records, [], plugin=IMAGE_PLUGIN, label_field="label")
     assert [r["id"] for r in result.records] == [r["id"] for r in records]
     assert result.removed == 0
     assert result.warnings == ()

@@ -68,9 +68,7 @@ class FittedStatistics:
     def get_scalar(self, op_id: str, name: str) -> ScalarValue:
         path = self._scalars_path(op_id)
         if not path.exists():
-            raise MaterializeError(
-                f"FittedStatistics.get_scalar: no scalars.json for op {op_id!r}"
-            )
+            raise MaterializeError(f"FittedStatistics.get_scalar: no scalars.json for op {op_id!r}")
         scalars = self._read_scalars(path)
         if name not in scalars:
             raise MaterializeError(
@@ -104,8 +102,7 @@ class FittedStatistics:
         path = self._vector_path(op_id, name)
         if not path.exists():
             raise MaterializeError(
-                f"FittedStatistics.get_vector: no {name}.parquet for "
-                f"op {op_id!r}"
+                f"FittedStatistics.get_vector: no {name}.parquet for op {op_id!r}"
             )
         return pq.read_table(path)  # type: ignore[no-untyped-call]
 

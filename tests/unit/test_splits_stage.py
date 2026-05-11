@@ -23,10 +23,7 @@ from datarefinery.recipe.models import KeyAssignment, SplitsSection
 
 
 def _records(n: int, *, classes: int = 2) -> list[dict[str, Any]]:
-    return [
-        {"id": i, "label": f"c{i % classes}", "key": f"k{i}"}
-        for i in range(n)
-    ]
+    return [{"id": i, "label": f"c{i % classes}", "key": f"k{i}"} for i in range(n)]
 
 
 # ---------------------------------------------------------------------------
@@ -50,9 +47,7 @@ def test_ratio_split_is_deterministic_for_fixed_seed() -> None:
     a = apply_splits(records, section, seed=7)
     b = apply_splits(records, section, seed=7)
     for name in a.splits:
-        assert [r["id"] for r in a.splits[name]] == [
-            r["id"] for r in b.splits[name]
-        ]
+        assert [r["id"] for r in a.splits[name]] == [r["id"] for r in b.splits[name]]
 
 
 def test_ratio_split_changes_with_different_seed() -> None:
@@ -60,9 +55,7 @@ def test_ratio_split_changes_with_different_seed() -> None:
     records = _records(50)
     a = apply_splits(records, section, seed=7)
     b = apply_splits(records, section, seed=8)
-    assert [r["id"] for r in a.splits["train"]] != [
-        r["id"] for r in b.splits["train"]
-    ]
+    assert [r["id"] for r in a.splits["train"]] != [r["id"] for r in b.splits["train"]]
 
 
 def test_ratios_summing_below_one_record_remainder_in_unassigned() -> None:
@@ -84,11 +77,9 @@ def test_partition_is_a_partition_no_dupes_no_loss() -> None:
     section = SplitsSection(ratios={"train": 0.7, "val": 0.15, "test": 0.15})
     records = _records(73)  # awkward count to expose off-by-one
     result = apply_splits(records, section, seed=11)
-    seen = sorted(
-        r["id"]
-        for split in result.splits.values()
-        for r in split
-    ) + sorted(r["id"] for r in result.unassigned)
+    seen = sorted(r["id"] for split in result.splits.values() for r in split) + sorted(
+        r["id"] for r in result.unassigned
+    )
     assert sorted(seen) == list(range(73))
 
 
@@ -148,9 +139,7 @@ def test_stratification_is_deterministic_for_fixed_seed() -> None:
     a = apply_splits(records, section, seed=99)
     b = apply_splits(records, section, seed=99)
     for name in a.splits:
-        assert [r["id"] for r in a.splits[name]] == [
-            r["id"] for r in b.splits[name]
-        ]
+        assert [r["id"] for r in a.splits[name]] == [r["id"] for r in b.splits[name]]
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +188,7 @@ def test_key_assignment_unmapped_record_raises_materialize_error() -> None:
 
 def test_key_assignment_missing_field_raises_materialize_error() -> None:
     records = [{"id": 1}]  # no `key` field
-    section = SplitsSection(
-        key_assignment=KeyAssignment(field="key", mapping={"k1": "train"})
-    )
+    section = SplitsSection(key_assignment=KeyAssignment(field="key", mapping={"k1": "train"}))
     with pytest.raises(MaterializeError):
         apply_splits(records, section, seed=0)
 

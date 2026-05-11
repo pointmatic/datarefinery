@@ -45,11 +45,7 @@ def _write_recipe(tmp_path: Path, image_root: Path) -> Path:
         "schema_version": 1,
         "plugin": "image_classification",
         "seed": 7,
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": str(image_root)}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": str(image_root)}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [8, 8, 3]},
@@ -82,9 +78,7 @@ def _materialize_and_get_instance(tmp_path: Path) -> Path:
     images = _build_image_folder(tmp_path / "data")
     recipe = _write_recipe(tmp_path, images)
     cache = tmp_path / "cache"
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert result.exit_code == 0, result.stdout
 
     instance_root = cache / "instances"

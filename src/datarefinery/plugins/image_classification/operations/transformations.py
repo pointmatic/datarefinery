@@ -60,9 +60,7 @@ class ResizeOp:
         del fitted, label_field
         size = params.get("size")
         if not isinstance(size, int) or size <= 0:
-            raise PluginError(
-                f"resize requires positive integer 'size' (got {size!r})"
-            )
+            raise PluginError(f"resize requires positive integer 'size' (got {size!r})")
         method_name = str(params.get("method", "bilinear"))
         method = _RESAMPLE_METHODS.get(method_name)
         if method is None:
@@ -70,10 +68,7 @@ class ResizeOp:
                 f"resize 'method' must be one of "
                 f"{sorted(_RESAMPLE_METHODS)!r} (got {method_name!r})"
             )
-        return [
-            _replace_image(r, _resize_one(r["image"], size, method))
-            for r in records
-        ]
+        return [_replace_image(r, _resize_one(r["image"], size, method)) for r in records]
 
 
 _RESAMPLE_METHODS: dict[str, Image.Resampling] = {
@@ -94,9 +89,7 @@ def _resize_one(image: Any, size: int, method: Image.Resampling) -> np.ndarray:
 def _as_uint8_image(image: Any) -> np.ndarray:
     arr = np.asarray(image)
     if arr.ndim not in (2, 3):
-        raise PluginError(
-            f"resize expects 2-D or 3-D image array (got ndim={arr.ndim})"
-        )
+        raise PluginError(f"resize expects 2-D or 3-D image array (got ndim={arr.ndim})")
     if arr.dtype != np.uint8:
         # Pillow needs uint8 for arbitrary mode; clip and cast.
         arr = np.clip(arr, 0, 255).astype(np.uint8)
@@ -143,9 +136,7 @@ class NormalizeOp:
         # Guard against zero variance channels.
         std_safe = np.where(std == 0, 1.0, std)
         return [
-            _replace_image(
-                r, ((np.asarray(r["image"], dtype=np.float64) - mean) / std_safe)
-            )
+            _replace_image(r, ((np.asarray(r["image"], dtype=np.float64) - mean) / std_safe))
             for r in records
         ]
 
@@ -179,12 +170,7 @@ class MeanSubtractOp:
     ) -> list[Record]:
         del params, label_field
         mean, _ = _unwrap_mean_std(fitted)
-        return [
-            _replace_image(
-                r, np.asarray(r["image"], dtype=np.float64) - mean
-            )
-            for r in records
-        ]
+        return [_replace_image(r, np.asarray(r["image"], dtype=np.float64) - mean) for r in records]
 
 
 # ---------------------------------------------------------------------------
@@ -197,12 +183,9 @@ def _per_channel_mean_std(
 ) -> tuple[np.ndarray, np.ndarray]:
     if not records:
         raise MaterializeError(
-            "fit phase received an empty records list; cannot compute "
-            "per-channel statistics"
+            "fit phase received an empty records list; cannot compute per-channel statistics"
         )
-    stack = np.stack(
-        [np.asarray(r["image"], dtype=np.float64) for r in records]
-    )
+    stack = np.stack([np.asarray(r["image"], dtype=np.float64) for r in records])
     # Reduce across N, H, W; keep channel axis if present.
     axes_to_reduce = tuple(range(stack.ndim - 1)) if stack.ndim >= 3 else None
     mean = stack.mean(axis=axes_to_reduce)
@@ -212,9 +195,7 @@ def _per_channel_mean_std(
     return mean, std
 
 
-def _wrap_mean_std(
-    mean: np.ndarray, std: np.ndarray | None
-) -> FittedValues:
+def _wrap_mean_std(mean: np.ndarray, std: np.ndarray | None) -> FittedValues:
     vectors = {"mean": pa.table({"value": mean.tolist()})}
     if std is not None:
         vectors["std"] = pa.table({"value": std.tolist()})
@@ -225,9 +206,7 @@ def _unwrap_mean_std(
     fitted: FittedValues,
 ) -> tuple[np.ndarray, np.ndarray]:
     if "mean" not in fitted.vectors:
-        raise MaterializeError(
-            "transformation apply received fitted values without 'mean'"
-        )
+        raise MaterializeError("transformation apply received fitted values without 'mean'")
     mean = np.asarray(fitted.vectors["mean"]["value"].to_pylist(), dtype=np.float64)
     std_table = fitted.vectors.get("std")
     if std_table is None:

@@ -68,8 +68,6 @@ def build_cifar10_shaped(
         cls_dir = root / cls
         cls_dir.mkdir(parents=True, exist_ok=True)
         for i in range(per_class):
-            arr = rng.integers(
-                0, 255, (image_size, image_size, 3), dtype=np.uint8
-            )
+            arr = rng.integers(0, 255, (image_size, image_size, 3), dtype=np.uint8)
             Image.fromarray(arr).save(cls_dir / f"{cls}_{i:03d}.png")
     return root

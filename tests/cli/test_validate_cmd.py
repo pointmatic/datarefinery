@@ -20,11 +20,7 @@ def _clean_recipe_dict() -> dict[str, Any]:
         "schema_version": 1,
         "plugin": "image_classification",
         "seed": 7,
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": "/data/train"}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [4, 4, 3]},
@@ -98,7 +94,5 @@ def test_validate_with_variant_overlay(tmp_path: Path) -> None:
         "no_aug": {"Augmentations": []},
     }
     path = _write(tmp_path, payload)
-    result = runner.invoke(
-        app, ["--variant", "no_aug", "validate", str(path)]
-    )
+    result = runner.invoke(app, ["--variant", "no_aug", "validate", str(path)])
     assert result.exit_code == 0

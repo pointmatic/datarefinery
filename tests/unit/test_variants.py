@@ -19,11 +19,7 @@ def _base_recipe_dict() -> dict[str, Any]:
         "schema_version": 1,
         "plugin": "image_classification",
         "seed": 0,
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": "/data/train"}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [32, 32, 3]},

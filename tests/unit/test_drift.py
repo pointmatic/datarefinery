@@ -79,9 +79,7 @@ def test_compute_drift_placeholder_class_distribution_with_label_field() -> None
     assert drift.splits["val"].class_distribution == {"cat": 1}
 
 
-def test_compute_drift_placeholder_skips_class_distribution_without_label() -> (
-    None
-):
+def test_compute_drift_placeholder_skips_class_distribution_without_label() -> None:
     drift = compute_drift_placeholder(
         _splits_with_labels(),
         plugin_name="text",
@@ -92,9 +90,7 @@ def test_compute_drift_placeholder_skips_class_distribution_without_label() -> (
 
 def test_compute_drift_placeholder_split_keys_are_sorted() -> None:
     splits = {"z": [], "a": [], "m": []}
-    drift = compute_drift_placeholder(
-        splits, plugin_name="image_classification", label_field=None
-    )
+    drift = compute_drift_placeholder(splits, plugin_name="image_classification", label_field=None)
     assert list(drift.splits.keys()) == ["a", "m", "z"]
 
 
@@ -141,7 +137,11 @@ def test_drift_json_is_canonical_sorted(tmp_path: Path) -> None:
     parsed = json.loads(raw)
     # Top-level keys present.
     assert set(parsed) == {
-        "schema_version", "plugin", "splits", "feature_summary", "notes",
+        "schema_version",
+        "plugin",
+        "splits",
+        "feature_summary",
+        "notes",
     }
     # Sorted-keys: a < f < n < p < s for the top level.
     keys = list(parsed.keys())

@@ -44,12 +44,7 @@ def instances_root(cache_root: Path) -> Path:
 
 def instance_dir(cache_root: Path, key: CacheKey) -> Path:
     """Final path for a materialized instance under the cache root."""
-    return (
-        instances_root(cache_root)
-        / key.recipe_hash[:16]
-        / key.input_hash[:16]
-        / str(key.seed)
-    )
+    return instances_root(cache_root) / key.recipe_hash[:16] / key.input_hash[:16] / str(key.seed)
 
 
 def tmp_dir(cache_root: Path, run_id: str) -> Path:

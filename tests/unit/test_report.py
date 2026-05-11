@@ -44,9 +44,7 @@ def _recipe() -> Recipe:
                     }
                 ]
             },
-            "Output": {
-                "record_schema": {"image": {"dtype": "uint8"}, "label": {"dtype": "str"}}
-            },
+            "Output": {"record_schema": {"image": {"dtype": "uint8"}, "label": {"dtype": "str"}}},
             "Labels": {"field": "label", "source": {"kind": "direct"}},
             "Splits": {"ratios": {"train": 0.6, "val": 0.2, "test": 0.2}, "seed": 11},
             "Transformations": [
@@ -155,9 +153,7 @@ def test_report_lists_warnings() -> None:
 def test_report_partial_run_marker() -> None:
     recipe = _recipe()
     base = _manifest(recipe)
-    partial = base.model_copy(
-        update={"is_partial": True, "failed_stage": "Visualizations"}
-    )
+    partial = base.model_copy(update={"is_partial": True, "failed_stage": "Visualizations"})
     md = render_report_md(recipe, partial)
     assert "**Partial**" in md
     assert "Visualizations" in md

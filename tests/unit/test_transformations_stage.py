@@ -55,31 +55,23 @@ def test_resize_changes_image_shape(tmp_path: Path) -> None:
         splits=["train", "val", "test"],
     )
     fs = FittedStatistics(tmp_path)
-    result = apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    result = apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     for split in result.splits.values():
         for r in split:
             assert r["image"].shape == (8, 8, 3)
 
 
 def test_resize_does_not_persist_fitted_stats(tmp_path: Path) -> None:
-    op = TransformationOp(
-        name="r", op="resize", params={"size": 8}, splits=["train"]
-    )
+    op = TransformationOp(name="r", op="resize", params={"size": 8}, splits=["train"])
     fs = FittedStatistics(tmp_path)
-    apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     assert not (tmp_path / "r").exists()
 
 
 def test_resize_invalid_size_raises() -> None:
     from datarefinery.core.errors import PluginError
 
-    op = TransformationOp(
-        name="r", op="resize", params={"size": 0}, splits=["train"]
-    )
+    op = TransformationOp(name="r", op="resize", params={"size": 0}, splits=["train"])
     with pytest.raises(PluginError, match="positive integer"):
         apply_transformations(
             {"train": [_record(0, 0)]},
@@ -121,9 +113,7 @@ def test_normalize_fits_on_train_only_and_persists(tmp_path: Path) -> None:
         splits=["train", "val", "test"],
     )
     fs = FittedStatistics(tmp_path)
-    result = apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    result = apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
 
     # Persisted layout: <root>/<op_id>/{mean,std}.parquet
     assert (tmp_path / "norm" / "mean.parquet").exists()
@@ -146,18 +136,12 @@ def test_normalize_apply_uses_persisted_train_stats(tmp_path: Path) -> None:
         splits=["train", "val", "test"],
     )
     fs = FittedStatistics(tmp_path)
-    result = apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    result = apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     # val image value 30, train mean 50 -> normalized first val record around -20/std
     val_image = result.splits["val"][0]["image"]
-    train_mean = np.asarray(
-        fs.get_vector("norm", "mean").column("value").to_pylist()
-    )
+    train_mean = np.asarray(fs.get_vector("norm", "mean").column("value").to_pylist())
     expected_offset = 30.0 - float(train_mean[0])  # before /std
-    train_std = np.asarray(
-        fs.get_vector("norm", "std").column("value").to_pylist()
-    )
+    train_std = np.asarray(fs.get_vector("norm", "std").column("value").to_pylist())
     std0 = float(train_std[0])
     expected = expected_offset / (std0 if std0 != 0 else 1.0)
     assert abs(float(val_image[0, 0, 0]) - expected) < 1e-9
@@ -199,9 +183,7 @@ def test_normalize_handles_zero_variance_channel(tmp_path: Path) -> None:
     )
     constant = {"train": [_record(0, 7), _record(0, 7), _record(0, 7)]}
     fs = FittedStatistics(tmp_path)
-    result = apply_transformations(
-        constant, [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    result = apply_transformations(constant, [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     img = result.splits["train"][0]["image"]
     assert not np.isnan(img).any()
 
@@ -216,9 +198,7 @@ def test_normalize_with_recipe_pinned_mean_std(tmp_path: Path) -> None:
         splits=["train"],
     )
     fs = FittedStatistics(tmp_path)
-    apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     mean = fs.get_vector("norm", "mean").column("value").to_pylist()
     assert mean == [128.0, 128.0, 128.0]
 
@@ -237,9 +217,7 @@ def test_mean_subtract_persists_only_mean(tmp_path: Path) -> None:
         splits=["train"],
     )
     fs = FittedStatistics(tmp_path)
-    apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     assert (tmp_path / "ms" / "mean.parquet").exists()
     assert not (tmp_path / "ms" / "std.parquet").exists()
 
@@ -253,9 +231,7 @@ def test_mean_subtract_centers_around_zero(tmp_path: Path) -> None:
         splits=["train"],
     )
     fs = FittedStatistics(tmp_path)
-    result = apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    result = apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     train_mean = np.mean([r["image"] for r in result.splits["train"]])
     assert abs(train_mean) < 1e-9
 
@@ -266,9 +242,7 @@ def test_mean_subtract_centers_around_zero(tmp_path: Path) -> None:
 
 
 def test_unknown_op_raises_materialize_error(tmp_path: Path) -> None:
-    op = TransformationOp(
-        name="x", op="made_up", params={}, splits=["train"]
-    )
+    op = TransformationOp(name="x", op="made_up", params={}, splits=["train"])
     with pytest.raises(MaterializeError, match="not declared"):
         apply_transformations(
             _splits(),
@@ -354,9 +328,7 @@ def test_fitted_values_is_empty_default() -> None:
 
 
 def test_input_split_lists_are_not_mutated(tmp_path: Path) -> None:
-    op = TransformationOp(
-        name="r", op="resize", params={"size": 8}, splits=["train"]
-    )
+    op = TransformationOp(name="r", op="resize", params={"size": 8}, splits=["train"])
     splits = _splits()
     original_train_image = splits["train"][0]["image"].copy()
     apply_transformations(
@@ -377,7 +349,5 @@ def test_persisted_stats_are_pyarrow_tables(tmp_path: Path) -> None:
         splits=["train"],
     )
     fs = FittedStatistics(tmp_path)
-    apply_transformations(
-        _splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs
-    )
+    apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     assert isinstance(fs.get_vector("norm", "mean"), pa.Table)

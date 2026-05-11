@@ -50,13 +50,9 @@ def test_synthesizer_is_deterministic(tmp_path: Path) -> None:
     b = build_cifar10_shaped(tmp_path / "b", seed=42)
     a_files = _all_pngs(a)
     b_files = _all_pngs(b)
-    assert [p.relative_to(a) for p in a_files] == [
-        p.relative_to(b) for p in b_files
-    ]
+    assert [p.relative_to(a) for p in a_files] == [p.relative_to(b) for p in b_files]
     for ap, bp in zip(a_files, b_files, strict=True):
-        assert hashlib.sha256(ap.read_bytes()).digest() == hashlib.sha256(
-            bp.read_bytes()
-        ).digest()
+        assert hashlib.sha256(ap.read_bytes()).digest() == hashlib.sha256(bp.read_bytes()).digest()
 
 
 def test_different_seeds_produce_different_outputs(tmp_path: Path) -> None:

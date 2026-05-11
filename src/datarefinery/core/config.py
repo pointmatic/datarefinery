@@ -55,26 +55,16 @@ class RuntimeConfig(BaseModel):
         env_map = env if env is not None else os.environ
 
         resolved_cache_root = (
-            cache_root
-            if cache_root is not None
-            else _maybe_path(env_map.get(_ENV_CACHE_ROOT))
+            cache_root if cache_root is not None else _maybe_path(env_map.get(_ENV_CACHE_ROOT))
         )
         resolved_log_level = (
-            log_level
-            if log_level is not None
-            else _nonempty(env_map.get(_ENV_LOG_LEVEL))
+            log_level if log_level is not None else _nonempty(env_map.get(_ENV_LOG_LEVEL))
         )
         resolved_log_target = (
-            log_target
-            if log_target is not None
-            else _nonempty(env_map.get(_ENV_LOG_TARGET))
+            log_target if log_target is not None else _nonempty(env_map.get(_ENV_LOG_TARGET))
         )
         resolved_plugin_path = _resolve_plugin_path(plugin_path, env_map)
-        resolved_workers = (
-            workers
-            if workers is not None
-            else _maybe_int(env_map.get(_ENV_WORKERS))
-        )
+        resolved_workers = workers if workers is not None else _maybe_int(env_map.get(_ENV_WORKERS))
 
         overrides: dict[str, object] = {}
         if resolved_cache_root is not None:

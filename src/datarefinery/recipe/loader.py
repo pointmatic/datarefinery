@@ -65,15 +65,10 @@ def load(path: Path) -> Recipe:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         line, col = _yaml_error_location(exc)
-        raise RecipeError(
-            f"malformed YAML in {path} at line {line}, column {col}: {exc}"
-        ) from exc
+        raise RecipeError(f"malformed YAML in {path} at line {line}, column {col}: {exc}") from exc
 
     if not isinstance(data, dict):
-        raise RecipeError(
-            f"recipe at {path}: root must be a mapping; got "
-            f"{type(data).__name__}"
-        )
+        raise RecipeError(f"recipe at {path}: root must be a mapping; got {type(data).__name__}")
 
     schema_version = data.get("schema_version")
     if schema_version is None:

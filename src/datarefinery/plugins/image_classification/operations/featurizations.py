@@ -72,10 +72,7 @@ class LabelFromPathOp:
         for r in records:
             raw = r.get(path_field)
             if raw is None:
-                raise PluginError(
-                    f"label_from_path: record missing input field "
-                    f"{path_field!r}"
-                )
+                raise PluginError(f"label_from_path: record missing input field {path_field!r}")
             derived = derive(PurePath(str(raw)))
             new = dict(r)
             new[output_field] = derived
@@ -128,15 +125,11 @@ class ImageSizeStatsOp:
         for r in records:
             img = r.get(image_field)
             if img is None:
-                raise PluginError(
-                    f"image_size_stats: record missing input field "
-                    f"{image_field!r}"
-                )
+                raise PluginError(f"image_size_stats: record missing input field {image_field!r}")
             arr = np.asarray(img)
             if arr.ndim not in (2, 3):
                 raise PluginError(
-                    f"image_size_stats expects 2-D or 3-D image array "
-                    f"(got ndim={arr.ndim})"
+                    f"image_size_stats expects 2-D or 3-D image array (got ndim={arr.ndim})"
                 )
             new = dict(r)
             new[output_field] = list(arr.shape)

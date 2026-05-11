@@ -88,29 +88,23 @@ def apply_featurizations(
     label_field: str | None = None,
 ) -> FeaturizationsResult:
     """Run every declared featurization, fitting and persisting as needed."""
-    out: dict[str, list[Record]] = {
-        name: list(recs) for name, recs in splits.items()
-    }
+    out: dict[str, list[Record]] = {name: list(recs) for name, recs in splits.items()}
     fitted_op_ids: list[str] = []
 
     for op in featurization_ops:
         spec = plugin.supported_operations.get(op.op)
         if spec is None:
             raise MaterializeError(
-                f"Featurizations[{op.name!r}].op={op.op!r} not declared by "
-                f"plugin {plugin.name!r}"
+                f"Featurizations[{op.name!r}].op={op.op!r} not declared by plugin {plugin.name!r}"
             )
-        handle: FeaturizationOpHandle = plugin.operation_factory(
-            "Featurizations", op.op
-        )
+        handle: FeaturizationOpHandle = plugin.operation_factory("Featurizations", op.op)
 
         # Collision check before we touch any records: under the uniform-
         # schema invariant, any record having the field is a collision.
         for split_name in op.splits:
             if split_name not in out:
                 raise MaterializeError(
-                    f"Featurizations[{op.name!r}].splits references "
-                    f"undeclared split {split_name!r}"
+                    f"Featurizations[{op.name!r}].splits references undeclared split {split_name!r}"
                 )
             recs = out[split_name]
             if recs and op.output_field in recs[0]:
@@ -153,14 +147,10 @@ def apply_featurizations(
                 label_field=label_field,
             )
 
-    return FeaturizationsResult(
-        splits=out, fitted_op_ids=tuple(fitted_op_ids)
-    )
+    return FeaturizationsResult(splits=out, fitted_op_ids=tuple(fitted_op_ids))
 
 
-def _persist(
-    fitted_stats: FittedStatistics, op_id: str, fitted: FittedValues
-) -> None:
+def _persist(fitted_stats: FittedStatistics, op_id: str, fitted: FittedValues) -> None:
     for name, value in fitted.scalars.items():
         fitted_stats.put_scalar(op_id, name, value)
     for name, table in fitted.vectors.items():

@@ -25,9 +25,7 @@ def _run_raising(import_stmt: str, raise_stmt: str) -> subprocess.CompletedProce
         "appmod.app = _raising_app\n"
         "appmod.main_entry()\n"
     )
-    return subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=False
-    )
+    return subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=False)
 
 
 @pytest.mark.parametrize(
@@ -41,9 +39,7 @@ def _run_raising(import_stmt: str, raise_stmt: str) -> subprocess.CompletedProce
         ("CacheError", 2),
     ],
 )
-def test_cli_maps_each_subclass_through_main_entry(
-    error_class: str, expected: int
-) -> None:
+def test_cli_maps_each_subclass_through_main_entry(error_class: str, expected: int) -> None:
     result = _run_raising(
         f"from datarefinery.core.errors import {error_class}",
         f"raise {error_class}('boom')",

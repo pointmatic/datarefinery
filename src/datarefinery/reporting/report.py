@@ -59,17 +59,13 @@ def render_report_md(
     lines.append(f"- Created at: `{manifest.created_at.isoformat()}`")
     lines.append(f"- Elapsed: `{manifest.elapsed_seconds:.3f}s`")
     if manifest.is_partial:
-        lines.append(
-            f"- **Partial**: failed at stage `{manifest.failed_stage}`"
-        )
+        lines.append(f"- **Partial**: failed at stage `{manifest.failed_stage}`")
     lines.append("")
 
     lines.append("## Inputs")
     lines.append("")
     for src in recipe.Input.sources:
-        lines.append(
-            f"- `{src.name}` (`{src.type}`) -> `{src.path}`"
-        )
+        lines.append(f"- `{src.name}` (`{src.type}`) -> `{src.path}`")
     lines.append("")
 
     lines.append("## Splits")
@@ -156,9 +152,7 @@ def list_fitted_op_ids(fitted_root: Path) -> list[str]:
     """Return the sorted list of op_ids that have persisted statistics."""
     if not fitted_root.exists():
         return []
-    return sorted(
-        p.name for p in fitted_root.iterdir() if p.is_dir()
-    )
+    return sorted(p.name for p in fitted_root.iterdir() if p.is_dir())
 
 
 def re_render_report(

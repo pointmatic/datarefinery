@@ -39,9 +39,7 @@ def duplicate_minority_class(
     """
     del inputs, output_schema  # consumed via Output schema validation in stage
     if label_field is None:
-        raise PluginError(
-            "duplicate_minority_class requires Labels.field to be declared"
-        )
+        raise PluginError("duplicate_minority_class requires Labels.field to be declared")
     by_class: dict[Any, list[Record]] = {}
     for r in records:
         by_class.setdefault(r.get(label_field), []).append(r)

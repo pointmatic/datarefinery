@@ -47,10 +47,7 @@ def compute_cache_key(
     """
     recipe_hash = hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
 
-    parts = [
-        f"{name}={raw_input_hashes[name]};"
-        for name in sorted(raw_input_hashes)
-    ]
+    parts = [f"{name}={raw_input_hashes[name]};" for name in sorted(raw_input_hashes)]
     payload = "".join(parts).encode("utf-8")
     input_hash = hashlib.sha256(payload).hexdigest()
 

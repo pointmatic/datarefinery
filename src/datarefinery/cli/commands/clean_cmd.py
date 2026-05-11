@@ -43,8 +43,7 @@ def clean_command(
         str | None,
         typer.Option(
             "--by-recipe",
-            help="Remove instances whose recipe-hash shard matches HASH "
-            "(first 16 hex chars).",
+            help="Remove instances whose recipe-hash shard matches HASH (first 16 hex chars).",
         ),
     ] = None,
     by_age: Annotated[
@@ -72,8 +71,7 @@ def clean_command(
         bool,
         typer.Option(
             "--yes",
-            help="Skip the interactive confirmation for --all (required in "
-            "non-TTY contexts).",
+            help="Skip the interactive confirmation for --all (required in non-TTY contexts).",
         ),
     ] = False,
 ) -> None:

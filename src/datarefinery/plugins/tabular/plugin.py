@@ -44,9 +44,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "filter_by_value": OperationSpec(
             parameters={
                 "field": ParameterSpec(type="str", required=True),
-                "op": ParameterSpec(
-                    type="str", required=False, default="eq"
-                ),
+                "op": ParameterSpec(type="str", required=False, default="eq"),
                 "value": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Filters"}),
@@ -85,9 +83,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "min_max_scale": OperationSpec(
             parameters={
                 "fields": ParameterSpec(type="list[str]", required=True),
-                "feature_range": ParameterSpec(
-                    type="list[float]", required=False
-                ),
+                "feature_range": ParameterSpec(type="list[float]", required=False),
             },
             fit_on_train=True,
             applicable_sections=frozenset({"Transformations"}),

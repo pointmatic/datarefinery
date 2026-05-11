@@ -88,9 +88,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "filter_by_label": OperationSpec(
             parameters={
                 "labels": ParameterSpec(type="list[str]", required=True),
-                "action": ParameterSpec(
-                    type="str", required=False, default="include"
-                ),
+                "action": ParameterSpec(type="str", required=False, default="include"),
             },
             applicable_sections=frozenset({"Filters"}),
         ),
@@ -115,9 +113,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "resize": OperationSpec(
             parameters={
                 "size": ParameterSpec(type="int", required=True),
-                "method": ParameterSpec(
-                    type="str", required=False, default="bilinear"
-                ),
+                "method": ParameterSpec(type="str", required=False, default="bilinear"),
             },
             applicable_sections=frozenset({"Transformations"}),
         ),
@@ -173,15 +169,9 @@ def _supported_operations() -> dict[str, OperationSpec]:
         ),
         "color_jitter": OperationSpec(
             parameters={
-                "brightness": ParameterSpec(
-                    type="float", required=False, default=0.0
-                ),
-                "contrast": ParameterSpec(
-                    type="float", required=False, default=0.0
-                ),
-                "saturation": ParameterSpec(
-                    type="float", required=False, default=0.0
-                ),
+                "brightness": ParameterSpec(type="float", required=False, default=0.0),
+                "contrast": ParameterSpec(type="float", required=False, default=0.0),
+                "saturation": ParameterSpec(type="float", required=False, default=0.0),
                 "seed": ParameterSpec(type="int", required=True),
             },
             applicable_sections=frozenset({"Augmentations"}),
@@ -194,9 +184,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "sample_grid": OperationSpec(
             parameters={
                 "n": ParameterSpec(type="int", required=False, default=16),
-                "per_class": ParameterSpec(
-                    type="bool", required=False, default=False
-                ),
+                "per_class": ParameterSpec(type="bool", required=False, default=False),
             },
             applicable_sections=frozenset({"Visualizations"}),
         ),

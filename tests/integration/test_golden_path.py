@@ -62,9 +62,7 @@ def _enable_normalize_transformation(recipe_path_yaml: Path) -> None:
             "splits": ["train", "val", "test"],
         }
     ]
-    recipe_path_yaml.write_text(
-        yaml.safe_dump(payload, sort_keys=False), encoding="utf-8"
-    )
+    recipe_path_yaml.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
 def _list_promoted_instances(cache_root: Path) -> list[Path]:
@@ -95,9 +93,7 @@ def test_golden_path_init_validate_materialize_status(
     cache = tmp_path / "cache"
 
     # 1. init
-    init_result = runner.invoke(
-        app, ["init", "--input", str(images), "--output", str(recipe)]
-    )
+    init_result = runner.invoke(app, ["init", "--input", str(images), "--output", str(recipe)])
     assert init_result.exit_code == 0, init_result.stdout
     assert recipe.exists()
 
@@ -144,9 +140,7 @@ def test_golden_path_init_validate_materialize_status(
     assert "samples.png" in viz_files
 
     # 4. status against the recipe path resolves to the cached instance.
-    status_result = runner.invoke(
-        app, ["--cache-root", str(cache), "status", str(recipe)]
-    )
+    status_result = runner.invoke(app, ["--cache-root", str(cache), "status", str(recipe)])
     assert status_result.exit_code == 0, status_result.stdout
     assert "hit" in status_result.stdout
     # The summary table calls out the plugin and the record counts.
@@ -162,15 +156,10 @@ def test_golden_path_init_validate_materialize_status(
     from datarefinery.pipeline.manifest import read_manifest
 
     manifest = read_manifest(manifest_path(instance))
-    assert (
-        sum(manifest.record_counts.values())
-        == DEFAULT_NUM_CLASSES * DEFAULT_PER_CLASS
-    )
+    assert sum(manifest.record_counts.values()) == DEFAULT_NUM_CLASSES * DEFAULT_PER_CLASS
 
     # 5. Rerun materialize hits the cache (no new pipeline work).
-    rerun = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    rerun = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert rerun.exit_code == 0, rerun.stdout
     assert "hit" in rerun.stdout
     # Cache was hit, not re-promoted: still exactly one instance.

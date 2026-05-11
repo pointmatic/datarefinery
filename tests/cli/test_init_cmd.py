@@ -43,9 +43,7 @@ def _build_image_folder(
 def test_init_writes_a_recipe_file(tmp_path: Path) -> None:
     inp = _build_image_folder(tmp_path / "data")
     out = tmp_path / "recipe.yaml"
-    result = runner.invoke(
-        app, ["init", "--input", str(inp), "--output", str(out)]
-    )
+    result = runner.invoke(app, ["init", "--input", str(inp), "--output", str(out)])
     assert result.exit_code == 0, result.stdout
     assert out.exists()
     text = out.read_text(encoding="utf-8")
@@ -57,9 +55,7 @@ def test_init_then_validate_round_trip(tmp_path: Path) -> None:
     """The scaffolded recipe parses cleanly through ``datarefinery validate``."""
     inp = _build_image_folder(tmp_path / "data")
     out = tmp_path / "recipe.yaml"
-    init_result = runner.invoke(
-        app, ["init", "--input", str(inp), "--output", str(out)]
-    )
+    init_result = runner.invoke(app, ["init", "--input", str(inp), "--output", str(out)])
     assert init_result.exit_code == 0, init_result.stdout
 
     validate_result = runner.invoke(app, ["validate", str(out)])
@@ -70,9 +66,7 @@ def test_init_then_validate_round_trip(tmp_path: Path) -> None:
 def test_init_creates_parent_directory(tmp_path: Path) -> None:
     inp = _build_image_folder(tmp_path / "data")
     out = tmp_path / "nested" / "subdir" / "recipe.yaml"
-    result = runner.invoke(
-        app, ["init", "--input", str(inp), "--output", str(out)]
-    )
+    result = runner.invoke(app, ["init", "--input", str(inp), "--output", str(out)])
     assert result.exit_code == 0
     assert out.exists()
 

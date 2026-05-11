@@ -84,9 +84,7 @@ def build_inspection_view(
             f"`datarefinery clean` before inspecting."
         )
 
-    exploration_ops = tuple(
-        op for op in instance.recipe.Visualizations if op.mode == "exploration"
-    )
+    exploration_ops = tuple(op for op in instance.recipe.Visualizations if op.mode == "exploration")
     exploration_names = tuple(op.name for op in exploration_ops)
 
     rendered: RenderedView | None = None
@@ -122,9 +120,7 @@ def _partial_classification(instance: Instance) -> tuple[str, str]:
     return "Partial", "(reason not recorded)"
 
 
-def _find_op(
-    exploration_ops: tuple[VisualizationOp, ...], name: str
-) -> VisualizationOp:
+def _find_op(exploration_ops: tuple[VisualizationOp, ...], name: str) -> VisualizationOp:
     for op in exploration_ops:
         if op.name == name:
             return op
@@ -138,9 +134,7 @@ def _fitted_root(instance: Instance) -> Path:
     return instance.fitted_statistics.root
 
 
-def _peek_records(
-    instance_path: Path, n: int
-) -> dict[str, list[dict[str, object]]]:
+def _peek_records(instance_path: Path, n: int) -> dict[str, list[dict[str, object]]]:
     out: dict[str, list[dict[str, object]]] = {}
     root = dataset_dir(instance_path)
     if not root.is_dir():

@@ -50,9 +50,7 @@ def scaffold(
     """Top-level scaffold entry point dispatching on plugin category."""
     if plugin != "image_classification":
         raise PluginError(_NON_IMAGE_REFUSAL)
-    scaffold_image_classification(
-        input_path, output_path, enhance=enhance
-    )
+    scaffold_image_classification(input_path, output_path, enhance=enhance)
 
 
 def scaffold_image_classification(
@@ -67,12 +65,8 @@ def scaffold_image_classification(
     lazy import (``scaffolder.llm.enhance``); ``lmentry`` is never
     imported on the deterministic path.
     """
-    classes, image_shape, image_dtype = _inspect_image_folder(
-        Path(input_path)
-    )
-    recipe = _build_recipe(
-        Path(input_path), classes, image_shape, image_dtype
-    )
+    classes, image_shape, image_dtype = _inspect_image_folder(Path(input_path))
+    recipe = _build_recipe(Path(input_path), classes, image_shape, image_dtype)
     notes: list[str] = []
 
     if enhance:
@@ -101,12 +95,8 @@ def _inspect_image_folder(
     like an ImageFolder (no class subdirs, or no images).
     """
     if not input_path.is_dir():
-        raise RecipeError(
-            f"scaffolder: input path {input_path!s} is not a directory"
-        )
-    classes = sorted(
-        p.name for p in input_path.iterdir() if p.is_dir()
-    )
+        raise RecipeError(f"scaffolder: input path {input_path!s} is not a directory")
+    classes = sorted(p.name for p in input_path.iterdir() if p.is_dir())
     if not classes:
         raise RecipeError(
             f"scaffolder: no class subdirectories found under "
@@ -127,8 +117,7 @@ def _inspect_image_folder(
             break
     if first_image is None:
         raise RecipeError(
-            f"scaffolder: no image files (.png/.jpg/.jpeg) found "
-            f"under {input_path!s}"
+            f"scaffolder: no image files (.png/.jpg/.jpeg) found under {input_path!s}"
         )
 
     arr = np.asarray(Image.open(first_image))
@@ -246,7 +235,5 @@ def _to_yaml(recipe: Mapping[str, Any], *, notes: list[str]) -> str:
         header_lines.append(f"# Note: {note}")
     header = "\n".join(header_lines) + "\n\n"
 
-    body = yaml.safe_dump(
-        dict(recipe), sort_keys=False, default_flow_style=False, indent=2
-    )
+    body = yaml.safe_dump(dict(recipe), sort_keys=False, default_flow_style=False, indent=2)
     return header + body + "\n" + _SUGGESTED_TRANSFORMATIONS

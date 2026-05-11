@@ -42,15 +42,10 @@ def render_visualization(
     plugin raised them; unlike reporting mode, exploration does not wrap
     in ``MaterializeError`` - the caller is exploring, not materializing.
     """
-    handle: VisualizationOpHandle = plugin.operation_factory(
-        "Visualizations", op.op
-    )
+    handle: VisualizationOpHandle = plugin.operation_factory("Visualizations", op.op)
     png = handle.render(splits, op.params, label_field=label_field)
     if not isinstance(png, (bytes, bytearray)):
         raise TypeError(
-            f"Visualizations[{op.name!r}] returned {type(png).__name__}; "
-            f"PNG bytes required"
+            f"Visualizations[{op.name!r}] returned {type(png).__name__}; PNG bytes required"
         )
-    return RenderedVisualization(
-        name=op.name, op=op.op, png_bytes=bytes(png), path=None
-    )
+    return RenderedVisualization(name=op.name, op=op.op, png_bytes=bytes(png), path=None)

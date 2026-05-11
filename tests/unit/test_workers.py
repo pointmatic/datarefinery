@@ -87,9 +87,7 @@ def test_per_record_seed_differs_for_different_global_seeds() -> None:
 
 def test_per_record_seed_matches_documented_formula() -> None:
     """Pin the formula: changing this is a determinism-contract event."""
-    expected_digest = hashlib.sha256(
-        (7).to_bytes(8, "big") + b"abc"
-    ).digest()
+    expected_digest = hashlib.sha256((7).to_bytes(8, "big") + b"abc").digest()
     expected = int.from_bytes(expected_digest[:8], "big")
     assert per_record_seed(7, {"record_id": "abc"}) == expected
 
@@ -127,12 +125,8 @@ def test_workers_1_2_4_produce_byte_identical_output() -> None:
 
 def test_per_record_seed_preserved_through_run_parallel() -> None:
     records = _records(10)
-    out_serial = list(
-        run_parallel(seed=42, fn=_identity_with_seed, items=records, workers=1)
-    )
-    out_parallel = list(
-        run_parallel(seed=42, fn=_identity_with_seed, items=records, workers=4)
-    )
+    out_serial = list(run_parallel(seed=42, fn=_identity_with_seed, items=records, workers=1))
+    out_parallel = list(run_parallel(seed=42, fn=_identity_with_seed, items=records, workers=4))
     # Each record sees the same per-record seed regardless of worker count.
     serial_seeds = {r["record_id"]: r["seen_seed"] for r in out_serial}
     parallel_seeds = {r["record_id"]: r["seen_seed"] for r in out_parallel}
@@ -158,7 +152,10 @@ def test_output_is_sorted_by_record_id_in_serial_mode() -> None:
     ]
     out = list(run_parallel(seed=0, fn=_double_value, items=records, workers=1))
     assert [r["record_id"] for r in out] == [
-        "rec_0000", "rec_0001", "rec_0002", "rec_0003",
+        "rec_0000",
+        "rec_0001",
+        "rec_0002",
+        "rec_0003",
     ]
 
 
@@ -166,9 +163,7 @@ def test_output_is_sorted_by_record_id_in_parallel_mode() -> None:
     """Even with order-jumbling worker delays, output stays sorted."""
     records = _records(8)
     out = list(run_parallel(seed=0, fn=_slow_worker, items=records, workers=4))
-    assert [r["record_id"] for r in out] == [
-        f"rec_{i:04d}" for i in range(8)
-    ]
+    assert [r["record_id"] for r in out] == [f"rec_{i:04d}" for i in range(8)]
 
 
 def test_run_parallel_handles_mixed_type_record_ids_without_crash() -> None:
@@ -201,25 +196,19 @@ def test_workers_zero_is_serial_fast_path() -> None:
 def test_run_parallel_propagates_worker_exception_serial() -> None:
     records = _records(5)
     with pytest.raises(ValueError, match="kaboom"):
-        list(
-            run_parallel(seed=0, fn=_failing_worker, items=records, workers=1)
-        )
+        list(run_parallel(seed=0, fn=_failing_worker, items=records, workers=1))
 
 
 def test_run_parallel_propagates_worker_exception_parallel() -> None:
     records = _records(5)
     with pytest.raises(ValueError, match="kaboom"):
-        list(
-            run_parallel(seed=0, fn=_failing_worker, items=records, workers=2)
-        )
+        list(run_parallel(seed=0, fn=_failing_worker, items=records, workers=2))
 
 
 def test_missing_record_id_raises_materialize_error() -> None:
     bad_records = [{"record_id": "x", "value": 1}, {"value": 2}]
     with pytest.raises(MaterializeError, match="record_id"):
-        list(
-            run_parallel(seed=0, fn=_double_value, items=bad_records, workers=1)
-        )
+        list(run_parallel(seed=0, fn=_double_value, items=bad_records, workers=1))
 
 
 # ---------------------------------------------------------------------------

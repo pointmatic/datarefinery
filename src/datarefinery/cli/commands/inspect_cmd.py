@@ -54,8 +54,7 @@ def inspect(
         Path | None,
         typer.Option(
             "--out",
-            help="Write the rendered visualization to this path "
-            "(only valid with --view).",
+            help="Write the rendered visualization to this path (only valid with --view).",
         ),
     ] = None,
 ) -> None:
@@ -67,13 +66,9 @@ def inspect(
     no_color = state.get("no_color", False)
 
     if out is not None and view is None:
-        raise MaterializeError(
-            "inspect: --out requires --view (it has no meaning in list mode)"
-        )
+        raise MaterializeError("inspect: --out requires --view (it has no meaning in list mode)")
 
-    inspection = _resolve_inspection(
-        target, config=config, variant=variant, seed=seed, view=view
-    )
+    inspection = _resolve_inspection(target, config=config, variant=variant, seed=seed, view=view)
 
     console = Console(no_color=no_color)
     if inspection.rendered is not None and out is not None:

@@ -97,11 +97,7 @@ def _base_dict() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "plugin": "test_plugin",
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": "/data/train"}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [32, 32, 3]},
@@ -289,9 +285,7 @@ def test_check_04_passes_for_pre_split_filter_with_empty_splits() -> None:
 
 def test_check_05_fails_when_augmentation_targets_non_train_split() -> None:
     bad = _base_dict()
-    bad["Augmentations"] = [
-        {"name": "f", "op": "horizontal_flip", "splits": ["val"], "seed": 1}
-    ]
+    bad["Augmentations"] = [{"name": "f", "op": "horizontal_flip", "splits": ["val"], "seed": 1}]
     report = validate(_build(bad), _Plugin())
     failures = _failures_for(report, 5)
     assert len(failures) == 1

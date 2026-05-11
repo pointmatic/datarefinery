@@ -95,6 +95,4 @@ def manifest_block(result: AugmentationsResult) -> str:
     The runner (Story C.m) embeds this in ``manifest.json``. Keys are
     sorted so the canonical output is reproducible across runs.
     """
-    return json.dumps(
-        result.to_manifest_list(), sort_keys=True, separators=(",", ":")
-    )
+    return json.dumps(result.to_manifest_list(), sort_keys=True, separators=(",", ":"))

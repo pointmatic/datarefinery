@@ -45,9 +45,7 @@ def test_check_marks_optional_extras() -> None:
     report = build_check_report()
     extras = {dep.name: dep for dep in report.optional_extras}
     assert "lmentry" in extras
-    assert extras["lmentry"].available == (
-        importlib.util.find_spec("lmentry") is not None
-    )
+    assert extras["lmentry"].available == (importlib.util.find_spec("lmentry") is not None)
 
 
 def test_check_reports_accelerators_without_torch_when_missing() -> None:
@@ -76,9 +74,7 @@ def test_check_records_plugin_discovery_failure(
     def boom(*args: Any, **kwargs: Any) -> Any:
         raise PluginError("forced discovery failure for tests")
 
-    monkeypatch.setattr(
-        "datarefinery.core.check.discover_plugins", boom
-    )
+    monkeypatch.setattr("datarefinery.core.check.discover_plugins", boom)
     report = build_check_report()
     assert report.passed is False
     assert any("forced discovery failure" in msg for msg in report.failures)
@@ -108,8 +104,6 @@ def test_dependency_status_dataclass_is_frozen() -> None:
 
 
 def test_plugin_info_dataclass_is_frozen() -> None:
-    info = PluginInfo(
-        name="n", schema_version=1, is_stub=False, module="m", source=None
-    )
+    info = PluginInfo(name="n", schema_version=1, is_stub=False, module="m", source=None)
     with pytest.raises(dataclasses.FrozenInstanceError):
         info.name = "other"  # type: ignore[misc]

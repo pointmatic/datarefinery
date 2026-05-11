@@ -61,11 +61,7 @@ def _recipe_dict() -> dict[str, Any]:
         "schema_version": 1,
         "plugin": "image_classification",
         "seed": 7,
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": "/data/train"}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [4, 4, 3]},
@@ -130,9 +126,7 @@ def test_from_recipe_runs_validation_exactly_once(
         calls.append(1)
         return real_validate(*args, **kwargs)
 
-    monkeypatch.setattr(
-        "datarefinery.core.datarefinery.validate_recipe", counting_validate
-    )
+    monkeypatch.setattr("datarefinery.core.datarefinery.validate_recipe", counting_validate)
 
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path))
     assert len(calls) == 1
@@ -143,9 +137,7 @@ def test_from_recipe_runs_validation_exactly_once(
 
 
 def test_from_recipe_seed_override(tmp_path: Path) -> None:
-    obj = DataRefinery.from_recipe(
-        _write_recipe(tmp_path), config=_config(tmp_path), seed=99
-    )
+    obj = DataRefinery.from_recipe(_write_recipe(tmp_path), config=_config(tmp_path), seed=99)
     assert obj.seed == 99
 
 
@@ -155,9 +147,7 @@ def test_from_recipe_unknown_plugin_raises(tmp_path: Path) -> None:
     from datarefinery.core.errors import PluginError
 
     with pytest.raises(PluginError, match="nope_not_a_plugin"):
-        DataRefinery.from_recipe(
-            _write_recipe(tmp_path, payload), config=_config(tmp_path)
-        )
+        DataRefinery.from_recipe(_write_recipe(tmp_path, payload), config=_config(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -186,9 +176,7 @@ def test_materialize_round_trip_via_instance_load(tmp_path: Path) -> None:
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path), seed=7)
     records = _records(12)
 
-    instance = obj.materialize(
-        raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    instance = obj.materialize(raw_records=records, raw_input_hashes=_input_hashes(records))
     assert isinstance(instance, Instance)
     assert manifest_path(instance.path).exists()
     assert recipe_path(instance.path).exists()
@@ -199,9 +187,7 @@ def test_materialize_round_trip_via_instance_load(tmp_path: Path) -> None:
     assert reloaded.path == instance.path
     assert reloaded.manifest.recipe_hash == instance.manifest.recipe_hash
     # The reloaded recipe canonicalizes to the same hash recorded in the manifest.
-    expected_hash = hashlib.sha256(
-        to_canonical_bytes(reloaded.recipe)
-    ).hexdigest()
+    expected_hash = hashlib.sha256(to_canonical_bytes(reloaded.recipe)).hexdigest()
     assert expected_hash == reloaded.manifest.recipe_hash
 
 
@@ -210,9 +196,7 @@ def test_instance_fitted_statistics_is_lazy(tmp_path: Path) -> None:
     path = _write_recipe(tmp_path)
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path), seed=7)
     records = _records(12)
-    instance = obj.materialize(
-        raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    instance = obj.materialize(raw_records=records, raw_input_hashes=_input_hashes(records))
 
     stats = instance.fitted_statistics
     # The accessor object is rooted at the instance dir; no I/O has happened.
@@ -233,9 +217,7 @@ def test_instance_load_rejects_directory_without_recipe(tmp_path: Path) -> None:
     path = _write_recipe(tmp_path)
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path), seed=7)
     records = _records(8)
-    instance = obj.materialize(
-        raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    instance = obj.materialize(raw_records=records, raw_input_hashes=_input_hashes(records))
     # Simulate a pre-D.a instance by removing recipe.json.
     recipe_path(instance.path).unlink()
     with pytest.raises(MaterializeError, match=r"no recipe\.json"):
@@ -247,9 +229,7 @@ def test_instance_load_detects_recipe_hash_mismatch(tmp_path: Path) -> None:
     path = _write_recipe(tmp_path)
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path), seed=7)
     records = _records(8)
-    instance = obj.materialize(
-        raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    instance = obj.materialize(raw_records=records, raw_input_hashes=_input_hashes(records))
 
     # Mutate recipe.json: change the seed (which is part of canonical bytes).
     rp = recipe_path(instance.path)
@@ -264,9 +244,7 @@ def test_dr_report_re_renders_in_place(tmp_path: Path) -> None:
     path = _write_recipe(tmp_path)
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path), seed=7)
     records = _records(8)
-    instance = obj.materialize(
-        raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    instance = obj.materialize(raw_records=records, raw_input_hashes=_input_hashes(records))
     rp = report_dir(instance.path) / "report.md"
     original = rp.read_text(encoding="utf-8")
     rp.write_text("clobbered", encoding="utf-8")
@@ -284,9 +262,7 @@ def test_clean_routes_through_configured_cache_root(tmp_path: Path) -> None:
     path = _write_recipe(tmp_path)
     obj = DataRefinery.from_recipe(path, config=_config(tmp_path), seed=7)
     records = _records(8)
-    obj.materialize(
-        raw_records=records, raw_input_hashes=_input_hashes(records)
-    )
+    obj.materialize(raw_records=records, raw_input_hashes=_input_hashes(records))
 
     report = obj.clean(CleanSelector(all=True), force=True)
     assert isinstance(report, CleanReport)
@@ -296,7 +272,3 @@ def test_clean_routes_through_configured_cache_root(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Verbs deferred to later stories
 # ---------------------------------------------------------------------------
-
-
-
-

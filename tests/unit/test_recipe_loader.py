@@ -22,11 +22,7 @@ def _minimal_recipe_dict() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "plugin": "image_classification",
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": "/data/train"}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [32, 32, 3]},

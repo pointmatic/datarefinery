@@ -86,9 +86,7 @@ def _declared_sections(recipe: Recipe) -> list[str]:
     return declared
 
 
-def check_01_schema_version_recognized(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_01_schema_version_recognized(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "schema_version_recognized"
     if recipe.schema_version in SUPPORTED_SCHEMA_VERSIONS:
@@ -105,9 +103,7 @@ def check_01_schema_version_recognized(
     )
 
 
-def check_02_plugin_name_discoverable(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_02_plugin_name_discoverable(recipe: Recipe, plugin: Plugin) -> CheckResult:
     descriptor = "plugin_name_discoverable"
     if plugin.name == recipe.plugin:
         return _passed(2, descriptor)
@@ -117,15 +113,12 @@ def check_02_plugin_name_discoverable(
         status="fail",
         location="plugin",
         message=(
-            f"recipe declares plugin={recipe.plugin!r} but supplied plugin "
-            f"is {plugin.name!r}"
+            f"recipe declares plugin={recipe.plugin!r} but supplied plugin is {plugin.name!r}"
         ),
     )
 
 
-def check_03_section_names_valid_for_plugin(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_03_section_names_valid_for_plugin(recipe: Recipe, plugin: Plugin) -> CheckResult:
     descriptor = "section_names_valid_for_plugin"
     declared = _declared_sections(recipe)
     invalid = [s for s in declared if s not in plugin.supported_sections]
@@ -143,17 +136,13 @@ def check_03_section_names_valid_for_plugin(
     )
 
 
-def check_04_operations_declare_stages_and_splits(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_04_operations_declare_stages_and_splits(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "operations_declare_stages_and_splits"
     issues: list[str] = []
     for op in recipe.Filters:
         if "post_split" in op.stages and not op.splits:
-            issues.append(
-                f"Filters[{op.name!r}].splits is empty (required for post_split filters)"
-            )
+            issues.append(f"Filters[{op.name!r}].splits is empty (required for post_split filters)")
     issues.extend(_empty_splits_issue("Transformations", recipe.Transformations))
     issues.extend(_empty_splits_issue("Augmentations", recipe.Augmentations))
     issues.extend(_empty_splits_issue("Featurizations", recipe.Featurizations))
@@ -172,25 +161,17 @@ def _empty_splits_issue(
     section: str,
     ops: Iterable[TransformationOp | AugmentationOp | FeaturizationOp | FilterOp],
 ) -> list[str]:
-    return [
-        f"{section}[{op.name!r}].splits is empty"
-        for op in ops
-        if not op.splits
-    ]
+    return [f"{section}[{op.name!r}].splits is empty" for op in ops if not op.splits]
 
 
-def check_05_augmentations_train_only(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_05_augmentations_train_only(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "augmentations_train_only"
     issues: list[str] = []
     for op in recipe.Augmentations:
         non_train = [s for s in op.splits if s != "train"]
         if non_train:
-            issues.append(
-                f"Augmentations[{op.name!r}] declares non-train splits {non_train}"
-            )
+            issues.append(f"Augmentations[{op.name!r}] declares non-train splits {non_train}")
     if not issues:
         return _passed(5, descriptor)
     return CheckResult(
@@ -202,9 +183,7 @@ def check_05_augmentations_train_only(
     )
 
 
-def check_06_fit_on_train_uses_train_split(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_06_fit_on_train_uses_train_split(recipe: Recipe, plugin: Plugin) -> CheckResult:
     descriptor = "fit_on_train_uses_train_split"
     issues: list[str] = []
     for op in recipe.Transformations:
@@ -254,9 +233,7 @@ def _field_universe_pre_featurizations(recipe: Recipe) -> set[str]:
     return set(recipe.Output.record_schema.keys()) | {recipe.Labels.field}
 
 
-def check_07_operations_reference_declared_fields(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_07_operations_reference_declared_fields(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Featurization inputs must reference declared/upstream-produced fields.
 
     Operations whose models do not expose explicit field references
@@ -272,8 +249,7 @@ def check_07_operations_reference_declared_fields(
         missing = [name for name in op.inputs if name not in available]
         if missing:
             issues.append(
-                f"Featurizations[{op.name!r}].inputs reference undeclared "
-                f"fields {missing}"
+                f"Featurizations[{op.name!r}].inputs reference undeclared fields {missing}"
             )
         available.add(op.output_field)
     if not issues:
@@ -287,9 +263,7 @@ def check_07_operations_reference_declared_fields(
     )
 
 
-def check_08_splits_partition_correctly(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_08_splits_partition_correctly(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "splits_partition_correctly"
     splits = recipe.Splits
@@ -344,9 +318,7 @@ def check_08_splits_partition_correctly(
     return _passed(8, descriptor)
 
 
-def check_09_stratification_keys_exist(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_09_stratification_keys_exist(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "stratification_keys_exist"
     if recipe.Splits.stratify_by is None:
@@ -367,9 +339,7 @@ def check_09_stratification_keys_exist(
     )
 
 
-def check_10_class_imbalance_strategy_in_one_place(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_10_class_imbalance_strategy_in_one_place(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Heuristic v1 check: a `class_balance` strategy on `Splits` and a
     Filter whose predicate names `class_balance` collide and must be
     resolved to one site per imbalance concern.
@@ -377,9 +347,7 @@ def check_10_class_imbalance_strategy_in_one_place(
     del plugin
     descriptor = "class_imbalance_strategy_in_one_place"
     splits_handles = recipe.Splits.class_balance is not None
-    filter_handles = any(
-        "class_balance" in op.predicate for op in recipe.Filters
-    )
+    filter_handles = any("class_balance" in op.predicate for op in recipe.Filters)
     if splits_handles and filter_handles:
         return CheckResult(
             check_id=10,
@@ -394,9 +362,7 @@ def check_10_class_imbalance_strategy_in_one_place(
     return _passed(10, descriptor)
 
 
-def check_11_visualization_mode_declared(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_11_visualization_mode_declared(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Tautological for valid recipes (the model already constrains
     `mode` to `Literal["exploration", "reporting"]`), but kept as a
     documented FR-2 check so the report is exhaustive.
@@ -406,9 +372,7 @@ def check_11_visualization_mode_declared(
     issues: list[str] = []
     for op in recipe.Visualizations:
         if op.mode not in ("exploration", "reporting"):
-            issues.append(
-                f"Visualizations[{op.name!r}].mode={op.mode!r}"
-            )
+            issues.append(f"Visualizations[{op.name!r}].mode={op.mode!r}")
     if not issues:
         return _passed(11, descriptor)
     return CheckResult(
@@ -420,18 +384,14 @@ def check_11_visualization_mode_declared(
     )
 
 
-def check_12_variants_reference_declared_sections(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_12_variants_reference_declared_sections(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "variants_reference_declared_sections"
     issues: list[str] = []
     for variant_name, overlay in recipe.variants.items():
         for key in overlay:
             if key not in _VALID_VARIANT_OVERRIDE_KEYS:
-                issues.append(
-                    f"variant {variant_name!r} overrides unknown section {key!r}"
-                )
+                issues.append(f"variant {variant_name!r} overrides unknown section {key!r}")
     if not issues:
         return _passed(12, descriptor)
     return CheckResult(
@@ -443,9 +403,7 @@ def check_12_variants_reference_declared_sections(
     )
 
 
-def check_13_labels_resolvable(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_13_labels_resolvable(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "labels_resolvable"
     if recipe.Labels.field not in recipe.Output.record_schema:
@@ -472,9 +430,7 @@ def _defined_split_names(recipe: Recipe) -> set[str]:
     return set()
 
 
-def check_14_generation_output_schema_consistent(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_14_generation_output_schema_consistent(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "generation_output_schema_consistent"
     issues: list[str] = []
@@ -511,9 +467,7 @@ def check_14_generation_output_schema_consistent(
     )
 
 
-def check_15_split_references_defined(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_15_split_references_defined(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "split_references_defined"
     defined = _defined_split_names(recipe)
@@ -522,9 +476,7 @@ def check_15_split_references_defined(
     def _check(section: str, op_name: str, refs: list[str]) -> None:
         bad = [s for s in refs if s not in defined]
         if bad:
-            issues.append(
-                f"{section}[{op_name!r}] references undefined splits {bad}"
-            )
+            issues.append(f"{section}[{op_name!r}] references undefined splits {bad}")
 
     for filt in recipe.Filters:
         _check("Filters", filt.name, filt.splits)
@@ -548,9 +500,7 @@ def check_15_split_references_defined(
     )
 
 
-def check_16_sample_data_strict_subset(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_16_sample_data_strict_subset(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "sample_data_strict_subset"
     if recipe.SampleData is None:
@@ -582,40 +532,28 @@ def check_16_sample_data_strict_subset(
             location="SampleData.selector.n",
             message=f"n must be >= 1 for a strict subset, got {selector.n}",
         )
-    if has_fraction and selector.fraction is not None and not (
-        0.0 < selector.fraction < 1.0
-    ):
+    if has_fraction and selector.fraction is not None and not (0.0 < selector.fraction < 1.0):
         return CheckResult(
             check_id=16,
             descriptor=descriptor,
             status="fail",
             location="SampleData.selector.fraction",
-            message=(
-                f"fraction must be in (0, 1) for a strict subset, "
-                f"got {selector.fraction}"
-            ),
+            message=(f"fraction must be in (0, 1) for a strict subset, got {selector.fraction}"),
         )
     return _passed(16, descriptor)
 
 
-def check_17_contract_fields_exist_at_stage(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_17_contract_fields_exist_at_stage(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
     descriptor = "contract_fields_exist_at_stage"
     available = set(recipe.Output.record_schema.keys()) | {recipe.Labels.field}
     issues: list[str] = []
     for contract in recipe.InputContracts:
         if contract.field is not None and contract.field not in available:
-            issues.append(
-                f"InputContracts references undeclared field {contract.field!r}"
-            )
+            issues.append(f"InputContracts references undeclared field {contract.field!r}")
     for expectation in recipe.OutputExpectations:
         if expectation.field is not None and expectation.field not in available:
-            issues.append(
-                f"OutputExpectations references undeclared field "
-                f"{expectation.field!r}"
-            )
+            issues.append(f"OutputExpectations references undeclared field {expectation.field!r}")
     if not issues:
         return _passed(17, descriptor)
     return CheckResult(
@@ -627,9 +565,7 @@ def check_17_contract_fields_exist_at_stage(
     )
 
 
-def check_18_plugin_operation_params_validate(
-    recipe: Recipe, plugin: Plugin
-) -> CheckResult:
+def check_18_plugin_operation_params_validate(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Cross-check each operation's `params` against the plugin's
     declared `OperationSpec`. v1 enforces operation existence,
     required-parameter presence, and rejection of unknown parameters.
@@ -643,8 +579,7 @@ def check_18_plugin_operation_params_validate(
         spec = plugin.supported_operations.get(op_kind)
         if spec is None:
             issues.append(
-                f"{section}[{op_name!r}].op={op_kind!r} not declared by "
-                f"plugin {plugin.name!r}"
+                f"{section}[{op_name!r}].op={op_kind!r} not declared by plugin {plugin.name!r}"
             )
             return
         for required_name, param_spec in spec.parameters.items():
@@ -655,9 +590,7 @@ def check_18_plugin_operation_params_validate(
                 )
         for given in params:
             if given not in spec.parameters:
-                issues.append(
-                    f"{section}[{op_name!r}] has unexpected param {given!r}"
-                )
+                issues.append(f"{section}[{op_name!r}] has unexpected param {given!r}")
 
     for tx in recipe.Transformations:
         _validate("Transformations", tx.name, tx.op, tx.params)

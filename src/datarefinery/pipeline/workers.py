@@ -56,9 +56,7 @@ def per_record_seed(
         )
     rid = record[record_id_field]
     rid_bytes = str(rid).encode("utf-8")
-    digest = hashlib.sha256(
-        int(global_seed).to_bytes(8, "big") + rid_bytes
-    ).digest()
+    digest = hashlib.sha256(int(global_seed).to_bytes(8, "big") + rid_bytes).digest()
     return int.from_bytes(digest[:8], "big")
 
 
@@ -93,10 +91,7 @@ def run_parallel(
         ]
     else:
         with ProcessPoolExecutor(max_workers=workers) as executor:
-            futures = [
-                (key, executor.submit(fn, record, prs))
-                for key, prs, record in materialized
-            ]
+            futures = [(key, executor.submit(fn, record, prs)) for key, prs, record in materialized]
             results = [(key, fut.result()) for key, fut in futures]
 
     results.sort(key=lambda kv: kv[0])

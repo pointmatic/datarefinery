@@ -59,27 +59,18 @@ class ContractResult:
 
     @property
     def failures(self) -> tuple[AssertionResult, ...]:
-        return tuple(
-            r for r in self.results if not r.passed and r.severity == "error"
-        )
+        return tuple(r for r in self.results if not r.passed and r.severity == "error")
 
     @property
     def warnings(self) -> tuple[AssertionResult, ...]:
-        return tuple(
-            r for r in self.results if not r.passed and r.severity == "warning"
-        )
+        return tuple(r for r in self.results if not r.passed and r.severity == "warning")
 
     def raise_for_status(self) -> None:
         """Raise :class:`ContractError` if any error-severity failure exists."""
         if not self.failures:
             return
-        lines = [
-            f"  - [{r.kind}] field={r.field!r}: {r.message}"
-            for r in self.failures
-        ]
-        raise ContractError(
-            "Contract failures (error severity):\n" + "\n".join(lines)
-        )
+        lines = [f"  - [{r.kind}] field={r.field!r}: {r.message}" for r in self.failures]
+        raise ContractError("Contract failures (error severity):\n" + "\n".join(lines))
 
 
 # ---------------------------------------------------------------------------
@@ -126,11 +117,7 @@ def _eval_required_field(
     records: list[Record],
     field: str,
 ) -> tuple[bool, str]:
-    missing = [
-        i
-        for i, r in enumerate(records)
-        if field not in r or r[field] is None
-    ]
+    missing = [i for i, r in enumerate(records) if field not in r or r[field] is None]
     if missing:
         sample = missing[:3]
         more = "" if len(missing) <= 3 else f" (+{len(missing) - 3} more)"
@@ -148,10 +135,7 @@ def _eval_dtype(
 ) -> tuple[bool, str]:
     expected = assertion.get("expected")
     if not isinstance(expected, str):
-        return False, (
-            f"dtype assertion missing string 'expected' "
-            f"(got {type(expected).__name__})"
-        )
+        return False, (f"dtype assertion missing string 'expected' (got {type(expected).__name__})")
     accepted = _PY_DTYPE_TAGS.get(expected)
     if accepted is None:
         return False, f"dtype assertion expected tag {expected!r} unknown"
@@ -172,8 +156,7 @@ def _eval_dtype(
         i, t = bad[0]
         more = "" if len(bad) == 1 else f" (+{len(bad) - 1} more)"
         return False, (
-            f"field {field!r} expected dtype {expected!r}; "
-            f"got {t.__name__} at record {i}{more}"
+            f"field {field!r} expected dtype {expected!r}; got {t.__name__} at record {i}{more}"
         )
     return True, f"field {field!r} dtype matches {expected!r} in all records"
 
@@ -200,10 +183,7 @@ def _eval_range(
     if bad:
         i, v = bad[0]
         more = "" if len(bad) == 1 else f" (+{len(bad) - 1} more)"
-        return False, (
-            f"field {field!r} value {v!r} at record {i} outside "
-            f"[{lo}, {hi}]{more}"
-        )
+        return False, (f"field {field!r} value {v!r} at record {i} outside [{lo}, {hi}]{more}")
     return True, f"field {field!r} all values within [{lo}, {hi}]"
 
 
@@ -240,10 +220,7 @@ def _evaluate_one(
             field=field,
             passed=False,
             severity=severity,
-            message=(
-                f"assertion missing string 'kind' "
-                f"(got {type(kind).__name__})"
-            ),
+            message=(f"assertion missing string 'kind' (got {type(kind).__name__})"),
         )
 
     try:
@@ -252,21 +229,30 @@ def _evaluate_one(
         elif kind == "required_field":
             if field is None:
                 return AssertionResult(
-                    kind, None, False, severity,
+                    kind,
+                    None,
+                    False,
+                    severity,
                     "required_field assertion needs a 'field'",
                 )
             ok, msg = _eval_required_field(records, field)
         elif kind == "dtype":
             if field is None:
                 return AssertionResult(
-                    kind, None, False, severity,
+                    kind,
+                    None,
+                    False,
+                    severity,
                     "dtype assertion needs a 'field'",
                 )
             ok, msg = _eval_dtype(records, field, assertion)
         elif kind == "range":
             if field is None:
                 return AssertionResult(
-                    kind, None, False, severity,
+                    kind,
+                    None,
+                    False,
+                    severity,
                     "range assertion needs a 'field'",
                 )
             ok, msg = _eval_range(records, field, assertion)
@@ -277,9 +263,7 @@ def _evaluate_one(
     except (TypeError, ValueError) as exc:
         ok, msg = False, f"evaluator raised {type(exc).__name__}: {exc}"
 
-    return AssertionResult(
-        kind=kind, field=field, passed=ok, severity=severity, message=msg
-    )
+    return AssertionResult(kind=kind, field=field, passed=ok, severity=severity, message=msg)
 
 
 def _evaluate_all(

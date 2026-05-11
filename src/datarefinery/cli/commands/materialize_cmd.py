@@ -56,8 +56,7 @@ def materialize(
             "--stage",
             help=(
                 "Run up to and including this stage, then stop without "
-                "promoting. Manifest is marked partial. Valid: "
-                + ", ".join(STAGE_NAMES)
+                "promoting. Manifest is marked partial. Valid: " + ", ".join(STAGE_NAMES)
             ),
         ),
     ] = None,
@@ -71,22 +70,15 @@ def materialize(
 
     if stop_after is not None and stop_after not in STAGE_NAMES:
         raise MaterializeError(
-            f"--stage={stop_after!r} not recognized. Valid stages: "
-            f"{list(STAGE_NAMES)}"
+            f"--stage={stop_after!r} not recognized. Valid stages: {list(STAGE_NAMES)}"
         )
 
-    dr = DataRefinery.from_recipe(
-        recipe, config=config, variant=variant, seed=seed
-    )
+    dr = DataRefinery.from_recipe(recipe, config=config, variant=variant, seed=seed)
 
     console = Console(no_color=no_color)
-    instance = _run_with_progress(
-        dr, console=console, stop_after=stop_after
-    )
+    instance = _run_with_progress(dr, console=console, stop_after=stop_after)
     cache_hit = dr.last_run is not None and dr.last_run.cache_hit
-    _print_summary(
-        console, instance, cache_hit=cache_hit, stop_after=stop_after
-    )
+    _print_summary(console, instance, cache_hit=cache_hit, stop_after=stop_after)
 
     raise typer.Exit(code=EXIT_OK)
 
@@ -105,9 +97,7 @@ def _run_with_progress(
     """
     expected_stages = list(STAGE_NAMES)
     if stop_after is not None:
-        expected_stages = expected_stages[
-            : expected_stages.index(stop_after) + 1
-        ]
+        expected_stages = expected_stages[: expected_stages.index(stop_after) + 1]
     total = len(expected_stages)
 
     with Progress(
@@ -124,9 +114,7 @@ def _run_with_progress(
         def _on_stage(name: str) -> None:
             progress.update(task_id, description=name, advance=1)
 
-        return dr.materialize(
-            stop_after=stop_after, progress_callback=_on_stage
-        )
+        return dr.materialize(stop_after=stop_after, progress_callback=_on_stage)
 
 
 def _print_summary(
@@ -170,13 +158,9 @@ def _print_summary(
     console.print(counts_table)
 
     if manifest.warnings:
-        warn_table = Table(
-            title="Warnings", expand=False, border_style="yellow"
-        )
+        warn_table = Table(title="Warnings", expand=False, border_style="yellow")
         warn_table.add_column("stage", style="bold")
         warn_table.add_column("message")
         for w in manifest.warnings:
             warn_table.add_row(w.stage, w.message)
         console.print(warn_table)
-
-

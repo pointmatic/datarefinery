@@ -105,9 +105,7 @@ def apply_post_split_filters(
                 continue
             records = _invoke_one(op, records, plugin, label_field)
         final_class_counts = _class_counts(records, label_field)
-        warnings = _empty_class_warnings(
-            initial_class_counts, final_class_counts, split=split_name
-        )
+        warnings = _empty_class_warnings(initial_class_counts, final_class_counts, split=split_name)
         out[split_name] = FilterResult(
             records=records,
             warnings=warnings,
@@ -131,16 +129,13 @@ def _invoke_one(
     op_name = params.pop("op", None)
     if not isinstance(op_name, str):
         raise MaterializeError(
-            f"Filters[{op.name!r}].predicate missing 'op' string "
-            f"(got {type(op_name).__name__})"
+            f"Filters[{op.name!r}].predicate missing 'op' string (got {type(op_name).__name__})"
         )
     callable_: FilterCallable = plugin.operation_factory("Filters", op_name)
     return callable_(records, params, label_field=label_field)
 
 
-def _class_counts(
-    records: list[Record], label_field: str | None
-) -> dict[Any, int]:
+def _class_counts(records: list[Record], label_field: str | None) -> dict[Any, int]:
     if label_field is None:
         return {}
     counts: dict[Any, int] = {}
@@ -160,8 +155,5 @@ def _empty_class_warnings(
     where = "" if split is None else f" in split {split!r}"
     for cls, n_before in before.items():
         if n_before > 0 and after.get(cls, 0) == 0:
-            msgs.append(
-                f"filter emptied class {cls!r}{where}: "
-                f"{n_before} -> 0 records"
-            )
+            msgs.append(f"filter emptied class {cls!r}{where}: {n_before} -> 0 records")
     return tuple(msgs)

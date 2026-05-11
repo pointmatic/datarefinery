@@ -52,8 +52,7 @@ def test_supported_sections_cover_required_recipe_set() -> None:
 def test_every_expected_operation_is_declared() -> None:
     declared = set(PLUGIN.supported_operations.keys())
     assert EXPECTED_OPERATIONS == declared, (
-        f"missing: {EXPECTED_OPERATIONS - declared}; "
-        f"unexpected: {declared - EXPECTED_OPERATIONS}"
+        f"missing: {EXPECTED_OPERATIONS - declared}; unexpected: {declared - EXPECTED_OPERATIONS}"
     )
 
 
@@ -68,9 +67,7 @@ def test_every_operation_has_a_valid_operation_spec(op_name: str) -> None:
 
 def test_fit_on_train_ops_are_in_transformations_or_featurizations() -> None:
     fit_on_train_ops = {
-        name
-        for name, spec in PLUGIN.supported_operations.items()
-        if spec.fit_on_train
+        name for name, spec in PLUGIN.supported_operations.items() if spec.fit_on_train
     }
     assert fit_on_train_ops, "expected at least one fit-on-train op"
     for name in fit_on_train_ops:

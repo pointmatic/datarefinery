@@ -36,10 +36,7 @@ def _record(label: Any, image: Any = 0) -> dict[str, Any]:
 
 def _imbalanced_train_split() -> list[dict[str, Any]]:
     # 6 of class 0, 2 of class 1
-    return (
-        [_record(0, image=i) for i in range(6)]
-        + [_record(1, image=10 + i) for i in range(2)]
-    )
+    return [_record(0, image=i) for i in range(6)] + [_record(1, image=10 + i) for i in range(2)]
 
 
 # ---------------------------------------------------------------------------
@@ -112,9 +109,7 @@ def test_generation_is_deterministic_for_fixed_seed() -> None:
         output_record_schema=_output_schema(),
         label_field="label",
     )
-    assert [r["image"] for r in a.splits["train"]] == [
-        r["image"] for r in b.splits["train"]
-    ]
+    assert [r["image"] for r in a.splits["train"]] == [r["image"] for r in b.splits["train"]]
 
 
 def test_generation_different_seeds_produce_different_clones() -> None:
@@ -287,9 +282,7 @@ class _DropFieldPlugin:
         return False
 
 
-def test_generation_record_missing_output_field_raises_materialize_error() -> (
-    None
-):
+def test_generation_record_missing_output_field_raises_materialize_error() -> None:
     plugin = _DropFieldPlugin()
     op = GenerationOp(
         name="bad_gen",
@@ -348,8 +341,6 @@ def test_returned_splits_are_fresh_lists() -> None:
 def test_generation_result_is_frozen() -> None:
     from dataclasses import FrozenInstanceError
 
-    gr = GenerationResult(
-        splits={}, counts_before={}, counts_after={}, warnings=()
-    )
+    gr = GenerationResult(splits={}, counts_before={}, counts_after={}, warnings=())
     with pytest.raises(FrozenInstanceError):
         gr.warnings = ("x",)  # type: ignore[misc]

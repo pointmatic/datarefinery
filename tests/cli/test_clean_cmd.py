@@ -42,11 +42,7 @@ def _write_recipe(tmp_path: Path, image_root: Path, *, seed: int = 7) -> Path:
         "schema_version": 1,
         "plugin": "image_classification",
         "seed": seed,
-        "Input": {
-            "sources": [
-                {"name": "train", "type": "image_folder", "path": str(image_root)}
-            ]
-        },
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": str(image_root)}]},
         "Output": {
             "record_schema": {
                 "image": {"dtype": "uint8", "shape": [8, 8, 3]},
@@ -67,9 +63,7 @@ def _write_recipe(tmp_path: Path, image_root: Path, *, seed: int = 7) -> Path:
 
 
 def _materialize(cache: Path, recipe: Path) -> None:
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "materialize", str(recipe)]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "materialize", str(recipe)])
     assert result.exit_code == 0, result.stdout
 
 
@@ -89,9 +83,7 @@ def _list_instances(cache: Path) -> list[Path]:
 def test_clean_no_selector_errors(tmp_path: Path) -> None:
     cache = tmp_path / "cache"
     cache.mkdir()
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "clean"]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "clean"])
     assert result.exit_code != 0
     assert isinstance(result.exception, CacheError)
 
@@ -108,11 +100,7 @@ def test_clean_by_recipe_removes_only_matching(tmp_path: Path) -> None:
     # Pick the recipe shard for r1 (read it from disk; skip the
     # `.tmp/` orphans dir which lives next to the materialized shards).
     iroot = instances_root(cache)
-    shards = sorted(
-        p.name
-        for p in iroot.iterdir()
-        if p.is_dir() and not p.name.startswith(".")
-    )
+    shards = sorted(p.name for p in iroot.iterdir() if p.is_dir() and not p.name.startswith("."))
     target_shard = shards[0]
 
     result = runner.invoke(
@@ -144,9 +132,7 @@ def test_clean_by_age_removes_old_instances(tmp_path: Path) -> None:
     for path in instances:
         os.utime(path, (week_ago, week_ago))
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "clean", "--by-age", "1"]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "clean", "--by-age", "1"])
     assert result.exit_code == 0, result.stdout
     assert _list_instances(cache) == []
 
@@ -160,9 +146,7 @@ def test_clean_orphans_removes_old_temp_dirs(tmp_path: Path) -> None:
     week_ago = time.time() - 7 * 86400
     os.utime(orphan, (week_ago, week_ago))
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "clean", "--orphans"]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "clean", "--orphans"])
     assert result.exit_code == 0, result.stdout
     assert not orphan.exists()
 
@@ -174,9 +158,7 @@ def test_clean_all_requires_yes_in_non_tty(tmp_path: Path) -> None:
     _materialize(cache, recipe)
 
     # CliRunner is non-TTY by default; --all without --yes must refuse.
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "clean", "--all"]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "clean", "--all"])
     assert result.exit_code != 0
     assert isinstance(result.exception, CacheError)
     assert "non-interactive" in str(result.exception)
@@ -190,9 +172,7 @@ def test_clean_all_with_yes_wipes_cache(tmp_path: Path) -> None:
     _materialize(cache, recipe)
     assert _list_instances(cache)
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "clean", "--all", "--yes"]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "clean", "--all", "--yes"])
     assert result.exit_code == 0, result.stdout
     assert _list_instances(cache) == []
 
@@ -203,9 +183,7 @@ def test_clean_renders_summary_table(tmp_path: Path) -> None:
     recipe = _write_recipe(tmp_path, images)
     _materialize(cache, recipe)
 
-    result = runner.invoke(
-        app, ["--cache-root", str(cache), "clean", "--all", "--yes"]
-    )
+    result = runner.invoke(app, ["--cache-root", str(cache), "clean", "--all", "--yes"])
     assert result.exit_code == 0, result.stdout
     assert "Removed" in result.stdout
     assert "Cache root" in result.stdout

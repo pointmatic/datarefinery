@@ -63,9 +63,7 @@ def test_library_import_does_not_configure_root_logger() -> None:
     import datarefinery.logging  # noqa: F401  side-effect import under test
 
     root_handlers = logging.getLogger().handlers
-    assert not any(
-        isinstance(getattr(h, "formatter", None), JsonFormatter) for h in root_handlers
-    )
+    assert not any(isinstance(getattr(h, "formatter", None), JsonFormatter) for h in root_handlers)
 
 
 def test_get_logger_returns_namespaced_child() -> None:

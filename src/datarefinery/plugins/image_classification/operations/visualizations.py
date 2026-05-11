@@ -41,9 +41,7 @@ class ClassDistributionHistogramOp:
     ) -> bytes:
         del params
         if label_field is None:
-            raise PluginError(
-                "class_distribution_histogram requires Labels.field"
-            )
+            raise PluginError("class_distribution_histogram requires Labels.field")
         counts: dict[Any, int] = {}
         for recs in splits.values():
             for r in recs:
@@ -59,9 +57,7 @@ class ClassDistributionHistogramOp:
         draw = ImageDraw.Draw(img)
 
         if counts:
-            classes = sorted(
-                counts.keys(), key=lambda x: (type(x).__name__, repr(x))
-            )
+            classes = sorted(counts.keys(), key=lambda x: (type(x).__name__, repr(x)))
             max_count = max(counts.values())
             n = len(classes)
             bar_w = plot_w / max(n, 1)
@@ -71,9 +67,7 @@ class ClassDistributionHistogramOp:
                 x1 = margin + (i + 1) * bar_w - 2
                 y0 = canvas_h - margin - int(h)
                 y1 = canvas_h - margin
-                draw.rectangle(
-                    [(x0, y0), (x1, y1)], fill=(70, 130, 180)
-                )
+                draw.rectangle([(x0, y0), (x1, y1)], fill=(70, 130, 180))
                 draw.text(
                     (x0, canvas_h - margin + 2),
                     str(cls),
@@ -123,16 +117,12 @@ class SampleGridOp:
 
         if per_class:
             if label_field is None:
-                raise PluginError(
-                    "sample_grid per_class=True requires Labels.field"
-                )
+                raise PluginError("sample_grid per_class=True requires Labels.field")
             by_class: dict[Any, list[Record]] = {}
             for r in all_records:
                 by_class.setdefault(r.get(label_field), []).append(r)
             chosen: list[Record] = []
-            for cls in sorted(
-                by_class.keys(), key=lambda x: (type(x).__name__, repr(x))
-            ):
+            for cls in sorted(by_class.keys(), key=lambda x: (type(x).__name__, repr(x))):
                 chosen.extend(by_class[cls][:n])
         else:
             chosen = all_records[:n]
@@ -145,9 +135,7 @@ class SampleGridOp:
 
         cols = max(1, int(np.ceil(np.sqrt(len(tiles)))))
         rows = (len(tiles) + cols - 1) // cols
-        canvas = Image.new(
-            "RGB", (cols * thumb, rows * thumb), color=(255, 255, 255)
-        )
+        canvas = Image.new("RGB", (cols * thumb, rows * thumb), color=(255, 255, 255))
         for idx, tile_arr in enumerate(tiles):
             r_idx, c_idx = divmod(idx, cols)
             tile_img = Image.fromarray(tile_arr)
@@ -172,37 +160,27 @@ class MeanImagePerClassOp:
     ) -> bytes:
         del params
         if label_field is None:
-            raise PluginError(
-                "mean_image_per_class requires Labels.field"
-            )
+            raise PluginError("mean_image_per_class requires Labels.field")
         all_records = [r for recs in splits.values() for r in recs]
         if not all_records:
             return _encode_png(_blank(64, 64))
 
         by_class: dict[Any, list[np.ndarray]] = {}
         for r in all_records:
-            by_class.setdefault(r.get(label_field), []).append(
-                _to_array(r["image"])
-            )
+            by_class.setdefault(r.get(label_field), []).append(_to_array(r["image"]))
         if not by_class:
             return _encode_png(_blank(64, 64))
 
         thumb = 32
         means: list[np.ndarray] = []
-        for cls in sorted(
-            by_class.keys(), key=lambda x: (type(x).__name__, repr(x))
-        ):
+        for cls in sorted(by_class.keys(), key=lambda x: (type(x).__name__, repr(x))):
             arrs = by_class[cls]
-            stack = np.stack(
-                [_resize_array(a, thumb) for a in arrs], dtype=np.float64
-            )
+            stack = np.stack([_resize_array(a, thumb) for a in arrs], dtype=np.float64)
             mean = stack.mean(axis=0)
             means.append(np.clip(mean, 0, 255).astype(np.uint8))
 
         rgb_tiles = [_to_rgb(m) for m in means]
-        canvas = Image.new(
-            "RGB", (len(rgb_tiles) * thumb, thumb), color=(255, 255, 255)
-        )
+        canvas = Image.new("RGB", (len(rgb_tiles) * thumb, thumb), color=(255, 255, 255))
         for idx, tile in enumerate(rgb_tiles):
             canvas.paste(Image.fromarray(tile), (idx * thumb, 0))
         return _encode_png(canvas)
@@ -237,9 +215,7 @@ def _to_rgb(arr: np.ndarray) -> np.ndarray:
         return np.repeat(arr, 3, axis=-1)
     if arr.ndim == 3 and arr.shape[-1] == 3:
         return arr
-    raise PluginError(
-        f"image array shape {arr.shape!r} not convertible to RGB"
-    )
+    raise PluginError(f"image array shape {arr.shape!r} not convertible to RGB")
 
 
 def _to_uint8_rgb(arr: np.ndarray, size: int) -> np.ndarray:
