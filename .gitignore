@@ -42,4 +42,5 @@ data/
 scratch/
 
 # project-guide
-docs/project-guide/**/*.bak.*
+docs/project-guide/**
+!docs/project-guide/go.md

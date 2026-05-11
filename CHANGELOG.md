@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-11
+
+### Added
+
+- README expanded with quickstart (Story F.a) — opens Phase F:
+  - Installation: PyPI install plus a from-source path that documents
+    the pyve two-environment workflow (runtime venv + testenv).
+  - Quickstart walking through `init → validate → materialize →
+    status` against an image_classification folder layout, with the
+    expected on-disk cache layout (`recipe.yaml`, `manifest.json`,
+    `dataset/`, `fitted_statistics/`, `report/`).
+  - Recipe anatomy: an end-to-end YAML example mirroring the
+    scaffolder output, plus a section-by-section table covering
+    Input, Output, Labels, SampleData, InputContracts, Filters,
+    Generation, Splits, Transformations, Augmentations,
+    Featurizations, OutputExpectations, Visualizations, and
+    variants.
+  - CLI verb summary table (`check`, `init`, `validate`,
+    `materialize`, `status`, `report`, `inspect`, `clean`) with FR
+    cross-references, plus the execution-context flag/env-var table.
+  - Plugin model overview citing the v1 set
+    (image_classification first-class; tabular and text as stubs)
+    and pointing at `plugins/base.py` for the protocol.
+  - Library API example covering both the one-shot `materialize`
+    convenience and the lower-level `DataRefinery.from_recipe`
+    surface; verified against the CIFAR-10-shaped fixture.
+  - "v1 scope and non-goals" section sourced from `concept.md`.
+  - Cross-links to `docs/specs/concept.md`,
+    `docs/specs/features.md`, and `docs/specs/tech-spec.md`.
+
 ## [0.5.7] - 2026-05-09
 
 ### Added

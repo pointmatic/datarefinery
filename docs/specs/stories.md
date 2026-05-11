@@ -669,15 +669,15 @@ Generic plugin contract harness ensuring every registered plugin (real or stub) 
 
 Pre-production v1 polish. README expanded with quickstart and recipe authoring; recipe + plugin authoring guides; final `v1.0.0` cut as the production-release marker (which flips post-production rules per `features.md`).
 
-### Story F.a: README Expanded with Quickstart [Planned]
+### Story F.a: v0.6.0 README Expanded with Quickstart [Done]
 
-Promote the package to a non-trivial first-impression README. Minor bump (0.1.0) reflects the leap from "scaffolding present" to "documented usable tool."
+Promote the package to a non-trivial first-impression README. Minor bump reflects the leap from "scaffolding present" to "documented usable tool."
 
-- [ ] Expand `README.md` with: install (PyPI + dev paths), quickstart (`init` → `validate` → `materialize` on CIFAR-shaped data), recipe-anatomy section, CLI verb summary table, plugin model overview, link to features.md/tech-spec.md.
-- [ ] Add a recipe example for `image_classification` end-to-end.
-- [ ] Add a "v1 scope and non-goals" section sourced from concept.md.
-- [ ] Update CHANGELOG.md
-- [ ] Verify: README renders cleanly on GitHub; quickstart commands succeed against the fixture.
+- [x] Expand `README.md` with: install (PyPI + dev paths), quickstart (`init` → `validate` → `materialize` on CIFAR-shaped data), recipe-anatomy section, CLI verb summary table, plugin model overview, link to features.md/tech-spec.md.
+- [x] Add a recipe example for `image_classification` end-to-end.
+- [x] Add a "v1 scope and non-goals" section sourced from concept.md.
+- [x] Update CHANGELOG.md
+- [x] Verify: README renders cleanly on GitHub; quickstart commands succeed against the fixture.
 
 ### Story F.b: Recipe Authoring Guide [Planned]
 
