@@ -135,7 +135,7 @@ def test_atomic_promote_failure_then_mark_failed_leaves_temp_with_marker(
     _populate(temp)
 
     def fake_device_id(path: Path) -> int:
-        return 1 if "tmp" in str(path) else 2
+        return 1 if path == temp.parent else 2
 
     monkeypatch.setattr(atomic_mod, "_device_id", fake_device_id)
 

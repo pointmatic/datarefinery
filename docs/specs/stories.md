@@ -115,33 +115,33 @@ This is a test release event. Per `features.md` and `project-essentials.md`, and
 
 Continuous-integration workflow (lint + type + test on every PR), coverage badge, and post-production release-automation polish. The publish workflow already shipped in A.d so the PyPI name was reserved early; Phase G adds the rest.
 
-### Story G.a: v1.0.1 GitHub Actions: Lint + Type + Test [Planned]
+### Story G.a: v0.6.2 GitHub Actions: Lint + Type + Test [Done]
 
 CI runs `ruff`, `mypy --strict`, and `pytest` on every PR and on `main`.
 
-- [ ] Add `.github/workflows/ci.yml` running on pull_request and push to `main`.
-- [ ] Matrix: Python 3.12 on ubuntu-latest and macos-latest.
-- [ ] Steps: checkout, setup-python, install dev requirements, `pyve testenv run ruff check src tests`, `pyve testenv run ruff format --check src tests`, `pyve testenv run mypy src tests`, `pyve test --cov --cov-fail-under` (core-invariant gates from E.g).
-- [ ] Required-status-check on `main` for all matrix legs.
-- [ ] Bump version to v1.1.0
-- [ ] Update CHANGELOG.md
-- [ ] Verify: a deliberate lint violation in a PR fails CI on both OS legs.
+- [x] Add `.github/workflows/ci.yml` running on pull_request and push to `main`.
+- [x] Matrix: Python 3.12 on ubuntu-latest and macos-latest.
+- [x] Steps: checkout, setup-python, install dev requirements, `pyve testenv run ruff check src tests`, `pyve testenv run ruff format --check src tests`, `pyve testenv run mypy src tests`, `pyve test --cov --cov-fail-under` (core-invariant gates from E.g). *(CI uses plain pip in a single venv rather than the pyve two-env split — pyve isolation is a local-dev convenience and the throwaway CI env doesn't need it; the four gates and the per-module coverage threshold are equivalent.)*
+- [ ] Required-status-check on `main` for all matrix legs. *(Developer action: GitHub UI → Settings → Branches; pickable after the workflow has run once.)*
+- [x] Bump version to v0.6.2
+- [x] Update CHANGELOG.md
+- [ ] Verify: a deliberate lint violation in a PR fails CI on both OS legs. *(Developer action: requires push to remote + PR.)*
 
-### Story G.b: v1.0.2 Coverage Badge (Codecov) [Planned]
+### Story G.b: v0.6.3 Coverage Badge (Codecov) [Planned]
 
 - [ ] Add Codecov upload step to `ci.yml` using `codecov/codecov-action`.
 - [ ] Configure `.codecov.yml` with target ≥85% post-production (per features.md) and per-module ≥95% on core invariants.
 - [ ] Add Codecov badge to `README.md`.
-- [ ] Bump version to v1.1.1
+- [ ] Bump version to v0.6.3
 - [ ] Update CHANGELOG.md
 - [ ] Verify: a PR shows a Codecov status check and the README badge updates after merge to `main`.
 
-### Story G.c: v1.0.3 Release Automation Polish [Planned]
+### Story G.c: v0.6.4 Release Automation Polish [Planned]
 
 - [ ] Add a GitHub Action that on tag push extracts the corresponding `CHANGELOG.md` section and creates a GitHub Release with that body.
 - [ ] Add tag protection rule: only maintainers can push `v*` tags.
 - [ ] Document the release procedure in `docs/guides/releasing.md` (bump → CHANGELOG → tag → workflow → verify).
-- [ ] Bump version to v1.1.2
+- [ ] Bump version to v0.6.4
 - [ ] Update CHANGELOG.md
 - [ ] Verify: a new tag push produces a GitHub Release with the changelog body and a successful PyPI upload.
 

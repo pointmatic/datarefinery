@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-05-11
+
+### Added
+
+- **Story G.a — GitHub Actions: Lint + Type + Test.** Added
+  `.github/workflows/ci.yml` running on every pull request and on
+  pushes to `main`. Matrix runs Python 3.12 on `ubuntu-latest` and
+  `macos-latest`, installs runtime + dev dependencies via plain `pip`
+  (pyve's two-environment isolation is a local-dev convenience; CI
+  uses a single throwaway env), and executes the same four gates the
+  developer runs locally: `ruff check`, `ruff format --check`,
+  `mypy --strict`, and `pytest --cov`. A final step reads the
+  core-invariant module list and threshold from
+  `[tool.coverage.datarefinery]` in `pyproject.toml` and enforces
+  `coverage report --include=<module> --fail-under=95` per module —
+  the gate stays single-sourced in `pyproject.toml` (per the comment
+  block above the section), and the CI step picks it up at run time.
+  All eight core-invariant modules currently sit at 96–100%.
+
+  Operational follow-ups for the developer (out of scope for the LLM):
+  - Configure branch protection on `main` to require both
+    `ci (ubuntu-latest, 3.12)` and `ci (macos-latest, 3.12)` as
+    status checks (GitHub UI → Settings → Branches; pickable after
+    the workflow has run once).
+  - Verify by introducing a deliberate lint violation in a feature
+    branch + PR and confirming CI fails on both OS legs.
+
 ## [0.6.1] - 2026-05-11
 
 **Test Release — Validation of feature fit.**

@@ -1,0 +1,91 @@
+# Copyright (c) 2026 Pointmatic
+# SPDX-License-Identifier: Apache-2.0
+#
+# CI: ruff (lint + format), mypy --strict, pytest with coverage, and the
+# per-module core-invariant coverage gates from Story E.g. Pyve's
+# two-environment isolation is a local-dev convenience; in CI we install
+# runtime + dev deps into a single throwaway env and invoke the tools
+# directly. The list of core-invariant modules and the threshold are
+# read from `pyproject.toml` at run time so the gate stays single-sourced
+# (`[tool.coverage.datarefinery]`).
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install -r requirements-dev.txt
+
+      - name: ruff check
+        run: ruff check src tests
+
+      - name: ruff format --check
+        run: ruff format --check src tests
+
+      - name: mypy --strict
+        run: mypy src tests
+
+      - name: pytest with coverage
+        run: pytest --cov
+
+      - name: Core-invariant coverage gates
+        run: |
+          python <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as f:
+              cfg = tomllib.load(f)
+          section = cfg["tool"]["coverage"]["datarefinery"]
+          modules = section["core_invariant_modules"]
+          threshold = section["core_invariant_threshold"]
+
+          failures: list[str] = []
+          for module in modules:
+              print(f"::group::coverage {module}")
+              result = subprocess.run(
+                  [
+                      sys.executable,
+                      "-m",
+                      "coverage",
+                      "report",
+                      f"--include={module}",
+                      f"--fail-under={threshold}",
+                  ],
+              )
+              print("::endgroup::")
+              if result.returncode != 0:
+                  failures.append(module)
+          if failures:
+              print(f"::error::Core-invariant coverage gate failed: {failures}")
+              sys.exit(1)
+          PY

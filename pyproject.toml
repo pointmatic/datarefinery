@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datarefinery"
-version = "0.6.1"
+version = "0.6.2"
 description = "Recipe-driven data preparation and caching for machine learning"
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
@@ -83,6 +83,7 @@ explicit_package_bases = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra --strict-markers"
 markers = [
     "slow: marks tests that exercise the full pipeline at multiple worker counts; CI may opt to run these on demand only (e.g. `pytest -m 'not slow'`).",
