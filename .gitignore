@@ -42,5 +42,8 @@ data/
 scratch/
 
 # project-guide
-docs/project-guide/**
-!docs/project-guide/go.md
+/docs/project-guide/.metadata.yml
+/docs/project-guide/README.md
+/docs/project-guide/developer/
+/docs/project-guide/templates/
+/docs/project-guide/**/*.bak.*
