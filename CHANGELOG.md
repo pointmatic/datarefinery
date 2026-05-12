@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-05-12
+
+### Added
+
+- **Story G.b — Coverage Badge (Codecov).** Wired the existing
+  `pytest --cov` run in CI to upload `coverage.xml` to Codecov via
+  `codecov/codecov-action@v5`, one upload per matrix leg keyed by
+  `flags: ${{ matrix.os }}`. Added `.codecov.yml` mirroring the
+  `features.md` thresholds: project-wide gate at 85% marked
+  `informational: true` for the pre-production window (flip at v1.0.0
+  per Acceptance Criterion 10), plus a `core_invariants` component
+  bundling the same eight modules listed in
+  `[tool.coverage.datarefinery]` with a 95% project status — keeping
+  Codecov's reporting view aligned with the per-module CI gate (which
+  remains the enforcement point). Added Codecov + CI status badges to
+  `README.md`.
+
+  The Codecov uploader is tokenless on public repos; the workflow
+  passes `token: ${{ secrets.CODECOV_TOKEN }}` so the same step keeps
+  working if the repo is ever private or the org enables the
+  upload-token requirement. `fail_ci_if_error: false` keeps a Codecov
+  outage from masking real CI failures.
+
+  Operational follow-ups for the developer (out of scope for the LLM):
+  - On the first PR after merge, confirm the Codecov status check
+    appears on the PR and the README badge resolves once `main` has
+    been uploaded at least once.
+
 ## [0.6.2] - 2026-05-11
 
 ### Added

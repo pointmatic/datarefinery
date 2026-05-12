@@ -1,0 +1,63 @@
+# Copyright (c) 2026 Pointmatic
+# SPDX-License-Identifier: Apache-2.0
+#
+# Codecov configuration for DataRefinery.
+#
+# Thresholds mirror `features.md` "Test coverage" acceptance criteria:
+#   - Core invariants (recipe loader, schema-version gate, cache identity,
+#     splits/seeding, plugin interface, atomic promote/rollback) >= 95% in
+#     any release. Enforced by CI's per-module gate (see ci.yml + the
+#     `[tool.coverage.datarefinery]` section in pyproject.toml) and
+#     mirrored here for Codecov's component view.
+#   - Overall line coverage >= 85% *after* production release. Pre-1.0,
+#     the project-wide gate is `informational: true` so PRs are not
+#     blocked by it; flip to enforcing at the v1.0.0 production-release
+#     event.
+
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  range: 70..95
+  round: down
+  precision: 1
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 1%
+        # Pre-production: report the project-wide coverage delta without
+        # blocking PRs. Flip `informational` to `false` at v1.0.0 to
+        # enforce the 85% gate (features.md Acceptance Criterion 10).
+        informational: true
+    patch:
+      default:
+        target: 85%
+        informational: true
+
+component_management:
+  individual_components:
+    - component_id: core_invariants
+      name: Core invariants
+      paths:
+        - src/datarefinery/recipe/loader.py
+        - src/datarefinery/recipe/canonical.py
+        - src/datarefinery/cache/identity.py
+        - src/datarefinery/cache/atomic.py
+        - src/datarefinery/pipeline/stages/splits.py
+        - src/datarefinery/pipeline/workers.py
+        - src/datarefinery/plugins/base.py
+        - src/datarefinery/plugins/discovery.py
+      statuses:
+        - type: project
+          target: 95%
+          threshold: 0%
+
+comment:
+  layout: "header, diff, components, files, footer"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "tests/**"
+  - "docs/**"

@@ -2,6 +2,8 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![CI](https://github.com/pointmatic/datarefinery/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/pointmatic/datarefinery/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/pointmatic/datarefinery/branch/main/graph/badge.svg)](https://codecov.io/gh/pointmatic/datarefinery)
 
 > Recipe-driven data preparation and caching for machine learning.
 
@@ -62,12 +64,12 @@ cd datarefinery
 
 # Runtime env
 pyve init
-pyve run pip install -e .
+pyve run pip install -e /path/to/datarefinery
 
 # Dev tooling env (one-time)
 pyve testenv init
 pyve testenv install -r requirements-dev.txt
-pyve testenv run pip install -e .
+pyve testenv run pip install -e /path/to/datarefinery
 
 # Run the test suite
 pyve test

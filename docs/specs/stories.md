@@ -127,14 +127,14 @@ CI runs `ruff`, `mypy --strict`, and `pytest` on every PR and on `main`.
 - [x] Update CHANGELOG.md
 - [ ] Verify: a deliberate lint violation in a PR fails CI on both OS legs. *(Developer action: requires push to remote + PR.)*
 
-### Story G.b: v0.6.3 Coverage Badge (Codecov) [Planned]
+### Story G.b: v0.6.3 Coverage Badge (Codecov) [Done]
 
-- [ ] Add Codecov upload step to `ci.yml` using `codecov/codecov-action`.
-- [ ] Configure `.codecov.yml` with target ≥85% post-production (per features.md) and per-module ≥95% on core invariants.
-- [ ] Add Codecov badge to `README.md`.
-- [ ] Bump version to v0.6.3
-- [ ] Update CHANGELOG.md
-- [ ] Verify: a PR shows a Codecov status check and the README badge updates after merge to `main`.
+- [x] Add Codecov upload step to `ci.yml` using `codecov/codecov-action`.
+- [x] Configure `.codecov.yml` with target ≥85% post-production (per features.md) and per-module ≥95% on core invariants.
+- [x] Add Codecov badge to `README.md`.
+- [x] Bump version to v0.6.3
+- [x] Update CHANGELOG.md
+- [ ] Verify: a PR shows a Codecov status check and the README badge updates after merge to `main`. *(Developer action: requires push to remote + PR.)*
 
 ### Story G.c: v0.6.4 Release Automation Polish [Planned]
 
