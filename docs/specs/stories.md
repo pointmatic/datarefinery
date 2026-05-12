@@ -93,15 +93,15 @@ State at story start (audited 2026-05-11):
   - `pyve test` → all tests still pass (no behavioral regressions from the type-annotation work).
 - [x] Verify: the `mypy --strict` half of F.f Acceptance Criterion 10 is now demonstrably met.
 
-### Story F.f: v0.6.1 Test Release [Planned]
+### Story F.f: v0.6.1 Test Release [Done]
 
 This is a test release event. Per `features.md` and `project-essentials.md`, and we will postpone production release until thorough testing and we have confirmation of feature fit. 
 
-- [ ] Final pass on `features.md` "Acceptance Criteria" — every numbered item demonstrably met.
-- [ ] Add release notes section in `CHANGELOG.md` titled "**Test Release — Validation of feature fit.**"
-- [ ] Bump version to v0.6.1
-- [ ] Update CHANGELOG.md
-- [ ] Verify: `python -m build` produces a clean wheel; `pip install ./dist/datarefinery-0.6.1-*.whl` in a fresh venv succeeds; `datarefinery check` reports environment soundness; `init → validate → materialize` golden path passes on the installed wheel.
+- [x] Final pass on `features.md` "Acceptance Criteria" — every numbered item demonstrably met.
+- [x] Add release notes section in `CHANGELOG.md` titled "**Test Release — Validation of feature fit.**"
+- [x] Bump version to v0.6.1
+- [x] Update CHANGELOG.md
+- [x] Verify: `python -m build` produces a clean wheel; `pip install ./dist/datarefinery-0.6.1-*.whl` in a fresh venv succeeds; `datarefinery check` reports environment soundness; `init → validate → materialize` golden path passes on the installed wheel.
 
 **Out of Scope**
 - Add `recipe.loader.migrations` registry header documentation: "post-production: every cache-invalidating change requires a migration entry here."

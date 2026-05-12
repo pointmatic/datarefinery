@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-11
+
+**Test Release — Validation of feature fit.**
+
+This is a test release, not a production release. Per `features.md` and
+`project-essentials.md`, the bump to `v1.0.0` is intentionally postponed
+until thorough downstream testing and confirmation of feature fit. Pre-
+production cache-invalidation rules still apply (see
+`project-essentials.md` § "Cache identity is the reproducibility
+contract").
+
+### Changed
+
+- Pre-release lint/type cleanup so `features.md` Acceptance Criterion 10
+  (*"`ruff` and `mypy --strict` pass clean"*) is demonstrably met:
+  - **Story F.d — Fix ruff format drift.** Ran `ruff format` across
+    `src/` and `tests/`; 86 files reformatted (45 `src/`, 41 `tests/`).
+    Whitespace-only — no logic, identifier, or import changes
+    (AST-equivalence spot-checked on representative files from `src/`,
+    `tests/unit/`, and `tests/integration/`).
+  - **Story F.e — Fix `mypy --strict` errors.** Drove `mypy --strict`
+    from 104 errors → 0. Test-side type-annotation work only; `src/`
+    was already clean and is untouched. Highlights: widened fixture
+    builders (`_records`, `_splits`, `_record`, `_path_record`) from
+    `dict[str, Any]`-flavored returns to `Mapping[...]`-flavored
+    returns to satisfy `list[Mapping[...]]` invariance at stage-helper
+    call sites; stripped 10 stale `# type: ignore[arg-type]` comments
+    that mypy now flagged as unused; added focused
+    `# type: ignore[attr-defined]` to two `monkeypatch.setattr` sites
+    that reach into a module's imported submodule namespace; added
+    `Operation` return annotation to the two test-fixture dummy
+    plugins; annotated an empty-list dict literal in the drift tests.
+    No `mypy --strict` configuration was weakened.
+
+### Verified
+
+- All 11 numbered items in `features.md` § "Acceptance Criteria" are
+  demonstrably met by stories already `[Done]` (Phases A–E plus F.a–F.e).
+- `pyve testenv run mypy src tests` → 0 errors across 130 source files.
+- `pyve testenv run ruff check src tests` → all checks passed.
+- `pyve testenv run ruff format --check src tests` → 130 files already
+  formatted.
+- `pyve test` → 639 passed.
+- `python -m build` produces a clean wheel; `pip install` of that wheel
+  in a fresh venv succeeds; `datarefinery check` reports environment
+  soundness; the `init → validate → materialize` golden path passes on
+  the installed wheel.
+
 ## [0.6.0] - 2026-05-11
 
 ### Added
