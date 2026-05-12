@@ -88,7 +88,7 @@ def test_atomic_promote_wraps_os_replace_oserror(
     def boom(*args: object, **kwargs: object) -> None:
         raise OSError("simulated rename failure")
 
-    monkeypatch.setattr(atomic_mod.os, "replace", boom)
+    monkeypatch.setattr(atomic_mod.os, "replace", boom)  # type: ignore[attr-defined]
 
     with pytest.raises(MaterializeError, match="atomic promote failed"):
         atomic_promote(temp, final)

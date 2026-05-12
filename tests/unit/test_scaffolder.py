@@ -257,12 +257,14 @@ def test_deterministic_path_does_not_import_lmentry(
 # ---------------------------------------------------------------------------
 
 
-def _records_for_scaffolded_paths(input_path: Path, *, image_size: int = 8) -> list[dict[str, Any]]:
+def _records_for_scaffolded_paths(
+    input_path: Path, *, image_size: int = 8
+) -> list[Mapping[str, Any]]:
     """Synthesize records matching the on-disk layout the scaffolder
     inspected. Image bytes are loaded; the runner itself doesn't yet
     do disk loading (deferred from C.m), so we hand the loaded records
     in."""
-    out: list[dict[str, Any]] = []
+    out: list[Mapping[str, Any]] = []
     rec_id = 0
     for cls_dir in sorted(p for p in input_path.iterdir() if p.is_dir()):
         for img_path in sorted(cls_dir.glob("*.png")):

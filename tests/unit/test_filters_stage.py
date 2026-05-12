@@ -9,6 +9,7 @@ filter operations (`filter_by_label`, `random_sample`) end-to-end through
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import pytest
@@ -23,7 +24,7 @@ from datarefinery.plugins.image_classification import PLUGIN as IMAGE_PLUGIN
 from datarefinery.recipe.models import FilterOp
 
 
-def _records(n: int = 10, classes: int = 2) -> list[dict[str, Any]]:
+def _records(n: int = 10, classes: int = 2) -> list[Mapping[str, Any]]:
     return [{"id": i, "label": f"c{i % classes}", "value": i / n} for i in range(n)]
 
 

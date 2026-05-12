@@ -21,7 +21,7 @@ from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.workers import per_record_seed, run_parallel
 
 
-def _records(n: int) -> list[dict[str, Any]]:
+def _records(n: int) -> list[Mapping[str, Any]]:
     return [{"record_id": f"rec_{i:04d}", "value": i} for i in range(n)]
 
 
@@ -206,7 +206,10 @@ def test_run_parallel_propagates_worker_exception_parallel() -> None:
 
 
 def test_missing_record_id_raises_materialize_error() -> None:
-    bad_records = [{"record_id": "x", "value": 1}, {"value": 2}]
+    bad_records: list[Mapping[str, Any]] = [
+        {"record_id": "x", "value": 1},
+        {"value": 2},
+    ]
     with pytest.raises(MaterializeError, match="record_id"):
         list(run_parallel(seed=0, fn=_double_value, items=bad_records, workers=1))
 

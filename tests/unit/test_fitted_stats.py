@@ -102,7 +102,7 @@ def test_put_vector_writes_one_parquet_per_name(tmp_path: Path) -> None:
 def test_put_vector_rejects_non_table(tmp_path: Path) -> None:
     fs = FittedStatistics(tmp_path)
     with pytest.raises(MaterializeError, match=r"pyarrow\.Table required"):
-        fs.put_vector("op1", "x", [1, 2, 3])  # type: ignore[arg-type]
+        fs.put_vector("op1", "x", [1, 2, 3])
 
 
 def test_get_vector_missing_raises(tmp_path: Path) -> None:

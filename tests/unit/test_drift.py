@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,7 @@ from datarefinery.reporting.drift import (
 )
 
 
-def _splits_with_labels() -> dict[str, list[dict[str, object]]]:
+def _splits_with_labels() -> dict[str, list[Mapping[str, object]]]:
     return {
         "train": [
             {"label": "cat"},
@@ -89,7 +90,7 @@ def test_compute_drift_placeholder_skips_class_distribution_without_label() -> N
 
 
 def test_compute_drift_placeholder_split_keys_are_sorted() -> None:
-    splits = {"z": [], "a": [], "m": []}
+    splits: dict[str, list[Mapping[str, object]]] = {"z": [], "a": [], "m": []}
     drift = compute_drift_placeholder(splits, plugin_name="image_classification", label_field=None)
     assert list(drift.splits.keys()) == ["a", "m", "z"]
 

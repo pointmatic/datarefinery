@@ -43,7 +43,7 @@ def _img(value: int) -> np.ndarray:
     return np.full((4, 4, 3), value, dtype=np.uint8)
 
 
-def _records(n: int = 12, classes: int = 2) -> list[dict[str, Any]]:
+def _records(n: int = 12, classes: int = 2) -> list[Mapping[str, Any]]:
     """Build a small synthetic image record set with stable record_ids."""
     return [
         {
@@ -56,7 +56,7 @@ def _records(n: int = 12, classes: int = 2) -> list[dict[str, Any]]:
     ]
 
 
-def _input_hashes(records: list[dict[str, Any]]) -> dict[str, str]:
+def _input_hashes(records: list[Mapping[str, Any]]) -> dict[str, str]:
     """Stable per-source content hash for tests; uses concatenated record ids."""
     import hashlib
 
@@ -353,7 +353,7 @@ def test_visualization_failure_leaves_failed_marker(tmp_path: Path) -> None:
     plugin = _FailingPlugin(fail_op="class_distribution_histogram")
     runner = PipelineRunner(
         recipe=recipe,
-        plugin=plugin,  # type: ignore[arg-type]
+        plugin=plugin,
         config=_config(cache_root),
         seed=7,
     )
@@ -396,7 +396,7 @@ def test_failure_does_not_leave_partial_promote(tmp_path: Path) -> None:
     plugin = _FailingPlugin(fail_op="class_distribution_histogram")
     runner = PipelineRunner(
         recipe=recipe,
-        plugin=plugin,  # type: ignore[arg-type]
+        plugin=plugin,
         config=_config(cache_root),
         seed=7,
     )

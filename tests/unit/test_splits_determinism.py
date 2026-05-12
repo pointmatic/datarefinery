@@ -24,6 +24,7 @@ is significantly more expensive than the in-memory comparison.
 from __future__ import annotations
 
 import string
+from collections.abc import Mapping
 from typing import Any
 
 from hypothesis import HealthCheck, given, settings
@@ -146,7 +147,7 @@ def test_apply_splits_repeats_byte_identically(
 # ---------------------------------------------------------------------------
 
 
-def _identity(record: Record, _seed: int) -> Record:
+def _identity(record: Mapping[str, Any], _seed: int) -> Mapping[str, Any]:
     """Module-level identity fn — picklable for ProcessPoolExecutor."""
     return dict(record)
 
@@ -170,7 +171,7 @@ def test_split_partitions_are_invariant_across_worker_counts(
 ) -> None:
     section = _splits_section(ratios=ratios, seed=seed, stratify=stratify)
 
-    partitions: list[dict[str, list[Record]]] = []
+    partitions: list[dict[str, list[str]]] = []
     for workers in (1, 2, 4):
         pre = list(run_parallel(seed=seed, fn=_identity, items=records, workers=workers))
         result = apply_splits(pre, section, seed=seed)

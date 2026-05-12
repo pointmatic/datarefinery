@@ -30,11 +30,11 @@ def _output_schema() -> dict[str, FieldSpec]:
     }
 
 
-def _record(label: Any, image: Any = 0) -> dict[str, Any]:
+def _record(label: Any, image: Any = 0) -> Mapping[str, Any]:
     return {"image": image, "label": label}
 
 
-def _imbalanced_train_split() -> list[dict[str, Any]]:
+def _imbalanced_train_split() -> list[Mapping[str, Any]]:
     # 6 of class 0, 2 of class 1
     return [_record(0, image=i) for i in range(6)] + [_record(1, image=10 + i) for i in range(2)]
 
@@ -294,7 +294,7 @@ def test_generation_record_missing_output_field_raises_materialize_error() -> No
         apply_generation(
             {"train": [_record(0)]},
             [op],
-            plugin=plugin,  # type: ignore[arg-type]
+            plugin=plugin,
             output_record_schema=_output_schema(),
             label_field="label",
         )

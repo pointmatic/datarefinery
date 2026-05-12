@@ -9,6 +9,7 @@ end-to-end through `plugin.operation_factory("Transformations", op)`.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,7 @@ def _record(label: int, value: int) -> dict[str, Any]:
     return {"image": _img(value), "label": label}
 
 
-def _splits() -> dict[str, list[dict[str, Any]]]:
+def _splits() -> dict[str, list[Mapping[str, Any]]]:
     return {
         "train": [_record(0, 10), _record(1, 50), _record(0, 90)],
         "val": [_record(0, 30), _record(1, 70)],
@@ -181,7 +182,9 @@ def test_normalize_handles_zero_variance_channel(tmp_path: Path) -> None:
         fit_source="train",
         splits=["train"],
     )
-    constant = {"train": [_record(0, 7), _record(0, 7), _record(0, 7)]}
+    constant: dict[str, list[Mapping[str, Any]]] = {
+        "train": [_record(0, 7), _record(0, 7), _record(0, 7)]
+    }
     fs = FittedStatistics(tmp_path)
     result = apply_transformations(constant, [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     img = result.splits["train"][0]["image"]

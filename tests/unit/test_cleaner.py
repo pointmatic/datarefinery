@@ -194,7 +194,7 @@ def test_clean_skips_paths_that_fail_to_remove(
     def boom(path: Path) -> None:
         raise OSError("simulated rmtree failure")
 
-    monkeypatch.setattr(cleaner_mod.shutil, "rmtree", boom)
+    monkeypatch.setattr(cleaner_mod.shutil, "rmtree", boom)  # type: ignore[attr-defined]
 
     report = clean(populated_cache, CleanSelector(by_recipe_hash=_RECIPE_A))
     assert report.removed == ()

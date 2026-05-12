@@ -72,26 +72,26 @@ State at story start (audited 2026-05-11):
   - `pyve test` → all tests still pass (no regression from the reformat).
 - [x] Verify: the `ruff` half of F.f Acceptance Criterion 10 is now demonstrably met.
 
-### Story F.e: Fix `mypy --strict` errors [Planned]
+### Story F.e: Fix `mypy --strict` errors [Done]
 
 Pre-test-release cleanup so the `mypy --strict` half of `features.md` Acceptance Criterion 10 (*"`ruff` and `mypy --strict` pass clean"*) passes for F.f. Test-side type-annotation work only — no behavioral changes. Shares F.f's `v0.6.1` release (no separate version bump).
 
 State at story start (audited 2026-05-11):
 - `pyve testenv run mypy src tests` → 104 errors in 16 files, all under `tests/` — `src/` is clean.
 
-- [ ] Fix the dominant mypy cluster (≈90 errors): the `dict[str, list[dict[str, Any]]]` vs `Mapping[str, list[Mapping[str, Any]]]` invariance at stage-helper call sites in `test_visualizations_stage.py`, `test_transformations_stage.py`, `test_runner.py`, `test_generation_stage.py`, `test_featurizations_stage.py`, `test_drift.py`, `test_filters_stage.py`, `test_splits_determinism.py`, `test_workers.py`, `test_scaffolder.py`, `test_failure_modes.py`. Prefer annotating the local fixture variables as `Mapping[...]` (or `dict[str, list[Mapping[str, Any]]]` where mutation is needed) over casting at every call site.
-- [ ] Fix the residual mypy errors:
+- [x] Fix the dominant mypy cluster (≈90 errors): the `dict[str, list[dict[str, Any]]]` vs `Mapping[str, list[Mapping[str, Any]]]` invariance at stage-helper call sites in `test_visualizations_stage.py`, `test_transformations_stage.py`, `test_runner.py`, `test_generation_stage.py`, `test_featurizations_stage.py`, `test_drift.py`, `test_filters_stage.py`, `test_splits_determinism.py`, `test_workers.py`, `test_scaffolder.py`, `test_failure_modes.py`. Prefer annotating the local fixture variables as `Mapping[...]` (or `dict[str, list[Mapping[str, Any]]]` where mutation is needed) over casting at every call site.
+- [x] Fix the residual mypy errors:
   - Remove the 9 `[unused-ignore]` `# type: ignore` comments that mypy now flags as stale (concentrated in `test_visualizations_stage.py` and `test_fitted_stats.py`).
   - Add return annotations to `tests/fixtures/dummy_plugin.py:24` and `tests/fixtures/dummy_plugin_dup.py:20` (`[no-untyped-def]`).
   - Resolve the 2 `[attr-defined]` errors in `test_atomic.py` and `test_cleaner.py` where tests reach into the module's `shutil`/`os` import namespace via `monkeypatch.setattr` — either patch the underlying module path or add a focused `# type: ignore[attr-defined]` per call.
   - Resolve the remaining 1× `[var-annotated]`, 1× `[str]`, 1× `[object]`, and any `[dict-item]` strays not closed by the previous task.
-- [ ] Do **not** weaken `mypy --strict` configuration to mask errors. If a `# type: ignore[...]` is genuinely warranted (e.g. a test deliberately constructs a malformed value to exercise a guard), narrow the ignore to the specific code and add a one-line comment explaining why.
-- [ ] Run the full check suite and confirm:
+- [x] Do **not** weaken `mypy --strict` configuration to mask errors. If a `# type: ignore[...]` is genuinely warranted (e.g. a test deliberately constructs a malformed value to exercise a guard), narrow the ignore to the specific code and add a one-line comment explaining why.
+- [x] Run the full check suite and confirm:
   - `pyve testenv run mypy src tests` → 0 errors (the full test surface plus `src/`).
   - `pyve testenv run ruff check src tests` → all checks passed.
   - `pyve testenv run ruff format --check src tests` → 0 files would reformat (F.d's gain is not regressed).
   - `pyve test` → all tests still pass (no behavioral regressions from the type-annotation work).
-- [ ] Verify: the `mypy --strict` half of F.f Acceptance Criterion 10 is now demonstrably met.
+- [x] Verify: the `mypy --strict` half of F.f Acceptance Criterion 10 is now demonstrably met.
 
 ### Story F.f: v0.6.1 Test Release [Planned]
 

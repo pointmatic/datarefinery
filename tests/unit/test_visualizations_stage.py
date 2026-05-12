@@ -32,7 +32,7 @@ def _img(value: int = 0, c: int = 3) -> np.ndarray:
     return np.full((16, 16, c), value, dtype=np.uint8)
 
 
-def _splits() -> dict[str, list[dict[str, Any]]]:
+def _splits() -> dict[str, list[Mapping[str, Any]]]:
     return {
         "train": [
             {"image": _img(20), "label": "cat"},
@@ -260,7 +260,7 @@ def test_reporting_failure_raises_materialize_error(tmp_path: Path) -> None:
         apply_reporting_visualizations(
             _splits(),
             [op],
-            plugin=_FailingPlugin(),  # type: ignore[arg-type]
+            plugin=_FailingPlugin(),
             output_dir=tmp_path,
             label_field="label",
         )
@@ -302,7 +302,7 @@ def test_reporting_op_returning_non_bytes_raises_materialize_error(
         apply_reporting_visualizations(
             _splits(),
             [op],
-            plugin=_BadReturnPlugin(),  # type: ignore[arg-type]
+            plugin=_BadReturnPlugin(),
             output_dir=tmp_path,
             label_field="label",
         )
@@ -333,7 +333,7 @@ def test_exploration_propagates_plugin_errors_unwrapped() -> None:
         render_visualization(
             _splits(),
             op,
-            plugin=_FailingPlugin(),  # type: ignore[arg-type]
+            plugin=_FailingPlugin(),
             label_field="label",
         )
 
@@ -344,7 +344,7 @@ def test_exploration_non_bytes_raises_typeerror() -> None:
         render_visualization(
             _splits(),
             op,
-            plugin=_BadReturnPlugin(),  # type: ignore[arg-type]
+            plugin=_BadReturnPlugin(),
             label_field="label",
         )
 

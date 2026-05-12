@@ -6,7 +6,7 @@ Loaded ad-hoc via `discover_plugins(extra_paths=[...])` — not registered
 under the `datarefinery.plugins` entry-point group.
 """
 
-from datarefinery.plugins.base import OperationSpec
+from datarefinery.plugins.base import Operation, OperationSpec
 
 
 class _TestDummyPlugin:
@@ -21,7 +21,7 @@ class _TestDummyPlugin:
             ),
         }
 
-    def operation_factory(self, section: str, op_name: str):
+    def operation_factory(self, section: str, op_name: str) -> Operation:
         del section, op_name
         return lambda record: record
 

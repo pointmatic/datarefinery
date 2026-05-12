@@ -4,7 +4,7 @@
 duplicate-name failure path in `discover_plugins`.
 """
 
-from datarefinery.plugins.base import OperationSpec
+from datarefinery.plugins.base import Operation, OperationSpec
 
 
 class _TestDummyDupPlugin:
@@ -17,7 +17,7 @@ class _TestDummyDupPlugin:
             "noop": OperationSpec(applicable_sections=frozenset({"Filters"})),
         }
 
-    def operation_factory(self, section: str, op_name: str):
+    def operation_factory(self, section: str, op_name: str) -> Operation:
         del section, op_name
         return lambda record: record
 

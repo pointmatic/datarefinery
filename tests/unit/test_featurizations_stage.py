@@ -27,7 +27,7 @@ def _img(value: int = 0) -> np.ndarray:
     return np.full((4, 4, 3), value, dtype=np.uint8)
 
 
-def _path_record(path: str) -> dict[str, Any]:
+def _path_record(path: str) -> Mapping[str, Any]:
     return {"path": path, "image": _img()}
 
 
@@ -250,7 +250,7 @@ def test_collision_with_existing_field_raises_materialize_error(
         op="label_from_path",
         splits=["train"],
     )
-    splits = {
+    splits: dict[str, list[Mapping[str, Any]]] = {
         "train": [{"path": "/data/c0/x.jpg", "label": "preexisting"}],
     }
     with pytest.raises(MaterializeError, match="collides with"):
@@ -271,7 +271,7 @@ def test_no_collision_when_field_is_introduced_by_another_split(
         op="image_size_stats",
         splits=["train", "val"],
     )
-    splits = {
+    splits: dict[str, list[Mapping[str, Any]]] = {
         "train": [{"image": np.zeros((4, 4, 3), dtype=np.uint8)}],
         "val": [],  # empty - no first record to collide
     }
@@ -368,7 +368,7 @@ def test_fit_on_train_featurizer_persists_and_applies_across_splits(
         fit_source="train",
         splits=["train", "val"],
     )
-    splits = {
+    splits: dict[str, list[Mapping[str, Any]]] = {
         "train": [{"x": 10}, {"x": 20}, {"x": 30}],  # mean = 20
         "val": [{"x": 99}],
     }
@@ -377,7 +377,7 @@ def test_fit_on_train_featurizer_persists_and_applies_across_splits(
         splits,
         [op],
         plugin=_FeatPlugin(),
-        fitted_stats=fs,  # type: ignore[arg-type]
+        fitted_stats=fs,
     )
     assert "mf" in result.fitted_op_ids
     # Every record - train and val - sees the train-fitted mean.
@@ -400,7 +400,7 @@ def test_fit_on_train_without_fit_source_raises(tmp_path: Path) -> None:
         apply_featurizations(
             {"train": [{"x": 1}]},
             [op],
-            plugin=_FeatPlugin(),  # type: ignore[arg-type]
+            plugin=_FeatPlugin(),
             fitted_stats=FittedStatistics(tmp_path),
         )
 

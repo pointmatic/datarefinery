@@ -79,7 +79,7 @@ def _img(value: int) -> np.ndarray:
     return np.full((4, 4, 3), value, dtype=np.uint8)
 
 
-def _records(n: int = 12, classes: int = 2) -> list[dict[str, Any]]:
+def _records(n: int = 12, classes: int = 2) -> list[Mapping[str, Any]]:
     return [
         {
             "record_id": f"rec_{i:04d}",
@@ -91,7 +91,7 @@ def _records(n: int = 12, classes: int = 2) -> list[dict[str, Any]]:
     ]
 
 
-def _input_hashes(records: list[dict[str, Any]]) -> dict[str, str]:
+def _input_hashes(records: list[Mapping[str, Any]]) -> dict[str, str]:
     import hashlib
 
     payload = ";".join(sorted(r["record_id"] for r in records))
