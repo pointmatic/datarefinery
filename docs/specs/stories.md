@@ -26,124 +26,115 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
-## Phase F: Documentation & Release
+## Phase H: Feature Refinements and Fixes
 
-Pre-production v1 polish. README expanded with quickstart and recipe authoring; recipe + plugin authoring guides; final `v1.0.0` cut as the production-release marker (which flips post-production rules per `features.md`).
+Small, contained refinements to the v1 feature surface and post-release fixes. Each story is scoped to one user-visible capability or one focused fix so versions can ship independently.
 
-### Story F.a: v0.6.0 README Expanded with Quickstart [Done]
+### Story H.a: v0.7.0 InputSource sidecar labels + flat-image layout for image_classification [Done]
 
-Promote the package to a non-trivial first-impression README. Minor bump reflects the leap from "scaffolding present" to "documented usable tool."
+Finish the design that `InputSource.label_from` started in [`src/datarefinery/recipe/models.py:35`](../../src/datarefinery/recipe/models.py): a reserved field declared at the input-source level but never consumed anywhere in `src/`. Wire it up in the image-classification plugin's input loader so a recipe author can point an input source at a sidecar manifest of labels and have records arrive at the pipeline *already labeled*. No featurization detour.
 
-- [x] Expand `README.md` with: install (PyPI + dev paths), quickstart (`init` → `validate` → `materialize` on CIFAR-shaped data), recipe-anatomy section, CLI verb summary table, plugin model overview, link to features.md/tech-spec.md.
-- [x] Add a recipe example for `image_classification` end-to-end.
-- [x] Add a "v1 scope and non-goals" section sourced from concept.md.
+Real-world sidecar-CSV datasets are typically flat — `images/img_*.jpg` plus a separate `labels.csv` — not ImageFolder-style (one class per subdirectory). To answer the original use case truthfully, this story also adds a second source type, `image_flat`, that requires `label_from`. The existing `image_folder` type stays as-is and keeps its class-subdir labels (no `label_from` allowed). Two source types, each with one labeling mechanism — no overlay/override semantics, no heuristic layout detection.
+
+**Why input-side, not featurization-side.** Labels in a sidecar manifest are *provided*, not *computed* — joining against an external file is a load-time concern, not a "compute fields from other fields" concern. Solving it in `Featurizations` means records flow through `InputContracts`, `Filters/pre_split`, and `Splits` without labels, which silently misbehaves: `filter_by_label`, stratified splits, and the v1 `sample_data_strict_subset` validator check (16) all assume labels are present from the start. Solving it at load time means `LabelsSection.source.kind` can stay `"direct"` and downstream stages see labeled records uniformly.
+
+**Promote `label_from` from a path to a structured spec.**
+
+The field exists as `Path | None` today but is unused in `src/` — no recipe authors to break. Replace it with a small Pydantic model that covers the three real-world manifest shapes:
+
+```python
+class LabelFromSpec(_Frozen):
+    path: Path                                  # resolved relative to the recipe file
+    join: Literal["by_id", "by_row_order"]
+    header: list[str] | None = None             # column names when the file has no header row
+    id_field: str | None = None                 # required iff join == "by_id"
+    label_field: str                            # CSV column name to emit as the label
+```
+
+**Three example recipe shapes:**
+
+```yaml
+# Mode 1: headered CSV (most common third-party shape)
+Input:
+  sources:
+    - name: images
+      type: image_folder
+      path: ./data/images
+      label_from:
+        path: ./data/labels.csv
+        join: by_id
+        id_field: filename
+        label_field: class
+
+# Mode 2: headerless CSV — recipe declares the column names
+label_from:
+  path: ./labels.txt
+  join: by_id
+  header: [filename, class]
+  id_field: filename
+  label_field: class
+
+# Mode 3: CIFAR-style — headerless single column, parallel to input listing
+label_from:
+  path: ./labels.txt
+  join: by_row_order
+  header: [class]
+  label_field: class
+
+Labels:
+  field: label                                  # record-field name the loader writes into
+  source: { kind: direct }                      # truthful: labels arrive intrinsically
+```
+
+**Header semantics — recipe-as-truth, no heuristics.**
+
+- `header` **omitted** → CSV has a header row; loader reads column names from row 0. `id_field` (when `join == "by_id"`) and `label_field` must appear in that header.
+- `header` **provided** → file is treated as **headerless**; the recipe-supplied names *are* the column names. If the file actually contains a header line, the loader reads it as a data row — by design. Ingestion definition is a brief, one-time configuration step; we trust the recipe author rather than add heuristic foot-gun-detection that would explode into complexity. (Aligns with the project-essentials "Recipe is authoritative for data-pipeline semantics" rule.)
+
+**Cache-identity note.** Labels feed into record bytes, which already feed the input-hash side of the cache key. Adding sidecar-manifest joining changes the *bytes* the cache stores, not the canonical-form algorithm. Pre-production rules apply (per `project-essentials.md` § "Cache identity"): users re-materialize after upgrade, no migration ceremony required.
+
+**Tasks:**
+
+- [x] **Pydantic model.** Replace `InputSource.label_from: str | None` with `LabelFromSpec | None`. Add the new model in `src/datarefinery/recipe/models.py` with field-level validators: `id_field` required iff `join == "by_id"`; `label_field` always required; `header` (when present) is a non-empty list of strings with unique entries.
+- [x] **Add `image_flat` source type.** New supported `InputSource.type` value: a directory of image files, no class subdirectories. Loader walks `*.png/*.jpg/*.jpeg` files (recursive, sorted), generates `record_id = f"{source_name}/{relative_path}"`, joins labels from `label_from`.
+- [x] **Source-type vs `label_from` consistency.**
+  - `image_folder` + `label_from` set → reject (one source of truth; subdirs already provide labels).
+  - `image_flat` + `label_from` unset → reject (no other label source for flat).
+  - Enforced at validate time via check 19 and re-checked defensively at load time.
+- [x] **Loader wiring.** In `src/datarefinery/pipeline/inputs.py`: factor `_load_image_classification` to dispatch by `src.type`. Add `_load_one_image_flat` and `_hash_image_flat` (hash includes the manifest file's bytes alongside the image files so manifest edits invalidate the cache). For `image_flat`, open the manifest via the stdlib `csv` module (sufficient and stdlib-only; the project also depends on `pyarrow` but it adds no value here), respect the header/join rules, build an in-memory `id → label` dict (for `by_id`) or `label[]` list (for `by_row_order`), and inject the label into each record at load time.
+- [x] **Join behavior.**
+  - `by_id`: image with **no matching id** in the manifest → `MaterializeError`. Manifest row with **no matching image** → silent (extras are common when manifests are reused across subsets). **Duplicate id** in manifest → `MaterializeError` at load time (deterministic; no last-write-wins). Default join key (the id used to look up in the manifest): the image's **filename stem** (e.g., `img_001.jpg` → `img_001`).
+  - `by_row_order`: row count of the manifest must equal the input source's enumerated record count after sorted-paths enumeration; mismatch → `MaterializeError` naming both counts. (Document that `by_row_order` is brittle by nature; recommend `by_id` for new datasets.)
+- [x] **Path resolution.** Implementation note: paths are interpreted as written, matching the pre-existing convention for `Input.sources[*].path` (the recipe loader does not plumb a recipe-base directory through to the input loader). Users supply absolute paths or run from the recipe directory. The original strawman said "relative to the recipe file"; that would require new plumbing (no recipe-path on `DataRefinery`) and is out of scope for this story.
+- [x] **Validator check 19 — `label_from_spec_resolves`.** Cover:
+  - Source-type consistency: `image_folder` + `label_from` set → fail; `image_flat` + `label_from` unset → fail.
+  - When `label_from` is set: file at `label_from.path` exists and is readable.
+  - When `header` omitted: file is non-empty; `id_field` (if `join == "by_id"`) and `label_field` appear as column names in the file's header row.
+  - When `header` provided: count of names in `header` equals the file's actual column count; `id_field` (if `join == "by_id"`) and `label_field` reference entries in `header`.
+  - When `join == "by_id"`: no duplicate values in the id column.
+  - When `join == "by_row_order"`: manifest row count equals the input source's enumerated record count.
+  - Wired into [`src/datarefinery/recipe/validator.py`](../../src/datarefinery/recipe/validator.py) and into the registry tuple at the bottom of that file.
+- [x] **Recipe-authoring guide.** Updated `docs/guides/recipe-authoring.md` § Input and § Labels per the spec.
+- [x] **README quickstart variant.** Added "Alternative layout: flat directory + sidecar labels" subsection.
+- [x] **Tests.**
+  - Pydantic-model unit tests: 8 cases covering field-level constraints and cross-field invariants.
+  - Loader unit tests in [`tests/unit/test_inputs.py`](../../tests/unit/test_inputs.py) — 11 cases across the three modes and the consistency rules.
+  - Validator: 8 new check-19 tests in `tests/unit/test_validator.py` plus updates to existing counts (18 → 19 across `test_validator.py`, `test_tabular_stub_smoke.py`, and the validate-CLI smoke check).
+  - Integration: 2 cases in `tests/integration/test_image_flat_label_from.py` (end-to-end materialize + validator rejection of the inconsistent combo).
+- [x] Bump version to v0.7.0
 - [x] Update CHANGELOG.md
-- [x] Verify: README renders cleanly on GitHub; quickstart commands succeed against the fixture.
-
-### Story F.b: Recipe Authoring Guide [Done]
-
-Doc-only; shares F.a's release.
-
-- [x] Add `docs/guides/recipe-authoring.md`: section-by-section walk-through, fit-on-train discipline, variants, contracts/expectations, when to use Filters vs Splits for class imbalance.
-- [x] Cross-link from README and concept.md.
-- [x] Verify: every code snippet in the guide is materializable against the fixture.
-
-### Story F.c: Plugin Authoring Guide [Done]
-
-Doc-only; shares F.a's release.
-
-- [x] Add `docs/guides/plugin-authoring.md`: how to declare a plugin, `OperationSpec` schema, fit-on-train flag, applicable splits, registration via entry-point group.
-- [x] Reference the tabular/text stubs as starting templates.
-- [x] Verify: a hand-written hello-plugin following the guide is discovered and validates a minimal recipe.
-
-### Story F.d: Fix ruff format drift [Done]
-
-Pre-test-release cleanup so the `ruff` half of `features.md` Acceptance Criterion 10 (*"`ruff` and `mypy --strict` pass clean"*) passes for F.f. Style only — no behavioral changes. Shares F.f's `v0.6.1` release (no separate version bump).
-
-State at story start (audited 2026-05-11):
-- `pyve testenv run ruff check src tests` → all checks passed (lint is already clean).
-- `pyve testenv run ruff format --check src tests` → 86 files would reformat (45 `src/`, 41 `tests/`).
-
-- [x] Run `pyve testenv run ruff format src tests` and stage the resulting edits.
-- [x] Spot-check at least three reformatted files (one under `src/`, one under `tests/unit/`, one under `tests/integration/`) to confirm the diffs are whitespace-only — no logic, identifier, or import changes.
-- [x] Run the full check suite and confirm:
-  - `pyve testenv run ruff check src tests` → all checks passed.
-  - `pyve testenv run ruff format --check src tests` → 0 files would reformat.
-  - `pyve test` → all tests still pass (no regression from the reformat).
-- [x] Verify: the `ruff` half of F.f Acceptance Criterion 10 is now demonstrably met.
-
-### Story F.e: Fix `mypy --strict` errors [Done]
-
-Pre-test-release cleanup so the `mypy --strict` half of `features.md` Acceptance Criterion 10 (*"`ruff` and `mypy --strict` pass clean"*) passes for F.f. Test-side type-annotation work only — no behavioral changes. Shares F.f's `v0.6.1` release (no separate version bump).
-
-State at story start (audited 2026-05-11):
-- `pyve testenv run mypy src tests` → 104 errors in 16 files, all under `tests/` — `src/` is clean.
-
-- [x] Fix the dominant mypy cluster (≈90 errors): the `dict[str, list[dict[str, Any]]]` vs `Mapping[str, list[Mapping[str, Any]]]` invariance at stage-helper call sites in `test_visualizations_stage.py`, `test_transformations_stage.py`, `test_runner.py`, `test_generation_stage.py`, `test_featurizations_stage.py`, `test_drift.py`, `test_filters_stage.py`, `test_splits_determinism.py`, `test_workers.py`, `test_scaffolder.py`, `test_failure_modes.py`. Prefer annotating the local fixture variables as `Mapping[...]` (or `dict[str, list[Mapping[str, Any]]]` where mutation is needed) over casting at every call site.
-- [x] Fix the residual mypy errors:
-  - Remove the 9 `[unused-ignore]` `# type: ignore` comments that mypy now flags as stale (concentrated in `test_visualizations_stage.py` and `test_fitted_stats.py`).
-  - Add return annotations to `tests/fixtures/dummy_plugin.py:24` and `tests/fixtures/dummy_plugin_dup.py:20` (`[no-untyped-def]`).
-  - Resolve the 2 `[attr-defined]` errors in `test_atomic.py` and `test_cleaner.py` where tests reach into the module's `shutil`/`os` import namespace via `monkeypatch.setattr` — either patch the underlying module path or add a focused `# type: ignore[attr-defined]` per call.
-  - Resolve the remaining 1× `[var-annotated]`, 1× `[str]`, 1× `[object]`, and any `[dict-item]` strays not closed by the previous task.
-- [x] Do **not** weaken `mypy --strict` configuration to mask errors. If a `# type: ignore[...]` is genuinely warranted (e.g. a test deliberately constructs a malformed value to exercise a guard), narrow the ignore to the specific code and add a one-line comment explaining why.
-- [x] Run the full check suite and confirm:
-  - `pyve testenv run mypy src tests` → 0 errors (the full test surface plus `src/`).
-  - `pyve testenv run ruff check src tests` → all checks passed.
-  - `pyve testenv run ruff format --check src tests` → 0 files would reformat (F.d's gain is not regressed).
-  - `pyve test` → all tests still pass (no behavioral regressions from the type-annotation work).
-- [x] Verify: the `mypy --strict` half of F.f Acceptance Criterion 10 is now demonstrably met.
-
-### Story F.f: v0.6.1 Test Release [Done]
-
-This is a test release event. Per `features.md` and `project-essentials.md`, and we will postpone production release until thorough testing and we have confirmation of feature fit. 
-
-- [x] Final pass on `features.md` "Acceptance Criteria" — every numbered item demonstrably met.
-- [x] Add release notes section in `CHANGELOG.md` titled "**Test Release — Validation of feature fit.**"
-- [x] Bump version to v0.6.1
-- [x] Update CHANGELOG.md
-- [x] Verify: `python -m build` produces a clean wheel; `pip install ./dist/datarefinery-0.6.1-*.whl` in a fresh venv succeeds; `datarefinery check` reports environment soundness; `init → validate → materialize` golden path passes on the installed wheel.
+- [x] Verify: a recipe with `type: image_flat` and `label_from: {…}` materializes end-to-end on a CIFAR-shaped fixture in each of the three modes; `datarefinery validate` reports the new check 19 as `pass`; the materialized records carry `label` from the manifest with the expected label distribution.
 
 **Out of Scope**
-- Add `recipe.loader.migrations` registry header documentation: "post-production: every cache-invalidating change requires a migration entry here."
-- Bump to `v1.0.0` and declare production release
-- Publish workflow uploads to PyPI. (NOTE: PyPI publication is deferred)
-- Verify: tagged release lands on PyPI; `pip install datarefinery==1.0.0` from a clean venv 
 
----
-
-## Phase G: CI/CD & Automation
-
-Continuous-integration workflow (lint + type + test on every PR), coverage badge, and post-production release-automation polish. The publish workflow already shipped in A.d so the PyPI name was reserved early; Phase G adds the rest.
-
-### Story G.a: v0.6.2 GitHub Actions: Lint + Type + Test [Done]
-
-CI runs `ruff`, `mypy --strict`, and `pytest` on every PR and on `main`.
-
-- [x] Add `.github/workflows/ci.yml` running on pull_request and push to `main`.
-- [x] Matrix: Python 3.12 on ubuntu-latest and macos-latest.
-- [x] Steps: checkout, setup-python, install dev requirements, `pyve testenv run ruff check src tests`, `pyve testenv run ruff format --check src tests`, `pyve testenv run mypy src tests`, `pyve test --cov --cov-fail-under` (core-invariant gates from E.g). *(CI uses plain pip in a single venv rather than the pyve two-env split — pyve isolation is a local-dev convenience and the throwaway CI env doesn't need it; the four gates and the per-module coverage threshold are equivalent.)*
-- [ ] Required-status-check on `main` for all matrix legs. *(Developer action: GitHub UI → Settings → Branches; pickable after the workflow has run once.)*
-- [x] Bump version to v0.6.2
-- [x] Update CHANGELOG.md
-- [ ] Verify: a deliberate lint violation in a PR fails CI on both OS legs. *(Developer action: requires push to remote + PR.)*
-
-### Story G.b: v0.6.3 Coverage Badge (Codecov) [Done]
-
-- [x] Add Codecov upload step to `ci.yml` using `codecov/codecov-action`.
-- [x] Configure `.codecov.yml` with target ≥85% post-production (per features.md) and per-module ≥95% on core invariants.
-- [x] Add Codecov badge to `README.md`.
-- [x] Bump version to v0.6.3
-- [x] Update CHANGELOG.md
-- [ ] Verify: a PR shows a Codecov status check and the README badge updates after merge to `main`. *(Developer action: requires push to remote + PR.)*
-
-### Story G.c: v0.6.4 Release Automation Polish [Planned]
-
-- [ ] Add a GitHub Action that on tag push extracts the corresponding `CHANGELOG.md` section and creates a GitHub Release with that body.
-- [ ] Add tag protection rule: only maintainers can push `v*` tags.
-- [ ] Document the release procedure in `docs/guides/releasing.md` (bump → CHANGELOG → tag → workflow → verify).
-- [ ] Bump version to v0.6.4
-- [ ] Update CHANGELOG.md
-- [ ] Verify: a new tag push produces a GitHub Release with the changelog body and a successful PyPI upload.
+- Scaffolder (`datarefinery init`) emitting `image_flat` recipes. v1 scaffolder is ImageFolder-only by design (per `concept.md`); users of `image_flat` + `label_from` hand-author the recipe. A follow-up story can extend the scaffolder.
+- `label_from` for the tabular and text plugin stubs — those plugins still ship as stubs in v1 (see `Future` section); when they are implemented, they re-use the same loader-level mechanism.
+- Non-CSV sidecar formats (JSONL, Parquet, YAML). CSV is the lingua franca for label manifests; richer formats can land in a follow-up story if a user surfaces a real need.
+- Multi-label manifests (record carries multiple label fields). v1 image_classification is single-label by design; the `LabelFromSpec.label_field: str` shape extends to a plural form later without breaking single-label users.
+- Computed-from-id labels (e.g., a Python expression on the id). That is `Featurizations` territory, not `label_from` territory.
+- Header-coexistence heuristics: if `header` is provided AND the file also contains a header line, the loader reads the header line as a data row. By design (recipe-as-truth); no heuristic detection in v1.
+- A `label_from_missing: warn|error` knob for `by_id`. v1 errors deterministically on missing-image-row. Add the knob in a follow-up only if a real workflow surfaces the need.
+- Heuristic layout detection (auto-select between `image_folder` and `image_flat` based on directory contents). Recipe declares the layout explicitly via `type:`.
 
 ---
 

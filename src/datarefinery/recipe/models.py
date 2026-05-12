@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Severity = Literal["error", "warning"]
 
@@ -28,11 +28,43 @@ def _default_filter_stages() -> list[Literal["pre_split", "post_split"]]:
     return ["pre_split"]
 
 
+class LabelFromSpec(_Frozen):
+    """Sidecar-manifest label source for `image_flat` input sources.
+
+    Recipe-as-truth: when `header` is provided, the file is treated as
+    headerless and the recipe-supplied names *are* the column names. If
+    the file actually contains a header line, it is read as a data row.
+    """
+
+    path: Path
+    join: Literal["by_id", "by_row_order"]
+    header: list[str] | None = None
+    id_field: str | None = None
+    label_field: str
+
+    @model_validator(mode="after")
+    def _validate_spec(self) -> LabelFromSpec:
+        if self.join == "by_id" and self.id_field is None:
+            raise ValueError("label_from: id_field is required when join == 'by_id'")
+        if self.header is not None:
+            if len(self.header) == 0:
+                raise ValueError("label_from.header: must be non-empty when provided")
+            if len(set(self.header)) != len(self.header):
+                raise ValueError("label_from.header: column names must be unique")
+            if self.label_field not in self.header:
+                raise ValueError(
+                    f"label_from.label_field {self.label_field!r} not present in header"
+                )
+            if self.id_field is not None and self.id_field not in self.header:
+                raise ValueError(f"label_from.id_field {self.id_field!r} not present in header")
+        return self
+
+
 class InputSource(_Frozen):
     name: str
     type: str
     path: Path
-    label_from: str | None = None
+    label_from: LabelFromSpec | None = None
 
 
 class InputSection(_Frozen):

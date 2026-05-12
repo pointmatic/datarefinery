@@ -8,14 +8,21 @@ verb invokes :func:`load_raw_records` to inflate ``recipe.Input.sources``
 into a list of records plus a per-source SHA-256 content hash dict for
 cache-key construction.
 
-v1 supports the ``image_classification`` plugin's ``image_folder`` source
-type. Tabular and text plugins are stubs (Story C.c) and refuse with a
+v1 supports the ``image_classification`` plugin's two source types:
+
+* ``image_folder`` — ImageFolder layout (one class-named subdirectory
+  per class); labels come from the subdir name.
+* ``image_flat`` — flat directory of image files; labels come from a
+  sidecar manifest declared via ``InputSource.label_from``.
+
+Tabular and text plugins are stubs (Story C.c) and refuse with a
 documented :class:`PluginError` until their full implementations land
 post-v1.
 """
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 from collections.abc import Mapping
@@ -26,9 +33,9 @@ import numpy as np
 from PIL import Image
 
 from datarefinery.cache.layout import dataset_dir
-from datarefinery.core.errors import PluginError, RecipeError
+from datarefinery.core.errors import MaterializeError, PluginError, RecipeError
 from datarefinery.plugins.base import Plugin
-from datarefinery.recipe.models import InputSource, Recipe
+from datarefinery.recipe.models import InputSource, LabelFromSpec, Recipe
 
 Record = dict[str, Any]
 _IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
@@ -73,19 +80,37 @@ def _load_image_classification(
     seen_ids: set[str] = set()
 
     for src in sources:
-        if src.type != "image_folder":
-            raise RecipeError(
-                f"image_classification loader: source {src.name!r} has "
-                f"type={src.type!r}; expected 'image_folder'"
-            )
         root = Path(src.path)
         if not root.is_dir():
             raise RecipeError(
                 f"image_classification loader: source {src.name!r} path {root!s} is not a directory"
             )
-        per_source = _load_one_image_folder(src.name, root, seen_ids, attach_label=attach_label)
+        if src.type == "image_folder":
+            if src.label_from is not None:
+                raise RecipeError(
+                    f"image_classification loader: source {src.name!r} has type "
+                    f"'image_folder' with label_from set; image_folder takes labels "
+                    f"from class subdirectories, not from a sidecar manifest"
+                )
+            per_source = _load_one_image_folder(src.name, root, seen_ids, attach_label=attach_label)
+            hashes[src.name] = _hash_image_folder(root)
+        elif src.type == "image_flat":
+            if src.label_from is None:
+                raise RecipeError(
+                    f"image_classification loader: source {src.name!r} has type "
+                    f"'image_flat' but no label_from is declared; flat sources require "
+                    f"a sidecar manifest"
+                )
+            per_source = _load_one_image_flat(
+                src.name, root, src.label_from, seen_ids, attach_label=attach_label
+            )
+            hashes[src.name] = _hash_image_flat(root, src.label_from)
+        else:
+            raise RecipeError(
+                f"image_classification loader: source {src.name!r} has "
+                f"type={src.type!r}; expected 'image_folder' or 'image_flat'"
+            )
         records.extend(per_source)
-        hashes[src.name] = _hash_image_folder(root)
 
     return records, hashes
 
@@ -131,6 +156,154 @@ def _load_one_image_folder(
             f"{root!s} contains no .png/.jpg/.jpeg files"
         )
     return out
+
+
+def _enumerate_flat_images(root: Path) -> list[Path]:
+    """Recursive sorted enumeration of image files under a flat source root.
+
+    Determinism: caller relies on the sort being stable across machines and
+    Python versions for `by_row_order` joins. We sort by POSIX-form path
+    relative to `root` so filesystem walk order does not leak in.
+    """
+    candidates: list[Path] = []
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in _IMAGE_EXTENSIONS:
+            candidates.append(path)
+    candidates.sort(key=lambda p: p.relative_to(root).as_posix())
+    return candidates
+
+
+def _read_manifest_rows(
+    spec: LabelFromSpec,
+) -> tuple[list[str], list[list[str]]]:
+    """Read the manifest CSV; return (column_names, data_rows).
+
+    Recipe-as-truth: if `spec.header` is provided, the file is treated
+    as headerless and `spec.header` *is* the column-name list. If the
+    file actually contains a header line, that line is read as a data
+    row — by design.
+    """
+    manifest_path = Path(spec.path)
+    if not manifest_path.is_file():
+        raise MaterializeError(f"label_from: manifest file not found at {manifest_path!s}")
+    with manifest_path.open(encoding="utf-8", newline="") as fh:
+        reader = csv.reader(fh)
+        all_rows = [row for row in reader if row]  # drop blank lines
+    if not all_rows:
+        raise MaterializeError(f"label_from: manifest file {manifest_path!s} is empty")
+    if spec.header is not None:
+        columns = list(spec.header)
+        data_rows = all_rows
+    else:
+        columns = all_rows[0]
+        data_rows = all_rows[1:]
+    # Column-count consistency check: every data row must match the
+    # declared column count. Mismatch is a manifest authoring error.
+    for i, row in enumerate(data_rows):
+        if len(row) != len(columns):
+            raise MaterializeError(
+                f"label_from: manifest row {i} has {len(row)} columns but "
+                f"declared header has {len(columns)} columns"
+            )
+    return columns, data_rows
+
+
+def _build_label_index(
+    spec: LabelFromSpec,
+) -> dict[str, str] | list[str]:
+    """Parse the manifest into an id→label dict (by_id) or label list (by_row_order)."""
+    columns, data_rows = _read_manifest_rows(spec)
+    if spec.label_field not in columns:
+        raise MaterializeError(
+            f"label_from: label_field {spec.label_field!r} not in declared columns {columns!r}"
+        )
+    label_idx = columns.index(spec.label_field)
+    if spec.join == "by_id":
+        if spec.id_field is None or spec.id_field not in columns:
+            raise MaterializeError(
+                f"label_from: id_field {spec.id_field!r} not in declared columns {columns!r}"
+            )
+        id_idx = columns.index(spec.id_field)
+        index: dict[str, str] = {}
+        for row in data_rows:
+            rid = row[id_idx]
+            if rid in index:
+                raise MaterializeError(
+                    f"label_from: duplicate id {rid!r} in manifest {spec.path!s}"
+                )
+            index[rid] = row[label_idx]
+        return index
+    # by_row_order
+    return [row[label_idx] for row in data_rows]
+
+
+def _load_one_image_flat(
+    source_name: str,
+    root: Path,
+    label_from: LabelFromSpec,
+    seen_ids: set[str],
+    *,
+    attach_label: bool,
+) -> list[Record]:
+    images = _enumerate_flat_images(root)
+    if not images:
+        raise RecipeError(
+            f"image_classification loader: source {source_name!r} root "
+            f"{root!s} contains no .png/.jpg/.jpeg files"
+        )
+    label_index = _build_label_index(label_from)
+    if isinstance(label_index, list):  # by_row_order
+        if len(label_index) != len(images):
+            raise MaterializeError(
+                f"label_from: manifest has {len(label_index)} rows but source "
+                f"{source_name!r} has {len(images)} images "
+                f"(join=by_row_order requires equal counts)"
+            )
+    out: list[Record] = []
+    for i, path in enumerate(images):
+        rid = f"{source_name}/{path.relative_to(root).as_posix()}"
+        if rid in seen_ids:
+            raise RecipeError(
+                f"image_classification loader: duplicate record_id {rid!r} across input sources"
+            )
+        seen_ids.add(rid)
+        with Image.open(path) as im:
+            arr = np.asarray(im)
+        record: Record = {
+            "record_id": rid,
+            "image": arr,
+            "path": str(path),
+        }
+        if attach_label:
+            if isinstance(label_index, dict):
+                join_key = path.stem
+                if join_key not in label_index:
+                    raise MaterializeError(
+                        f"label_from: image {path!s} has no matching id "
+                        f"{join_key!r} in manifest {label_from.path!s}"
+                    )
+                record["label"] = label_index[join_key]
+            else:
+                record["label"] = label_index[i]
+        out.append(record)
+    return out
+
+
+def _hash_image_flat(root: Path, label_from: LabelFromSpec) -> str:
+    """Content hash for an image_flat source: images + manifest bytes.
+
+    Re-uses :func:`_hash_image_folder` for the image-tree portion so the
+    two source types share enumeration semantics, then appends a digest
+    of the manifest file's raw bytes so manifest edits invalidate the
+    cache without re-touching any image.
+    """
+    h = hashlib.sha256()
+    h.update(_hash_image_folder(root).encode("ascii"))
+    manifest_path = Path(label_from.path)
+    if manifest_path.is_file():
+        h.update(b";manifest:")
+        h.update(hashlib.sha256(manifest_path.read_bytes()).hexdigest().encode("ascii"))
+    return h.hexdigest()
 
 
 def _hash_image_folder(root: Path) -> str:
@@ -208,4 +381,11 @@ def hash_inputs(recipe: Recipe, plugin: Plugin) -> Mapping[str, str]:
         raise PluginError(
             f"hash_inputs: no disk-backed loader registered for plugin {plugin.name!r}"
         )
-    return {src.name: _hash_image_folder(Path(src.path)) for src in recipe.Input.sources}
+    hashes: dict[str, str] = {}
+    for src in recipe.Input.sources:
+        root = Path(src.path)
+        if src.type == "image_flat" and src.label_from is not None:
+            hashes[src.name] = _hash_image_flat(root, src.label_from)
+        else:
+            hashes[src.name] = _hash_image_folder(root)
+    return hashes

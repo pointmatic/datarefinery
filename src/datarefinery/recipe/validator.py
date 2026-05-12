@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from datarefinery.plugins.base import Plugin
@@ -612,6 +613,149 @@ def check_18_plugin_operation_params_validate(recipe: Recipe, plugin: Plugin) ->
     )
 
 
+def check_19_label_from_spec_resolves(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Validate `InputSource.label_from` against the source's `type` and
+    against the on-disk manifest file (when present).
+
+    Cross-rules:
+    - `image_folder` + `label_from` set → fail (one source of truth).
+    - `image_flat` + `label_from` unset → fail (no other label source).
+
+    When `label_from` is set:
+    - manifest file exists and is non-empty;
+    - column-name references resolve (against the file's header row, or
+      against `header` when provided);
+    - `header` (when provided) column count matches the file's actual
+      column count;
+    - `by_id`: no duplicate id values in the manifest;
+    - `by_row_order`: row count equals the input source's enumerated
+      record count, when the source path is a readable directory.
+
+    Plugin-specific check: only applies to `image_classification`.
+    """
+    del plugin
+    descriptor = "label_from_spec_resolves"
+    if recipe.plugin != "image_classification":
+        return _passed(19, descriptor)
+    issues: list[str] = []
+    for src in recipe.Input.sources:
+        location = f"Input.sources[{src.name!r}]"
+        if src.type == "image_folder" and src.label_from is not None:
+            issues.append(
+                f"{location}: type='image_folder' with label_from set; "
+                f"image_folder takes labels from class subdirectories"
+            )
+            continue
+        if src.type == "image_flat" and src.label_from is None:
+            issues.append(
+                f"{location}: type='image_flat' but no label_from declared; "
+                f"flat sources require a sidecar manifest"
+            )
+            continue
+        if src.label_from is None:
+            continue
+        # label_from is set; validate the manifest.
+        spec = src.label_from
+        manifest_path = Path(spec.path)
+        if not manifest_path.is_file():
+            issues.append(f"{location}.label_from.path: file not found at {manifest_path!s}")
+            continue
+        try:
+            columns, data_rows = _read_manifest_for_validation(spec)
+        except _ManifestValidationError as exc:
+            issues.append(f"{location}.label_from: {exc}")
+            continue
+        if spec.label_field not in columns:
+            issues.append(
+                f"{location}.label_from.label_field: {spec.label_field!r} "
+                f"not in declared columns {columns!r}"
+            )
+        if spec.join == "by_id":
+            if spec.id_field is None or spec.id_field not in columns:
+                issues.append(
+                    f"{location}.label_from.id_field: {spec.id_field!r} "
+                    f"not in declared columns {columns!r}"
+                )
+            elif spec.id_field in columns:
+                id_idx = columns.index(spec.id_field)
+                ids = [row[id_idx] for row in data_rows]
+                seen: set[str] = set()
+                dupes: set[str] = set()
+                for rid in ids:
+                    if rid in seen:
+                        dupes.add(rid)
+                    seen.add(rid)
+                if dupes:
+                    issues.append(
+                        f"{location}.label_from: duplicate ids in manifest: {sorted(dupes)!r}"
+                    )
+        elif spec.join == "by_row_order":
+            source_root = Path(src.path)
+            if source_root.is_dir():
+                from datarefinery.pipeline.inputs import _enumerate_flat_images
+
+                expected = len(_enumerate_flat_images(source_root))
+                if len(data_rows) != expected:
+                    issues.append(
+                        f"{location}.label_from: by_row_order requires equal counts; "
+                        f"manifest has {len(data_rows)} rows but source has {expected} images"
+                    )
+    if not issues:
+        return _passed(19, descriptor)
+    return CheckResult(
+        check_id=19,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
+class _ManifestValidationError(Exception):
+    """Internal: signals that the manifest can't be parsed for validation."""
+
+
+def _read_manifest_for_validation(
+    spec: object,
+) -> tuple[list[str], list[list[str]]]:
+    """Validator-side manifest reader.
+
+    Same rules as the loader's `_read_manifest_rows`, but raises a
+    validator-local exception so each per-source issue can be collected
+    into the aggregated check result instead of aborting the whole run.
+    """
+    import csv
+
+    from datarefinery.recipe.models import LabelFromSpec
+
+    assert isinstance(spec, LabelFromSpec)
+    manifest_path = Path(spec.path)
+    with manifest_path.open(encoding="utf-8", newline="") as fh:
+        reader = csv.reader(fh)
+        all_rows = [row for row in reader if row]
+    if not all_rows:
+        raise _ManifestValidationError(f"manifest {manifest_path!s} is empty")
+    if spec.header is not None:
+        columns = list(spec.header)
+        data_rows = all_rows
+        # When header is recipe-supplied, every row must match its column count.
+        file_col_count = max(len(row) for row in all_rows)
+        if file_col_count != len(columns):
+            raise _ManifestValidationError(
+                f"header declares {len(columns)} columns but manifest has "
+                f"{file_col_count} columns in at least one row"
+            )
+    else:
+        columns = all_rows[0]
+        data_rows = all_rows[1:]
+    for i, row in enumerate(data_rows):
+        if len(row) != len(columns):
+            raise _ManifestValidationError(
+                f"manifest row {i} has {len(row)} columns but header has {len(columns)}"
+            )
+    return columns, data_rows
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -666,6 +810,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         18,
         "plugin_operation_params_validate",
         check_18_plugin_operation_params_validate,
+    ),
+    (
+        19,
+        "label_from_spec_resolves",
+        check_19_label_from_spec_resolves,
     ),
 )
 

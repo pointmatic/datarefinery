@@ -46,7 +46,6 @@ BASELINE: dict[str, Any] = {
                 "name": "train",
                 "type": "image_folder",
                 "path": "/data/train",
-                "label_from": "parent_directory_name",
             }
         ]
     },
@@ -240,12 +239,23 @@ def _add_sample_data(d: dict[str, Any], n: int) -> dict[str, Any]:
 
 
 def _toggle_label_from(d: dict[str, Any]) -> dict[str, Any]:
+    """Add or remove a `label_from` spec to verify it contributes to canonical bytes.
+
+    The resulting recipe isn't necessarily semantically valid (image_folder
+    + label_from is rejected by the recipe validator); this property test
+    only requires the recipe to *parse* and produce canonical bytes.
+    """
     out = copy.deepcopy(d)
     src = dict(out["Input"]["sources"][0])
     if "label_from" in src:
         del src["label_from"]
     else:
-        src["label_from"] = "filename"
+        src["label_from"] = {
+            "path": "labels.csv",
+            "join": "by_id",
+            "id_field": "filename",
+            "label_field": "class",
+        }
     out["Input"]["sources"][0] = src
     return out
 

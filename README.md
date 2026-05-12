@@ -129,6 +129,45 @@ The `<recipe-hash>` and `<input-hash>` directory names use the first
 16 hex characters of each SHA-256; the full hashes are recorded in
 `manifest.json`.
 
+### Alternative layout: flat directory + sidecar labels
+
+If your dataset is a flat directory of images plus a separate manifest
+of labels (the common third-party shape — Kaggle CSVs, re-labeled
+datasets, etc.), declare the source as `image_flat` and point its
+`label_from` at the manifest:
+
+```text
+my-dataset/
+  images/
+    img_001.png
+    img_002.png
+    ...
+  labels.csv         # filename,class
+```
+
+```yaml
+Input:
+  sources:
+    - name: images
+      type: image_flat
+      path: ./my-dataset/images
+      label_from:
+        path: ./my-dataset/labels.csv
+        join: by_id
+        id_field: filename
+        label_field: class
+Labels:
+  field: label
+  source: { kind: direct }
+```
+
+The loader joins each image's filename stem against the manifest's
+`filename` column and writes the matching `class` value into the
+record's `label` field at load time. `validate` enforces the join
+(check 19): missing ids, duplicate ids, and column-name typos are
+caught before `materialize` runs. See `docs/guides/recipe-authoring.md`
+for headerless manifests and `by_row_order` (CIFAR-style) variants.
+
 ## Recipe anatomy
 
 A recipe is a single YAML file. Field names match the section set

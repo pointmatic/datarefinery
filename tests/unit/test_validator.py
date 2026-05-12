@@ -10,6 +10,9 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+import numpy as np
+from PIL import Image
+
 from datarefinery.plugins.base import OperationSpec, ParameterSpec
 from datarefinery.recipe.models import Recipe
 from datarefinery.recipe.validator import (
@@ -141,12 +144,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_eighteen_checks() -> None:
+def test_valid_recipe_passes_all_nineteen_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 18
-    assert {r.check_id for r in report.results} == set(range(1, 19))
+    assert len(report.results) == 19
+    assert {r.check_id for r in report.results} == set(range(1, 20))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -976,3 +979,145 @@ def test_multi_violation_recipe_spans_every_check_1_through_18() -> None:
     assert expected.issubset(failed_ids), (
         f"missing failures for {sorted(expected - failed_ids)}; got {sorted(failed_ids)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Check 19 (Story H.a) — label_from_spec_resolves
+#
+# Uses a real image_classification plugin name so the check engages
+# (check 19 short-circuits as `pass` for other plugins).
+# ---------------------------------------------------------------------------
+
+
+def _ic_base_dict() -> dict[str, Any]:
+    """Minimal image_classification recipe dict for check 19 fixtures."""
+    return {
+        "schema_version": 1,
+        "plugin": "image_classification",
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]},
+        "Output": {
+            "record_schema": {
+                "image": {"dtype": "uint8", "shape": [4, 4, 3]},
+                "label": {"dtype": "string"},
+            },
+        },
+        "Labels": {"field": "label", "source": {"kind": "direct"}},
+        "Splits": {"ratios": {"train": 0.8, "val": 0.1, "test": 0.1}, "seed": 0},
+    }
+
+
+def _ic_plugin() -> _Plugin:
+    return _Plugin(name="image_classification")
+
+
+def test_check_19_passes_when_image_folder_has_no_label_from() -> None:
+    recipe = _build(_ic_base_dict())
+    report = validate(recipe, _ic_plugin())
+    assert not _failures_for(report, 19)
+
+
+def test_check_19_fails_when_image_folder_has_label_from(tmp_path: Any) -> None:
+    payload = _ic_base_dict()
+    manifest = tmp_path / "labels.csv"
+    manifest.write_text("filename,class\nfoo,bar\n", encoding="utf-8")
+    payload["Input"]["sources"][0]["label_from"] = {
+        "path": str(manifest),
+        "join": "by_id",
+        "id_field": "filename",
+        "label_field": "class",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 19)
+    assert failures and "image_folder" in failures[0].message
+
+
+def test_check_19_fails_when_image_flat_has_no_label_from() -> None:
+    payload = _ic_base_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 19)
+    assert failures and "no label_from" in failures[0].message
+
+
+def test_check_19_fails_when_manifest_file_missing(tmp_path: Any) -> None:
+    payload = _ic_base_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    payload["Input"]["sources"][0]["path"] = str(tmp_path)
+    payload["Input"]["sources"][0]["label_from"] = {
+        "path": str(tmp_path / "nope.csv"),
+        "join": "by_id",
+        "id_field": "filename",
+        "label_field": "class",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 19)
+    assert failures and "file not found" in failures[0].message
+
+
+def test_check_19_fails_on_duplicate_ids_in_manifest(tmp_path: Any) -> None:
+    manifest = tmp_path / "labels.csv"
+    manifest.write_text("filename,class\na,cat\na,dog\n", encoding="utf-8")
+    payload = _ic_base_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    payload["Input"]["sources"][0]["path"] = str(tmp_path)
+    payload["Input"]["sources"][0]["label_from"] = {
+        "path": str(manifest),
+        "join": "by_id",
+        "id_field": "filename",
+        "label_field": "class",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 19)
+    assert failures and "duplicate ids" in failures[0].message
+
+
+def test_check_19_fails_on_unknown_label_field(tmp_path: Any) -> None:
+    manifest = tmp_path / "labels.csv"
+    manifest.write_text("filename,class\na,cat\n", encoding="utf-8")
+    payload = _ic_base_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    payload["Input"]["sources"][0]["path"] = str(tmp_path)
+    payload["Input"]["sources"][0]["label_from"] = {
+        "path": str(manifest),
+        "join": "by_id",
+        "id_field": "filename",
+        "label_field": "missing",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 19)
+    assert failures and "label_field" in failures[0].message
+
+
+def test_check_19_passes_for_valid_image_flat_recipe(tmp_path: Any) -> None:
+    images = tmp_path / "imgs"
+    images.mkdir()
+    Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(images / "a.png")
+    Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(images / "b.png")
+    manifest = tmp_path / "labels.csv"
+    manifest.write_text("filename,class\na,cat\nb,dog\n", encoding="utf-8")
+    payload = _ic_base_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    payload["Input"]["sources"][0]["path"] = str(images)
+    payload["Input"]["sources"][0]["label_from"] = {
+        "path": str(manifest),
+        "join": "by_id",
+        "id_field": "filename",
+        "label_field": "class",
+    }
+    report = validate(_build(payload), _ic_plugin())
+    assert not _failures_for(report, 19)
+
+
+def test_check_19_fails_on_row_count_mismatch_for_by_row_order(tmp_path: Any) -> None:
+    images = tmp_path / "imgs"
+    images.mkdir()
+    Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(images / "a.png")
+    Image.fromarray(np.zeros((4, 4, 3), dtype=np.uint8)).save(images / "b.png")
+    manifest = tmp_path / "labels.csv"
+    manifest.write_text("cat\ndog\nfish\n", encoding="utf-8")
+    payload = _ic_base_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    payload["Input"]["sources"][0]["path"] = str(images)
+    payload["Input"]["sources"][0]["label_from"] = {
+        "path": str(manifest),
+        "join": "by_row_order",
+        "header": ["class"],
+        "label_field": "class",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 19)
+    assert failures and "by_row_order" in failures[0].message

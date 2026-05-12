@@ -56,7 +56,6 @@ Input:
     - name: train
       type: image_folder
       path: /data/train
-      label_from: parent_directory_name
 Output:
   record_schema:
     image:
@@ -82,7 +81,7 @@ Splits:
 # are deliberately invalidating the cache and updating this in the same
 # commit — see project-essentials.md "Cache identity is the
 # reproducibility contract — invalidations are ceremonious."
-_PINNED_DIGEST = "bdaabb558a2ec3a51f59afb6160d1746b85993652df1369823679ebb05b4114e"
+_PINNED_DIGEST = "054e4e567db82aa59ea16d99544ad09f6382a9c6378d9758a3cd082b933e193d"
 
 _FAILURE_MESSAGE = """
 Canonical hash drift detected.

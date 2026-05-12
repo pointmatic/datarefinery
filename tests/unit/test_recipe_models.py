@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from datarefinery.recipe.models import (
     InputSection,
+    LabelFromSpec,
     Recipe,
     SplitsSection,
 )
@@ -27,7 +28,6 @@ def _minimal_recipe_dict() -> dict[str, Any]:
                     "name": "train",
                     "type": "image_folder",
                     "path": "/data/train",
-                    "label_from": "parent_directory_name",
                 }
             ],
         },
@@ -139,3 +139,103 @@ def test_splits_section_supports_key_assignment_only() -> None:
     assert section.key_assignment is not None
     assert section.key_assignment.mapping == {"a": "train", "b": "val"}
     assert section.ratios is None
+
+
+# ---------------------------------------------------------------------------
+# LabelFromSpec (Story H.a)
+# ---------------------------------------------------------------------------
+
+
+def test_label_from_spec_by_id_requires_id_field() -> None:
+    with pytest.raises(ValidationError, match="id_field is required"):
+        LabelFromSpec.model_validate(
+            {
+                "path": "labels.csv",
+                "join": "by_id",
+                "label_field": "class",
+            }
+        )
+
+
+def test_label_from_spec_by_row_order_omits_id_field_cleanly() -> None:
+    spec = LabelFromSpec.model_validate(
+        {
+            "path": "labels.csv",
+            "join": "by_row_order",
+            "label_field": "class",
+        }
+    )
+    assert spec.id_field is None
+    assert spec.label_field == "class"
+
+
+def test_label_from_spec_label_field_required() -> None:
+    with pytest.raises(ValidationError):
+        LabelFromSpec.model_validate(
+            {
+                "path": "labels.csv",
+                "join": "by_id",
+                "id_field": "filename",
+            }
+        )
+
+
+def test_label_from_spec_header_must_be_non_empty() -> None:
+    with pytest.raises(ValidationError, match="non-empty"):
+        LabelFromSpec.model_validate(
+            {
+                "path": "labels.csv",
+                "join": "by_row_order",
+                "header": [],
+                "label_field": "class",
+            }
+        )
+
+
+def test_label_from_spec_header_must_have_unique_entries() -> None:
+    with pytest.raises(ValidationError, match="unique"):
+        LabelFromSpec.model_validate(
+            {
+                "path": "labels.csv",
+                "join": "by_id",
+                "header": ["a", "a", "b"],
+                "id_field": "a",
+                "label_field": "b",
+            }
+        )
+
+
+def test_label_from_spec_header_must_contain_label_field() -> None:
+    with pytest.raises(ValidationError, match="label_field"):
+        LabelFromSpec.model_validate(
+            {
+                "path": "labels.csv",
+                "join": "by_row_order",
+                "header": ["a", "b"],
+                "label_field": "missing",
+            }
+        )
+
+
+def test_label_from_spec_header_must_contain_id_field() -> None:
+    with pytest.raises(ValidationError, match="id_field"):
+        LabelFromSpec.model_validate(
+            {
+                "path": "labels.csv",
+                "join": "by_id",
+                "header": ["a", "b"],
+                "id_field": "missing",
+                "label_field": "b",
+            }
+        )
+
+
+def test_label_from_spec_join_must_be_known() -> None:
+    with pytest.raises(ValidationError):
+        LabelFromSpec.model_validate(
+            {
+                "path": "labels.csv",
+                "join": "by_nothing",
+                "label_field": "class",
+            }
+        )

@@ -149,10 +149,81 @@ Input:
 ```
 
 Each source has a `name` (referenced from Generation/Featurization
-inputs), a `type` (plugin-specific; the `image_classification` plugin
-ships `image_folder`), and a `path` to the raw data. Sources are loaded
-deterministically — directory iteration is sorted so the input hash is
-stable across machines.
+inputs), a `type` (plugin-specific), and a `path` to the raw data.
+Sources are loaded deterministically — directory iteration is sorted so
+the input hash is stable across machines.
+
+The `image_classification` plugin ships two source types:
+
+- `image_folder` — ImageFolder layout (`<root>/<class>/<file>.{png,jpg}`).
+  Class names come from the subdirectory names. Labels are intrinsic to
+  the directory structure; no manifest is needed (and `label_from` must
+  not be set — validator check 19 rejects it).
+- `image_flat` — flat directory of images (subdirs allowed but the path
+  is opaque). Requires a sidecar manifest declared via `label_from`. The
+  manifest provides the labels; there is no class-from-subdir fallback.
+
+```yaml
+# image_flat + by_id (most common third-party shape)
+Input:
+  sources:
+    - name: images
+      type: image_flat
+      path: ./data/images
+      label_from:
+        path: ./data/labels.csv
+        join: by_id          # match each image to a manifest row by id
+        id_field: filename   # CSV column containing the join key
+        label_field: class   # CSV column to emit as the label
+
+# image_flat + by_id, headerless manifest (recipe declares column names)
+Input:
+  sources:
+    - name: images
+      type: image_flat
+      path: ./data/images
+      label_from:
+        path: ./data/labels.txt
+        join: by_id
+        header: [filename, class]   # treat file as headerless; use these names
+        id_field: filename
+        label_field: class
+
+# image_flat + by_row_order (CIFAR-style: one label per line, parallel to inputs)
+Input:
+  sources:
+    - name: images
+      type: image_flat
+      path: ./data/images
+      label_from:
+        path: ./data/labels.txt
+        join: by_row_order
+        header: [class]
+        label_field: class
+```
+
+**`label_from` rules and semantics:**
+
+- **Join key for `by_id`:** the image's filename **stem** (e.g.,
+  `img_001.jpg` → `img_001`). The id column in the manifest must match
+  the stem. Manifest rows with no matching image are silently ignored;
+  images with no matching manifest row are a `MaterializeError`.
+- **`by_row_order`:** the manifest's row count must equal the source
+  directory's enumerated image count (sorted-paths order). Brittle by
+  nature — prefer `by_id` for new datasets; `by_row_order` exists for
+  legacy formats like CIFAR-10's `labels.txt`.
+- **`header` (recipe-as-truth):** when present, the file is treated as
+  headerless and the recipe-supplied names *are* the column names. If
+  the file actually contains a header line, it is read as a data row
+  — by design. Ingestion is a one-time configuration step; we trust the
+  recipe author rather than add heuristic detection.
+- **Duplicate ids in the manifest** → `MaterializeError` at load time.
+- **Path resolution** is the same as `Input.sources[*].path` (interpreted
+  as the user wrote it; use absolute paths or run from the recipe's
+  directory).
+- **Cache identity:** the manifest's bytes feed the input hash for
+  `image_flat` sources, so edits to `labels.csv` invalidate the cache
+  without re-touching any image.
 
 ### `Output`
 
@@ -179,15 +250,21 @@ Declares the label field name and its source.
 Labels:
   field: label
   source:
-    kind: derived            # or "direct"
-    derivation: parent_directory_name
+    kind: direct             # or "derived"
 ```
 
-A **direct** label cites a source field already present in the input. A
-**derived** label is produced by a Featurization (FR-22) — the
-`derive_label` Featurization in the reference recipe uses the
-`label_from_path` op to read the class name from each file's parent
-directory.
+A **direct** label is present on the record at load time. Two routes
+populate it for `image_classification`:
+
+- `image_folder` source — the loader reads the class name from the
+  image's parent directory.
+- `image_flat` source with `label_from` (see `Input`) — the loader joins
+  against a sidecar manifest at load time.
+
+A **derived** label is produced by a Featurization (FR-22). The
+reference recipe's `derive_label` Featurization uses the
+`label_from_path` op to compute labels from path components when neither
+of the direct routes applies.
 
 ### `SampleData` (optional)
 

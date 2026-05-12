@@ -363,7 +363,7 @@ datarefinery --plugin-path ./hello_plugin.py validate hello-recipe.yaml
 ```
 
 `check` lists `hello` alongside the bundled plugins with `status =
-active`; `validate` reports `18/18 checks passed`.
+active`; `validate` reports `19/19 checks passed`.
 
 ## Starting templates
 

@@ -77,14 +77,26 @@ DataRefinery compiles a single YAML **recipe** — declaring data category, raw 
 - One or more declared sources. Each source has a type (e.g., directory of image files, parquet file, CSV file) and a path or URI.
 - Multiple sources may be joined by a declared key (e.g., filename, foreign key column).
 - Per-record metadata available alongside the primary content (filenames, directory paths, sidecar files) is addressable in derived operations.
-- Example (image classification):
+- Example (image classification — ImageFolder layout, class subdirectories provide labels):
   ```yaml
   Input:
     sources:
       - name: images
-        type: image_directory
+        type: image_folder
         path: data/raw/cifar10/train
-        label_from: parent_directory_name
+  ```
+- Example (image classification — flat directory + sidecar manifest):
+  ```yaml
+  Input:
+    sources:
+      - name: images
+        type: image_flat
+        path: data/raw/myset/images
+        label_from:
+          path: data/raw/myset/labels.csv
+          join: by_id
+          id_field: filename
+          label_field: class
   ```
 
 **Recipe file** (single YAML file):

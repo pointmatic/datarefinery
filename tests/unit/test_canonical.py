@@ -26,7 +26,6 @@ Input:
     - name: train
       type: image_folder
       path: /data/train
-      label_from: parent_directory_name
 Output:
   record_schema:
     image:
@@ -70,8 +69,7 @@ Labels:
   field: label
 Input:
   sources:
-    - label_from: parent_directory_name
-      path: /data/train
+    - path: /data/train
       type: image_folder
       name: train
 seed: 42
@@ -92,7 +90,6 @@ Input:
     -   name: train
         type: image_folder
         path: /data/train
-        label_from: parent_directory_name
 
 Output:
   record_schema:
@@ -128,7 +125,6 @@ Input:  # raw image directories
     - name: train
       type: image_folder
       path: /data/train
-      label_from: parent_directory_name
 Output:
   record_schema:
     image:

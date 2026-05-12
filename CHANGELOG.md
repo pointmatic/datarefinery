@@ -5,6 +5,105 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-12
+
+### Added
+
+- **Story H.a — InputSource sidecar labels + flat-image layout for
+  image_classification.** Adds two capabilities, scoped together because
+  the real-world sidecar-CSV use case requires both:
+
+  1. **`image_flat` source type.** A new `InputSource.type` value for
+     flat directories of images (no class subdirectories required).
+     Sits alongside the existing `image_folder` (ImageFolder layout)
+     type; each type has exactly one labeling mechanism, no overlay/
+     override semantics, no heuristic layout detection.
+  2. **`label_from` wired up.** `InputSource.label_from` was declared
+     in the Pydantic model since v0.0.1 but never consumed in `src/`.
+     Promoted from `str | None` to a structured `LabelFromSpec` model
+     with four fields: `path`, `join` (`by_id` or `by_row_order`),
+     `header` (optional column-name list when the manifest is
+     headerless), and `id_field` / `label_field`. The
+     `image_classification` loader joins the manifest into each record
+     at load time, so records arrive at the pipeline with labels
+     already populated and `Labels.source.kind` can stay `"direct"`.
+
+  Three manifest shapes are supported uniformly:
+  - Headered CSV (most common third-party shape) — `header` omitted;
+    loader reads column names from the file's header row.
+  - Headerless CSV — recipe provides `header: [<names>]`; file is
+    treated as headerless. Recipe-as-truth: if the file actually
+    contains a header line, the loader reads it as a data row. No
+    heuristic detection (aligns with the project-essentials "Recipe is
+    authoritative for data-pipeline semantics" rule).
+  - CIFAR-style row-order — `join: by_row_order` with a single-column
+    `header`. Manifest row count must equal the source's enumerated
+    image count.
+
+  **Validator check 19 (`label_from_spec_resolves`)** enforces the
+  invariants at validate time so authoring errors surface before
+  materialize runs: manifest exists, column references resolve, no
+  duplicate ids for `by_id`, row counts match for `by_row_order`, and
+  type-vs-`label_from` consistency (`image_folder` + `label_from` →
+  fail; `image_flat` without `label_from` → fail).
+
+  **Cache identity:** for `image_flat` sources, the input hash now
+  includes a digest of the manifest's bytes alongside the image-tree
+  digest, so edits to `labels.csv` invalidate the cache without
+  re-touching any image. Pre-production rules apply per
+  `project-essentials.md`: re-materialize after upgrade, no migration
+  ceremony required. The canonical-hash pin (`test_canonical_hash_pin`)
+  was updated for the `LabelFromSpec` model change — the fixture recipe
+  no longer carries the obsolete `label_from: parent_directory_name`
+  string, which was a placeholder for the unused old field.
+
+### Changed
+
+- `Recipe` validator check count is now **19** (was 18). The new check
+  is `label_from_spec_resolves`; CLI output reports `19/19 checks
+  passed` on clean recipes.
+- `features.md` § Raw data sources updated with both ImageFolder and
+  flat+manifest example recipe shapes.
+- `docs/guides/recipe-authoring.md` § Input and § Labels expanded to
+  document the two source types, the three `label_from` modes, the
+  recipe-as-truth header rule, and the join-mode semantics.
+- `README.md` § Quickstart gained an "Alternative layout: flat
+  directory + sidecar labels" subsection.
+
+### Migration notes
+
+- Existing recipes carrying `label_from: parent_directory_name` (or
+  similar string values) no longer parse — that field is now a
+  structured `LabelFromSpec` model. The pre-existing string values were
+  never read by any production code; remove the line. `image_folder`
+  sources do not need `label_from` (labels come from subdir names).
+
+## [0.6.4] - 2026-05-12
+
+### Added
+
+- **Story G.c — Release Automation Polish.** Added
+  `.github/workflows/release.yml` triggered on `v*` tag pushes. The
+  workflow resolves the version from the tag, verifies
+  `pyproject.toml` agrees, extracts the matching `## [X.Y.Z]`
+  section from `CHANGELOG.md` (up to the next `## [` heading), and
+  calls `gh release create` to publish a GitHub Release with that
+  body. The workflow refuses to publish if the tag and
+  `pyproject.toml` disagree or if `CHANGELOG.md` has no matching
+  section — making tag-without-bump and bump-without-changelog
+  failure modes loud rather than silent.
+
+  Added `docs/guides/releasing.md` documenting the end-to-end
+  procedure (bump → CHANGELOG → tag → workflow → verify),
+  including the explicit note that PyPI publishing is deferred
+  (the `datarefinery` name is taken on PyPI; the GitHub Release is
+  the release artifact) and the recovery procedure for a mis-tagged
+  push.
+
+  Tag protection (`v*` restricted to maintainers) remains a
+  developer-configured repo setting (GitHub UI → Settings → Tags),
+  documented in the guide but not expressible in workflow YAML.
+
 ## [0.6.3] - 2026-05-12
 
 ### Added
