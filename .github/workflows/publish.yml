@@ -12,8 +12,8 @@
 #   - GitHub Actions environment `pypi` with required-reviewer
 #     protection (a maintainer must approve each production deploy).
 #
-# This workflow runs in parallel with `release.yml`; the GitHub Release
-# is created from the same tag and CHANGELOG section by that workflow.
+# `CHANGELOG.md` is the canonical release log; no parallel GitHub
+# Release object is created (see Story H.g for the rationale).
 
 name: Publish
 

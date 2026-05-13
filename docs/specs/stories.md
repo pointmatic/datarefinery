@@ -380,6 +380,27 @@ This story strips the TestPyPI half entirely and bumps to v0.9.2 so the next tag
 - Re-adding TestPyPI later as a separate workflow. If a future story needs it, it can be added back deliberately with both bindings in place.
 - Investigating the v0.9.1 tag's publish-run failure beyond the `testpypi`-env cause. The GH Release for v0.9.1 succeeded (different workflow); only the publish pipeline broke.
 
+### Story H.g: v0.9.3 Drop GitHub Releases workflow [Done]
+
+`release.yml` exists from F.f and creates a GitHub Release (the "Releases" page entries on github.com) on every `v*` tag push, with the matching `CHANGELOG.md` section as the body. It is independent of PyPI — `publish.yml` does the actual package distribution. The developer flagged that other PyPI-publishing repos they own do not maintain a parallel GitHub-Releases surface; the existing `CHANGELOG.md` already serves as the canonical release log inside the repo, and the git tag itself is visible on GitHub without a "Release" object attached.
+
+This story deletes `release.yml` and trims every doc that references it. `publish.yml` becomes the sole tag-triggered workflow. Patch bump (v0.9.3) — no behavior change for users; only removes a duplicate surface.
+
+**Tasks:**
+
+- [x] Delete `.github/workflows/release.yml`.
+- [x] `.github/workflows/publish.yml` header comment: drop the "runs in parallel with `release.yml`" line.
+- [x] `docs/guides/releasing.md`: drop step 5 (Release workflow watch), renumber 6→5 and 7→6 and 8→7; drop GitHub-Release verification bullets from the new step 6; remove the `release.yml` row from the procedure preamble; rewrite intro to mention only the publish workflow.
+- [x] `docs/specs/tech-spec.md` § Package Structure already lists only `ci.yml` + `publish.yml`; no edit needed there. Sweep the rest of the file for any stray `release.yml` reference.
+- [x] `CHANGELOG.md`: new `## [0.9.3]` "Removed" section.
+- [x] `pyproject.toml` and `src/datarefinery/__init__.py`: bump to `0.9.3`.
+- [x] Verify: tests green, ruff + ruff format + mypy clean, canonical-hash pin unchanged, no remaining `release.yml` references outside `CHANGELOG.md` history.
+
+**Out of Scope**
+
+- Re-adding a GitHub-Releases workflow later. Easy to revive (the deleted file remains in git history); deferred until a real need surfaces.
+- Backfilling GitHub Releases for v0.7.0 – v0.9.2. Their tags already exist; their CHANGELOG entries are the canonical notes. Not worth the manual `gh release create` per version.
+
 ---
 
 ## Future

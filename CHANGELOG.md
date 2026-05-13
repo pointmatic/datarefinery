@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-05-12
+
+### Removed
+
+- **Story H.g — Drop GitHub Releases workflow.** Removed
+  `.github/workflows/release.yml`, which shipped in Story F.f and
+  created a parallel GitHub Release object on every `v*` tag push.
+  `publish.yml` is now the sole tag-triggered workflow; PyPI is the
+  only distribution surface, and `CHANGELOG.md` is the canonical
+  release log (visible directly in the repo and via the git tag's
+  context on GitHub).
+
+  No behavior change for end users — `pip install ml-datarefinery`
+  still works identically. The "Releases" page on github.com no
+  longer auto-populates on new tags; if a release object is wanted
+  for a specific version after the fact, run `gh release create vX.Y.Z
+  --notes-file <(awk ...)` manually.
+
+  Setup simplification: `release.yml` did not have any preconditions
+  (no environment / token / binding), so there is nothing to clean up
+  on GitHub for this change.
+
+  No code or tests touched; canonical-hash pin unchanged.
+
 ## [0.9.2] - 2026-05-12
 
 ### Fixed
