@@ -790,8 +790,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "datarefinery"
-version = "0.0.1"            # bumped via release workflow; reservation upload is 0.0.1
+name = "ml-datarefinery"     # distribution name; import name remains `datarefinery` (Hatch packages = ["src/datarefinery"])
+version = "0.9.1"            # bumped per-story; first PyPI publish is v0.9.1
 description = "Compile a YAML recipe into a reproducible, training-ready ML dataset instance."
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
@@ -839,20 +839,21 @@ include = ["src/datarefinery", "LICENSE", "README.md", "pyproject.toml"]
 
 ### Build artifacts
 
-- **Wheel:** `datarefinery-<version>-py3-none-any.whl` (pure-Python universal wheel; no native code ship in DataRefinery itself — Pillow brings its own platform-specific wheels as a transitive dep).
-- **Sdist:** `datarefinery-<version>.tar.gz` for downstream rebuilders (Linux distros, conda-forge, audit-build orgs).
+- **Wheel:** `ml_datarefinery-<version>-py3-none-any.whl` (pure-Python universal wheel; no native code ship in DataRefinery itself — Pillow brings its own platform-specific wheels as a transitive dep). The wheel installs `import datarefinery` and the `datarefinery` console script; PyPI normalises the distribution name to underscores in the artifact filename.
+- **Sdist:** `ml_datarefinery-<version>.tar.gz` for downstream rebuilders (Linux distros, conda-forge, audit-build orgs).
 - Both built by `python -m build` (or `hatch build`).
 
 ### Publishing
 
-- **PyPI:** `datarefinery` (currently available; reservation = first successful upload, not prior registration).
+- **PyPI distribution name:** `ml-datarefinery`. The bare `datarefinery` name on PyPI was taken before this project began; the import name and console script remain `datarefinery` (same shape as `scikit-learn` / `import sklearn`).
 - **Mechanism:** `pypa/gh-action-pypi-publish` with **PyPI Trusted Publishing** (OIDC). No long-lived API tokens.
 - **Workflow:** `.github/workflows/publish.yml`:
   - Triggered on tag push matching `v*`.
-  - Job 1 builds wheel + sdist with `python -m build`.
-  - Job 2 publishes to **TestPyPI** (always, in a separate environment with its own trusted-publisher binding).
-  - Job 3 publishes to **PyPI** (only on tags from `main`, gated by environment protection rules on the `pypi` GitHub Actions environment).
-- **Sequencing:** the publish workflow + minimal `pyproject.toml` + `LICENSE` + minimal `README.md` is one of the **earliest stories** in `plan_stories` mode. First tagged release `v0.0.1` cuts the reservation upload before substantive feature work begins. Once that single upload succeeds, the PyPI name is reserved regardless of whether subsequent automation is paused.
+  - Job 1 (`build`) builds wheel + sdist with `python -m build` and uploads to GH Actions artifact storage.
+  - Job 2 (`publish-testpypi`) publishes to **TestPyPI** under the `testpypi` GitHub environment (no approval gate).
+  - Job 3 (`publish-pypi`) publishes to **PyPI** under the `pypi` GitHub environment (required-reviewer protection — a maintainer must approve each deploy).
+- **First publish:** v0.9.1 (Story H.e). Pre-v0.9.1 tags remain GitHub-Release-only.
+- **Trusted-publisher setup:** the PyPI and TestPyPI "pending publisher" bindings, plus the two GitHub Actions environments, are configured once outside the repo. See `docs/guides/releasing.md` § "One-time PyPI Trusted Publisher setup".
 
 ### Package data
 
@@ -862,8 +863,8 @@ The wheel ships only Python source plus `py.typed`. Scaffolder templates (if int
 
 | Mode | Command |
 |---|---|
-| End user (production) | `pip install datarefinery` |
-| End user with LLM enhancement | `pip install 'datarefinery[llm]'` |
+| End user (production) | `pip install ml-datarefinery` |
+| End user with LLM enhancement | `pip install 'ml-datarefinery[llm]'` |
 | Developer (runtime venv via pyve) | `pyve run pip install -e .` |
 | Developer (testenv editable, required for CLI tests) | `pyve testenv run pip install -e .` |
 | Developer (dev tools) | `pyve testenv install -r requirements-dev.txt` |

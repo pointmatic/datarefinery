@@ -1,15 +1,16 @@
 # Releasing DataRefinery
 
 This guide documents the end-to-end release procedure: prepare the
-version bump, push a tag, and let the release workflow publish a
-GitHub Release sourced from `CHANGELOG.md`.
+version bump, push a tag, and let the release workflows publish a
+GitHub Release sourced from `CHANGELOG.md` and an `ml-datarefinery`
+distribution to TestPyPI and PyPI.
 
-> **PyPI publishing is intentionally deferred.** The `datarefinery`
-> name is taken on PyPI. The release artifact is the **GitHub
-> Release** (and the git tag it points to) until that situation is
-> resolved. The PyPI half of `features.md` Acceptance Criterion 4
-> ("`pip install datarefinery` from a clean venv works") is satisfied
-> locally against the built wheel, not against a public index.
+> **PyPI distribution name is `ml-datarefinery`.** The bare
+> `datarefinery` name on PyPI was taken before this project began, so
+> the distribution ships as `ml-datarefinery`; the Python import name
+> and console script remain `datarefinery`. End users install with
+> `pip install ml-datarefinery` and write `import datarefinery`. Same
+> shape as `scikit-learn` / `import sklearn`.
 
 ## Prerequisites
 
@@ -64,13 +65,43 @@ GitHub Release sourced from `CHANGELOG.md`.
    4. Calls `gh release create` to publish a GitHub Release named
       after the tag with the extracted section as the body.
 
-6. **Verify the Release.** Browse to the repo's Releases page and
+6. **Watch the Publish workflow.** In parallel, `.github/workflows/
+   publish.yml` runs and:
+
+   1. Verifies `pyproject.toml`'s version matches the tag.
+   2. Builds `sdist` + `wheel` via `python -m build`.
+   3. Uploads to **TestPyPI** under the `testpypi` GitHub environment
+      (no approval gate) via PyPI Trusted Publishing (OIDC; no API
+      token in the repo).
+   4. Uploads to **PyPI** under the `pypi` GitHub environment
+      (required-reviewer protection — a maintainer must approve the
+      deploy in the GitHub UI before the upload runs).
+
+   The distribution uploaded is `ml-datarefinery`; once approved,
+   `pip install ml-datarefinery==X.Y.Z` works from any clean venv.
+
+7. **Verify the Release.** Browse to the repo's Releases page and
    confirm:
 
    - The new release exists with the tag as the title.
    - The body contains the CHANGELOG section verbatim.
    - The "Source code" archives (`zip`, `tar.gz`) are attached
      (GitHub generates these automatically).
+   - The Publish workflow's PyPI job shows green (or, if you have not
+     yet approved the `pypi` environment, it shows "Waiting for
+     review").
+
+8. **Verify the PyPI distribution.** In a fresh venv:
+
+   ```bash
+   python -m venv /tmp/dr-verify && source /tmp/dr-verify/bin/activate
+   pip install ml-datarefinery==X.Y.Z
+   datarefinery --version
+   python -c "import datarefinery; print(datarefinery.__version__)"
+   ```
+
+   The console script name and import name are both `datarefinery`;
+   only the distribution name is `ml-datarefinery`.
 
 ## Tag protection
 
@@ -112,11 +143,47 @@ Force-deleting a tag from the remote is a destructive operation;
 only do it if the GitHub Release has not yet been published, or
 manually delete the published Release first.
 
-## What this workflow does *not* do
+## One-time PyPI Trusted Publisher setup
 
-- **Build wheels / sdists.** The release artifact is the source-tagged
-  GitHub Release. Run `python -m build` locally to produce wheels for
-  side-channel distribution.
-- **Upload to PyPI.** Deferred (see top of this document).
-- **Mutate `CHANGELOG.md`.** The workflow is read-only against the
+Before the first publish (and again for any new project name), the
+trusted-publisher binding must be registered on PyPI **and** the
+matching GitHub Actions environments must exist. This is a manual,
+one-time step; the workflow cannot bootstrap itself.
+
+1. **PyPI — pending publisher.** Log in to https://pypi.org → Account
+   Settings → Publishing → "Add a new pending publisher". Fill in:
+
+   - **PyPI Project Name:** `ml-datarefinery`
+   - **Owner:** `pointmatic` (the GitHub org or user that owns the
+     repo)
+   - **Repository name:** `datarefinery`
+   - **Workflow filename:** `publish.yml`
+   - **Environment name:** `pypi`
+
+2. **TestPyPI — pending publisher.** Repeat on
+   https://test.pypi.org with environment name `testpypi`.
+
+3. **GitHub — Actions environments.** Repo → Settings →
+   Environments → "New environment":
+
+   - Create `pypi`. Under "Deployment protection rules", add
+     "Required reviewers" and select the maintainer team. This is the
+     human gate that blocks the production-PyPI upload until someone
+     clicks "Approve and deploy" on each release.
+   - Create `testpypi`. No protection rules — TestPyPI uploads run
+     automatically on every tag.
+
+After the first successful PyPI upload, the "pending publisher" on
+PyPI becomes a regular trusted publisher and stops appearing in the
+pending list.
+
+## What these workflows do *not* do
+
+- **Mutate `CHANGELOG.md`.** Both workflows are read-only against the
   repo state at the tag.
+- **Build wheels / sdists for non-release commits.** Side-channel
+  builds are still done locally with `python -m build`; the publish
+  workflow only runs on `v*` tag pushes.
+- **Reserve the `datarefinery` name on PyPI.** That name is taken by
+  another project; this repo publishes as `ml-datarefinery` and is
+  not in a position to claim the unprefixed name.

@@ -327,6 +327,38 @@ Splits:
 2. **Should `Labels.source.kind` change for unlabeled-only recipes?** A recipe whose only partition is unlabeled has no labels anywhere. Strawman: still require `Labels` to be declared (for downstream schema consistency) but treat `kind: direct` as "labels exist on partitions that aren't unlabeled." Alternative: a `kind: absent` discriminator. Strawman avoids adding the discriminator until a real need surfaces.
 3. **Behavior when an OutputExpectation references the `label` field.** Strawman: OutputExpectations apply only to labeled splits (skipped for unlabeled with a note); rejecting the recipe is too strict because most recipes will declare label expectations even when one partition is unlabeled.
 
+### Story H.e: v0.9.1 PyPI publish under `ml-datarefinery` [Done]
+
+Reverses the deferred-PyPI decision recorded for Phase G. The unprefixed `datarefinery` name on PyPI was taken before this project began; the developer has elected to publish under the **distribution name `ml-datarefinery`** while keeping the Python package, import name, and CLI script name unchanged (same shape as `scikit-learn` / `import sklearn`). The story bundles the rename, the publish workflow, and the documentation sweep required to make `pip install ml-datarefinery` work from a clean venv against the real index.
+
+**Scope.** Distribution-side change only. The recipe surface, plugin contract, validator, runner, and on-disk cache layout are untouched. Canonical recipe bytes are unaffected (the distribution name is not in `Recipe`); the pinned hash does not move.
+
+**Tasks:**
+
+- [x] **`pyproject.toml`.** Rename `[project].name` from `"datarefinery"` to `"ml-datarefinery"`. Leave `packages = ["src/datarefinery"]` and `[project.scripts] datarefinery = "datarefinery.cli.app:app"` alone — the import and console-script names stay `datarefinery`. Bump `[project].version` to `0.9.1`.
+- [x] **`src/datarefinery/__init__.py`.** Bump `__version__` to `0.9.1`.
+- [x] **New `.github/workflows/publish.yml`.** Trusted-Publishing (OIDC) workflow that triggers on `v*` tag push, builds sdist + wheel via `python -m build`, then publishes to TestPyPI (env `testpypi`) and PyPI (env `pypi`, gated by environment protection) using `pypa/gh-action-pypi-publish`. `permissions: id-token: write`. No long-lived API tokens.
+- [x] **`.github/workflows/release.yml`.** Drop the "PyPI upload is intentionally deferred" comment block; the GitHub Release path still runs in parallel with the publish workflow on the same tag.
+- [x] **README.md.** Replace `pip install datarefinery` with `pip install ml-datarefinery`. Same for the `[llm]` extra example. Add one sentence near the install line clarifying that the import name remains `datarefinery`.
+- [x] **`docs/guides/releasing.md`.** Replace the "PyPI publishing is intentionally deferred" callout with a § documenting the new flow: trusted-publisher binding setup (one-time, on PyPI), the `testpypi` → `pypi` two-step on each tag push, and the maintainer-approval gate on the `pypi` GitHub environment. Update the "What this workflow does *not* do" section: PyPI upload is now done by `publish.yml`, not deferred.
+- [x] **`docs/specs/tech-spec.md`.** § Publishing already prescribes Trusted Publishing; update the line `**PyPI:** datarefinery` → `**PyPI:** ml-datarefinery` and add a one-line note that the import name remains `datarefinery`. § Installation methods: `pip install datarefinery` → `pip install ml-datarefinery`. § Package metadata: the `[project].name` example value moves to `ml-datarefinery`.
+- [x] **CHANGELOG.md.** New `## [0.9.1]` section under "Changed" describing the distribution-name change and the publish workflow.
+- [x] **Memory update.** Rewrite `project_pypi_deferred.md` (and its `MEMORY.md` index line) from "deferred" → "PyPI distribution name is `ml-datarefinery`; first publish is v0.9.1 via `.github/workflows/publish.yml`." Keep the historical reason in the body so a future LLM understands why the distribution name diverges from the import name.
+- [x] **No canonical-hash shift.** `Recipe` does not contain the distribution name. Confirm `test_canonical_hash_pin` still passes without an update.
+- [x] **Developer-side setup (out-of-band, before first publish).** Listed here so future readers can verify the workflow's preconditions, not as LLM-executable tasks:
+  - PyPI: add a "pending publisher" for `ml-datarefinery` bound to GitHub repo `pointmatic/datarefinery`, workflow `publish.yml`, environment `pypi`.
+  - TestPyPI: same binding under environment `testpypi`.
+  - GitHub: create Actions environments `pypi` (with required-reviewer protection) and `testpypi` (no protection).
+- [x] Bump version to v0.9.1
+- [x] Update CHANGELOG.md
+- [x] Verify: tests green, ruff + mypy clean, canonical-hash pin still passes, `python -m build` produces `ml_datarefinery-0.9.1-py3-none-any.whl` and `ml_datarefinery-0.9.1.tar.gz` whose installed entry-points still expose `import datarefinery` and `datarefinery --help`.
+
+**Out of Scope**
+
+- **Reserving `datarefinery` on PyPI.** Not ours to take; the existing project owns it.
+- **Renaming the Python package or import name.** Distribution-side only.
+- **Backporting older versions to PyPI.** Only `v0.9.1` and later are published; pre-v0.9.1 tags remain GitHub-Release-only.
+
 ---
 
 ## Future

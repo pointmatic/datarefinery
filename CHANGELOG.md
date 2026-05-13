@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-05-12
+
+### Changed
+
+- **Story H.e — PyPI publish under `ml-datarefinery`.** Reverses the
+  deferred-PyPI decision recorded for Phase G. The unprefixed
+  `datarefinery` name on PyPI was taken before this project began, so
+  the distribution now ships as **`ml-datarefinery`**. The Python
+  import name and CLI script name are unchanged — users write
+  `import datarefinery` and run `datarefinery --help` exactly as
+  before; only the `pip install` command changes:
+
+  ```bash
+  pip install ml-datarefinery               # was: pip install datarefinery
+  pip install 'ml-datarefinery[llm]'        # was: pip install 'datarefinery[llm]'
+  ```
+
+  Same shape as `scikit-learn` / `import sklearn`.
+
+  - `pyproject.toml`: `[project].name` set to `ml-datarefinery`. The
+    `packages`, `[project.scripts]`, and
+    `[project.entry-points."datarefinery.plugins"]` entries are
+    unchanged, so the wheel still installs the `datarefinery` package
+    and console script.
+  - New `.github/workflows/publish.yml`: on `v*` tag push, builds
+    sdist + wheel and publishes to TestPyPI (env `testpypi`) and
+    PyPI (env `pypi`, gated by required-reviewer protection) via
+    PyPI Trusted Publishing (OIDC; no long-lived API tokens in the
+    repo). Runs alongside the existing `release.yml`.
+  - `.github/workflows/release.yml`: the "PyPI upload is deferred"
+    comment is gone; the GitHub Release continues to be created from
+    the same tag and CHANGELOG section.
+  - `README.md`, `docs/guides/releasing.md`, `docs/specs/tech-spec.md`
+    updated for the new install command and the one-time
+    trusted-publisher setup (PyPI pending-publisher binding plus
+    GitHub Actions environments `pypi` and `testpypi`).
+  - No canonical-recipe-hash shift — the distribution name is not in
+    `Recipe`; `test_canonical_hash_pin` continues to pass at
+    `11a6ca0fd15e2995092fe6755ff188c05e9e814344209a9b6926a420fd487731`.
+
+  Existing recipes do not need to be edited. Existing developer
+  installs (`pyve run pip install -e .`) keep working — the editable
+  install resolves the `ml-datarefinery` distribution but exposes the
+  `datarefinery` import and script the same way it always did.
+
 ## [0.9.0] - 2026-05-12
 
 ### Added

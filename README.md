@@ -49,7 +49,18 @@ materialization path. Highlights:
 DataRefinery requires Python 3.12.
 
 ```bash
-pip install datarefinery
+pip install ml-datarefinery
+```
+
+The PyPI distribution name is `ml-datarefinery`; the Python import name
+and console script remain `datarefinery` (e.g. `import datarefinery` and
+`datarefinery --help`). Same shape as `scikit-learn` / `import sklearn`.
+
+For the optional LLM-enhancement layer (FR-17), install with the
+`[llm]` extra:
+
+```bash
+pip install 'ml-datarefinery[llm]'
 ```
 
 ### From source (development)

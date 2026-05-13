@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Release: on `v*` tag push, extract the matching CHANGELOG.md section
-# and create a GitHub Release with that body. The tag itself is the
-# release artifact; PyPI upload is intentionally deferred (the
-# `datarefinery` name is taken on PyPI, see CHANGELOG.md F.f Out of
-# Scope and docs/guides/releasing.md).
+# and create a GitHub Release with that body. Runs alongside
+# `.github/workflows/publish.yml`, which publishes the sdist + wheel
+# to TestPyPI and PyPI from the same tag (PyPI distribution name
+# `ml-datarefinery`; see docs/guides/releasing.md).
 #
 # Tag protection (only maintainers can push `v*` tags) is a developer-
 # configured repo setting (GitHub UI -> Settings -> Tags -> Tag
