@@ -300,3 +300,97 @@ def test_image_flat_recurses_into_subdirs_for_enumeration(tmp_path: Path) -> Non
         "images/nested/deep.png",
         "images/top.png",
     ]
+
+
+# ---------------------------------------------------------------------------
+# InputSource.partition stamping (Story H.b)
+# ---------------------------------------------------------------------------
+
+
+def test_partition_unset_records_have_no_partition_field(tmp_path: Path) -> None:
+    images = tmp_path / "imgs"
+    _make_flat_images(images, ["a.png", "b.png"])
+    manifest = tmp_path / "labels.csv"
+    _write_csv(manifest, [["filename", "class"], ["a", "cat"], ["b", "dog"]])
+    recipe = Recipe.model_validate(
+        _base_recipe_dict(
+            images,
+            label_from={
+                "path": str(manifest),
+                "join": "by_id",
+                "id_field": "filename",
+                "label_field": "class",
+            },
+        )
+    )
+    records, _ = load_raw_records(recipe, IMAGE_PLUGIN)
+    assert all("partition" not in r for r in records)
+
+
+def test_partition_set_stamps_field_on_each_record(tmp_path: Path) -> None:
+    images = tmp_path / "imgs"
+    _make_flat_images(images, ["a.png", "b.png"])
+    manifest = tmp_path / "labels.csv"
+    _write_csv(manifest, [["filename", "class"], ["a", "cat"], ["b", "dog"]])
+    payload = _base_recipe_dict(
+        images,
+        label_from={
+            "path": str(manifest),
+            "join": "by_id",
+            "id_field": "filename",
+            "label_field": "class",
+        },
+    )
+    payload["Input"]["sources"][0]["partition"] = "train"
+    recipe = Recipe.model_validate(payload)
+    records, _ = load_raw_records(recipe, IMAGE_PLUGIN)
+    assert [r["partition"] for r in records] == ["train", "train"]
+
+
+def test_partition_per_source_flows_through(tmp_path: Path) -> None:
+    """Two image_folder sources with distinct partition values."""
+    train_root = tmp_path / "train"
+    test_root = tmp_path / "test"
+    (train_root / "cat").mkdir(parents=True)
+    (test_root / "cat").mkdir(parents=True)
+    arr = np.zeros((4, 4, 3), dtype=np.uint8)
+    Image.fromarray(arr).save(train_root / "cat" / "a.png")
+    Image.fromarray(arr).save(test_root / "cat" / "b.png")
+
+    recipe = Recipe.model_validate(
+        {
+            "schema_version": 1,
+            "plugin": "image_classification",
+            "Input": {
+                "sources": [
+                    {
+                        "name": "train_data",
+                        "type": "image_folder",
+                        "path": str(train_root),
+                        "partition": "train",
+                    },
+                    {
+                        "name": "test_data",
+                        "type": "image_folder",
+                        "path": str(test_root),
+                        "partition": "test",
+                    },
+                ]
+            },
+            "Output": {
+                "record_schema": {
+                    "image": {"dtype": "uint8", "shape": [4, 4, 3]},
+                    "label": {"dtype": "string"},
+                },
+            },
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": {},
+        }
+    )
+    records, _ = load_raw_records(recipe, IMAGE_PLUGIN)
+    by_partition: dict[str, list[str]] = {}
+    for r in records:
+        by_partition.setdefault(r["partition"], []).append(r["record_id"])
+    assert set(by_partition.keys()) == {"train", "test"}
+    assert by_partition["train"] == ["train_data/cat/a.png"]
+    assert by_partition["test"] == ["test_data/cat/b.png"]

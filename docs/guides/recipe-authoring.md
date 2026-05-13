@@ -173,7 +173,7 @@ Input:
       label_from:
         path: ./data/labels.csv
         join: by_id          # match each image to a manifest row by id
-        id_field: filename   # CSV column containing the join key
+        id_field: id         # CSV column containing the join key
         label_field: class   # CSV column to emit as the label
 
 # image_flat + by_id, headerless manifest (recipe declares column names)
@@ -185,8 +185,8 @@ Input:
       label_from:
         path: ./data/labels.txt
         join: by_id
-        header: [filename, class]   # treat file as headerless; use these names
-        id_field: filename
+        header: [id, class]   # treat file as headerless; use these names
+        id_field: id
         label_field: class
 
 # image_flat + by_row_order (CIFAR-style: one label per line, parallel to inputs)
@@ -225,6 +225,69 @@ Input:
   `image_flat` sources, so edits to `labels.csv` invalidate the cache
   without re-touching any image.
 
+#### Pre-partitioned sources
+
+Many third-party datasets ship pre-partitioned: `train/` is authored by
+the publisher and `test/` is intended to remain heldout from training.
+DataRefinery honors this directly via `InputSource.partition`: each
+source declares which split it belongs to, the loader stamps the
+declared value onto every record from that source, and the Splits stage
+either accepts the source partitions verbatim (Form A) or sub-partitions
+one of them (Form B — typically to carve `val` out of `train`).
+
+```yaml
+# Form A — declared partitions are final; Splits is omitted.
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./data/train
+      partition: train
+    - name: test_data
+      type: image_folder
+      path: ./data/test
+      partition: test
+Splits: {}                              # honor source partitions verbatim
+```
+
+```yaml
+# Form B — carve val out of train, keep test heldout.
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./data/train
+      partition: train
+    - name: test_data
+      type: image_folder
+      path: ./data/test
+      partition: test
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train                     # only sub-partition this partition
+  stratify_by: label
+  seed: 7
+```
+
+**Rules:**
+
+- **All-or-nothing.** If any source declares `partition`, every source
+  must. (Mixed mode is rejected by validator check 20.)
+- **`partition` is a reserved record-field name.** The loader stamps it
+  on every record, analogous to `record_id`. Don't declare `partition`
+  in `Output.record_schema` — check 20 rejects that too.
+- **`applies_to` is a single string.** One partition can be
+  sub-partitioned per recipe. Multi-target sub-partitioning is out of
+  scope for v1.
+- **Sub-partition names must not collide with sibling partitions.**
+  If you declare `partition: test` on a source and then write
+  `ratios: { train: 0.5, test: 0.5 }` under `applies_to: train`,
+  check 20 fails — the `test` from ratios would shadow the heldout
+  `test` partition.
+- **No `partition` declared anywhere** → existing global-pool behavior:
+  loader concatenates per-source records and `Splits` partitions the
+  whole stream as before. Backward-compatible.
+
 ### `Output`
 
 Declares the record schema the materialized dataset must satisfy. Field
@@ -244,27 +307,42 @@ Output:
 
 ### `Labels`
 
-Declares the label field name and its source.
+Declares the label field name and where it comes from.
 
 ```yaml
+# Form A: direct — labels arrive on the record at load time.
 Labels:
   field: label
   source:
-    kind: direct             # or "derived"
+    kind: direct
+
+# Form B: derived — labels are produced by a Featurization.
+Labels:
+  field: label
+  source:
+    kind: derived
+    derivation: parent_directory_name   # identifier the Featurization keys off
 ```
 
-A **direct** label is present on the record at load time. Two routes
-populate it for `image_classification`:
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `field` | yes | Record-field name the label is written into (`record["label"]`). |
+| `source.kind` | yes | `direct` or `derived`. |
+| `source.derivation` | only when `kind == "derived"` | Identifier the responsible Featurization keys off; the reference recipe pairs `derivation: parent_directory_name` with a `label_from_path` Featurization that has `params: { source: parent_directory_name }`. |
 
-- `image_folder` source — the loader reads the class name from the
+**Direct** labels are populated by the input loader; two routes for
+`image_classification`:
+
+- `image_folder` source — the loader reads the class name from each
   image's parent directory.
 - `image_flat` source with `label_from` (see `Input`) — the loader joins
   against a sidecar manifest at load time.
 
-A **derived** label is produced by a Featurization (FR-22). The
-reference recipe's `derive_label` Featurization uses the
-`label_from_path` op to compute labels from path components when neither
-of the direct routes applies.
+**Derived** labels are produced by a Featurization (FR-22), letting you
+compute labels from path components, joined sidecar data, or any other
+record field. Use this when neither of the direct routes fits — for
+example, when the label has to be parsed out of the image filename
+itself rather than the folder structure.
 
 ### `SampleData` (optional)
 
@@ -381,6 +459,31 @@ Splits:
   field-to-split mapping instead of `ratios`.
 - `class_balance` lets ModelFoundry honor a sampling strategy at
   training time — that handles class imbalance without removing data.
+
+#### Sub-partitioning via `applies_to`
+
+When `Input.sources[*].partition` declares a pre-existing partitioning
+(see § Input → Pre-partitioned sources), `Splits.applies_to` lets you
+sub-partition just one of those partitions — typically carving `val`
+out of `train` while keeping `test` heldout:
+
+```yaml
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train                     # only re-partition records in this partition
+  stratify_by: label                    # stratifies only within the named partition
+  seed: 7
+```
+
+The result of materialize is three splits: `train` and `val` (carved
+out of the source's `train` partition by the ratios above) and `test`
+(passed through verbatim from the source's `test` partition).
+
+Omitting `Splits` entirely (or writing `Splits: {}`) under declared
+partitions yields **Form A** — source partitions are the final splits.
+Setting `applies_to` *and* `ratios` yields **Form B** as above.
+Validator check 20 enforces consistency between source partitions and
+`Splits`; see § Input for the rules.
 
 ### `Transformations`
 

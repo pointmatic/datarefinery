@@ -136,6 +136,215 @@ Labels:
 - A `label_from_missing: warn|error` knob for `by_id`. v1 errors deterministically on missing-image-row. Add the knob in a follow-up only if a real workflow surfaces the need.
 - Heuristic layout detection (auto-select between `image_folder` and `image_flat` based on directory contents). Recipe declares the layout explicitly via `type:`.
 
+### Story H.b: v0.8.0 InputSource partitions — honor pre-existing train/test directories [Done]
+
+Most real-world datasets ship pre-partitioned: a `train/` directory authored by the dataset publisher plus a `test/` directory intended to remain heldout. Today, DataRefinery pools all `Input.sources` into a single record list at load time (`_load_image_classification` concatenates per-source records before any pipeline stage runs); `source.name` survives only as a prefix in `record_id`, not as a record field. That means `Splits.key_assignment` — the existing mechanism for pre-partition-aware splitting — has nothing to key on without a Featurization hack to parse `record_id`.
+
+This story makes pre-partitioned datasets a first-class shape by adding a `partition: str | None` field to `InputSource`. Each source declares which split it belongs to; the loader honors the declaration; the Splits stage either accepts the declared partitioning verbatim or sub-partitions one declared partition (typically `train` → `train`/`val`) while leaving the rest heldout.
+
+**Target recipe shapes:**
+
+```yaml
+# Form A — pure honor: declared partitions are final; Splits is omitted.
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./data/train
+      partition: train
+    - name: test_data
+      type: image_folder
+      path: ./data/test
+      partition: test
+Splits:
+  # omit entirely, OR…
+  ratios: {}                            # explicit empty: "honor source partitions"
+
+# Form B — sub-partition: carve val out of train, keep test heldout untouched.
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./data/train
+      partition: train
+    - name: test_data
+      type: image_folder
+      path: ./data/test
+      partition: test
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train                     # only re-partition the named partition
+  stratify_by: label
+  seed: 7
+```
+
+**Backward-compat is clean.** Recipes without any `partition` declaration keep working unchanged: loader pools as today, Splits partitions globally. The new shapes are additive.
+
+**Cache-identity note.** Adding `partition` to record bytes shifts the input hash; adding `applies_to` to `SplitsSection` shifts the canonical recipe bytes. Pre-production rules apply per `project-essentials.md` § "Cache identity": users re-materialize after upgrade, no migration ceremony required. Post-v1, the canonical-hash pin (`test_canonical_hash_pin`) updates with the schema change.
+
+**Tasks:**
+
+- [x] **Pydantic model.** Add `InputSource.partition: str | None = None`. Add `SplitsSection.applies_to: str | None = None`. Validator on `applies_to`: a non-empty string when set; nothing more at the field level (cross-checks live in validator check 20).
+- [x] **Loader wiring.** Stamp a plain `partition` key on each loaded record when the source declares one. This matches the existing `record_id` convention — both are loader-stamped, plain-named fields sharing a single record namespace (no leading-underscore/`_partition` convention). Collision avoidance is enforced via validator check 20 (no user-declared `partition` in `Output.record_schema`).
+- [x] **Splits-stage dispatch.** New mode in `apply_splits`:
+  - Records carry `partition` → group by it.
+  - `Splits` omitted or `Splits.applies_to` unset (and `ratios == {}`) → return the groups verbatim.
+  - `Splits.applies_to == <name>` → run the existing ratio-based partitioning on just the records in that group; preserve all other groups verbatim.
+  - `Splits.applies_to` set but no record carries `partition` → `MaterializeError` (recipe is internally inconsistent — the validator catches this earlier, but defend at load time).
+  - No source declares `partition` → existing global-pool behavior (current code path unchanged).
+- [x] **Validator check 8 relaxation.** `splits_partition_correctly` no longer rejects empty `Splits` when any source declares `partition`. Source partitions are a valid partitioning surface.
+- [x] **Validator check 20 — `partitions_consistent`.** Cover:
+  - All-or-nothing: if any source declares `partition`, every source must declare one.
+  - `Output.record_schema` must not declare a `partition` field — reserved for the loader-stamped value.
+  - `Splits.applies_to` (when set) must reference a partition declared by some source.
+  - `Splits.ratios` keys (when set with `applies_to`) must not collide with sibling partition names.
+  - When source partitions are declared but `Splits.applies_to` is unset, `Splits.ratios` must be empty.
+  - Plugin-specific: only applies to plugins whose loader stamps `partition` (initially `image_classification`).
+- [x] **Stratification interaction.** `Splits.stratify_by` runs inside `_apply_ratios` and therefore stratifies only within the named partition when `applies_to` is set.
+- [x] **Record-id prefix unchanged.** `source.name` still encodes into `record_id` as today; the new `partition` field is separate metadata.
+- [x] **Recipe-authoring guide.** Added "Pre-partitioned sources" subsection under § Input and "Sub-partitioning via `applies_to`" subsection under § Splits.
+- [x] **README quickstart variant.** Added "Pre-partitioned sources (Kaggle-style train/test)" subsection under § Quickstart.
+- [x] **Tests.** 4 model + 3 loader + 9 splits-stage + 10 validator + 5 integration = 31 new tests.
+- [x] **Canonical-hash pin update.** Recomputed to `a09614a4b59d2fecd20ef19b3e4894e0fdc6313a3818a770f5e96072957b9cc0`. CHANGELOG release notes call out the shift per the pre-prod ceremony.
+- [x] Bump version to v0.8.0
+- [x] Update CHANGELOG.md
+- [x] Verify: end-to-end on a Kaggle-shape fixture, recipe materialises with `test` heldout from `train` in both Form A and Form B; `datarefinery validate` reports `20/20 checks passed`; test split is byte-identical across forms.
+
+**Out of Scope**
+
+- **Unlabeled partitions** (e.g., Kaggle test sets with no labels) — Story H.d addresses this separately. H.b assumes every partition is labeled.
+- **Cross-partition shuffling** (e.g., `Splits.ratios` that mixes records from multiple declared partitions back into a single pool). Explicitly rejected — that would re-introduce the very leak `partition` is preventing.
+- **Partition-level transformations** (e.g., applying a different normalize to train vs test). The existing per-op `splits: [...]` list already covers this; no new surface needed.
+- **Multi-level partitions** (e.g., `partition: train.subset_a`). Single-level only in v1; nest later if a real workload surfaces.
+- **Heuristic partition-name → split-name mapping.** Partition names are split names directly; if a source declares `partition: holdout`, the resulting split is named `holdout`. No automatic translation to train/val/test.
+
+**Design decisions resolved during planning** (kept in the story so the rationale stays visible to future readers):
+
+1. **`Splits` omitted entirely is allowed.** When sources declare partitions and `Splits` is omitted (or `Splits.ratios == {}`), the loader honors source partitions verbatim (Form A). No marker required — the partition declaration on the sources is the explicit intent.
+2. **Record field is plain `partition`, not `_partition`.** Matches the existing `record_id` precedent (loader-stamped, plain name) instead of introducing a new leading-underscore convention. Collision avoidance is enforced by validator check 20 (no user-declared `partition` in `Output.record_schema`).
+3. **`applies_to` is a single string, not a list.** One partition can be sub-partitioned per recipe. Multi-target sub-partitioning would re-introduce cross-partition shuffling ambiguity; defer to a follow-up story if a real workload surfaces.
+
+### Story H.c: v0.8.1 features.md + tech-spec.md alignment with H.a + H.b [Done]
+
+Documentation-only catch-up: `features.md` and `tech-spec.md` describe a pre-H.a/H.b world. The shipped code introduces a structured `LabelFromSpec`, the `image_flat` source type, the `InputSource.partition` field, the `SplitsSection.applies_to` field, validator checks 19 and 20, and a new `pipeline/inputs.py` module — none of which are reflected in the specs. Future LLM sessions that read the specs to understand "what the system does" will produce wrong answers (e.g., "the enumerated checks list has 18 entries") until this is fixed.
+
+This story is a bookkeeping correction. No code changes; tests don't move. The package version bump is a **patch** (v0.8.1) because: the docs go through their own release cycle in this project (per the F.b/F.c precedent of doc-only stories sharing the preceding code release), but H.b has already shipped its v0.8.0, so the cleanest mechanism for "doc fixes after the code is out" is a patch bump. The alternative — leaving the docs unversioned and rolling them into H.d's v0.9.0 — couples a doc fix to a feature ship and delays the correction.
+
+**Tasks:**
+
+- [x] **`features.md` FR-2 — extend the enumerated-checks list.** Add to the numbered list (lines 196–213):
+  - **19. `label_from_spec_resolves`** — `InputSource.label_from` is structurally valid; manifest file at `label_from.path` exists; declared header (when present) matches the file's column count; `id_field` / `label_field` reference columns that resolve; no duplicate ids for `by_id`; row count matches enumerated record count for `by_row_order`; source-type consistency (`image_folder` + `label_from` is rejected; `image_flat` without `label_from` is rejected). Plugin-specific: only applies to `image_classification` in v1.
+  - **20. `partitions_consistent`** — `InputSource.partition` declarations are all-or-nothing across sources; `partition` is not declared in `Output.record_schema` (reserved name); `Splits.applies_to` (when set) references a declared partition; `Splits.ratios` keys don't collide with sibling partition names when `applies_to` is set; `Splits.ratios` is empty (or unset) when source partitions are declared and `applies_to` is unset.
+- [x] **`features.md` FR-7: Splits — document partition-honoring modes.** Add to the Behavior list:
+  - **5. When `Input.sources[*].partition` is declared on every source**, the materialized splits honor those declarations (each partition becomes a split). Setting `Splits.applies_to: <partition-name>` with `ratios: {...}` sub-partitions just that partition; sibling partitions are preserved verbatim (so `test` can stay heldout while `train` is carved into train/val).
+  
+  Update Edge Cases:
+  - Some sources declare `partition` and some don't → caught by `validate` (check 20).
+  - `Splits.applies_to` set but no source declares `partition` → `MaterializeError` (defensively rechecked at load time even though check 20 catches it earlier).
+- [x] **`features.md` Inputs — add a third example for pre-partitioned sources.** After the `image_flat` example, add an `image_folder` × 2 example with `partition: train` and `partition: test` declarations, mirroring the Kaggle-style shape documented in the recipe-authoring guide and README.
+- [x] **`features.md` FR-22: Labels — connect the sidecar-manifest direct-label route.** Add a bullet to Behavior:
+  - **4. For `image_classification`, the `image_flat` source type accepts a `label_from` spec** (see `Input` examples) that populates labels at load time. From `Labels`'s perspective this is `kind: direct` — the labels arrive intrinsically; no Featurization is involved.
+- [x] **`features.md` Inputs prose — tighten the "joined by a declared key" sentence.** Line 78 currently reads: "*Multiple sources may be joined by a declared key (e.g., filename, foreign key column).*" That predates `LabelFromSpec`. Replace with a sentence that's accurate to v1: cross-source joins are out of scope; each source is independent; sidecar-manifest joining for labels is the only join the v1 image plugin supports, via `label_from`.
+- [x] **`tech-spec.md` Package Structure — add `pipeline/inputs.py`.** Insert under `pipeline/` with comment: `# disk-backed input loader (FR-3): image_folder + image_flat with label_from join`.
+- [x] **`tech-spec.md` Package Structure — bump validator comment.** Change `validator.py # FR-2 enumerated checks 1–18` to `# FR-2 enumerated checks 1–20`.
+- [x] **`tech-spec.md` `recipe.validator` (FR-2) section — bump heading prose.** "Each of the 18 enumerated checks from features.md..." → "Each of the 20 enumerated checks from features.md...". Update the function-signature comment accordingly.
+- [x] **`tech-spec.md` Data Models — update InputSection / add LabelFromSpec / update SplitsSection.**
+  - `InputSection` row: change "(each with `name`, `type`, `path`, type-specific fields like `label_from`)" to "(each with `name`, `type`, `path`, optional `label_from: LabelFromSpec`, optional `partition: str`)".
+  - **New `LabelFromSpec` row:** `path: pathlib.Path`, `join: Literal["by_id", "by_row_order"]`, `header: list[str] | None`, `id_field: str | None`, `label_field: str`. With a note that `header` provided means "treat file as headerless; recipe-supplied names are the column names" (recipe-as-truth, no heuristic detection).
+  - `SplitsSection` row: append `, applies_to: str | None` and a note that `applies_to` names a single source-declared partition to sub-partition via `ratios`; sibling partitions are preserved verbatim.
+- [x] **`tech-spec.md` `scaffolder.init` — note the layout limitation.** Add to the section: "The scaffolder emits `image_folder` recipes only; `image_flat` + `label_from` users hand-author the recipe in v1. Out-of-scope for H.a; a follow-up story can extend the scaffolder if real workloads surface the need."
+- [x] **Sweep for stale "18 checks" references.** Grep `docs/specs/` and `docs/guides/` for "18 checks" / "checks 1–18" / similar; update anything stale. (`docs/guides/plugin-authoring.md` already updated by H.a+H.b — confirm.)
+- [x] **No `project-essentials.md` update needed.** The shipped behavior is well-described in the H.a + H.b CHANGELOG entries and the recipe-authoring guide; no new project-specific gotcha emerged that would warrant a fact appended there.
+- [x] Bump version to v0.8.1
+- [x] Update CHANGELOG.md
+- [x] Verify: `grep -rn "checks 1.18\|18 enumerated\|FR-2 (1-18)" docs/specs/` returns nothing; `grep -rn "pipeline/inputs.py" docs/specs/` returns the new tech-spec entry; reading `features.md` § FR-2 lists 20 enumerated checks; reading `features.md` § Inputs shows three example shapes (ImageFolder, image_flat+label_from, partitioned train/test); reading `tech-spec.md` Data Models table shows `LabelFromSpec` and `applies_to` and `partition`.
+
+**Out of Scope**
+
+- Concept.md updates. The "why" of DataRefinery hasn't changed; H.a + H.b extend the "what" without shifting the concept.
+- Tech-spec coverage of the `partitioned` Splits-stage internals (`_apply_partitioned`, `applies_to` sub-partitioning). The Data Models update covers the recipe-surface change; implementation depth lives in the code itself.
+- README / authoring-guide updates. Both were updated alongside H.a and H.b; only `features.md` and `tech-spec.md` are out of date.
+
+### Story H.d: v0.9.0 Unlabeled partition support [Planned]
+
+**Depends on H.b.** Adds first-class support for partitions that ship without labels — the Kaggle/inference-set shape where `test/` (or any held-out partition) has no `labels.csv` and exists only for downstream prediction. The pipeline today assumes every record has a label, which makes "ship the unlabeled test partition through the same pipeline as the labeled train partition" unexpressible.
+
+This story adds an `unlabeled: true` flag on `InputSource` and threads it through the stages that touch labels so the unlabeled partition flows through label-independent transformations (resize, normalize, augmentation) and lands in the materialized instance as a usable dataset for downstream inference — while label-dependent stages (stratify_by, `filter_by_label`, drift class-distribution) are skipped for that partition with a clear "skipped: unlabeled" note in the report.
+
+**Target recipe shape:**
+
+```yaml
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./data/train
+      partition: train
+    - name: test_data
+      type: image_flat                    # flat layout, no label_from
+      path: ./data/test
+      partition: test
+      unlabeled: true                     # NEW
+Labels:
+  field: label
+  source: { kind: direct }                # labels exist for labeled partitions
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train
+  stratify_by: label                      # stratifies only train (label-dependent)
+```
+
+**Cache-identity note.** `unlabeled` participates in canonical recipe bytes — flipping the flag shifts the cache identity. Pre-production rules apply.
+
+**Tasks:**
+
+- [ ] **Pydantic model.** Add `InputSource.unlabeled: bool = False`. Cross-field validator (or check 21): `unlabeled: true` requires the source to declare a `partition` (you can't have unlabeled records mixed into the global pool — semantics get muddled).
+- [ ] **Loader wiring.**
+  - `image_flat` + `unlabeled: true`: `label_from` must NOT be set (validator + load-time defense). Records load without a `label` field.
+  - `image_folder` + `unlabeled: true`: relax the "must have class subdirs" rule — flat directory layout is accepted; records load with no `label` field. (Or restrict to `image_flat` only and document; pick at review.)
+- [ ] **Splits-stage interaction.**
+  - `stratify_by: label` is rejected when `applies_to` is an unlabeled partition (validator check 21).
+  - Sub-partitioning an unlabeled partition is allowed; the resulting sub-splits are also unlabeled.
+- [ ] **Drift/reporting interaction.**
+  - For unlabeled splits, `drift.json`'s `class_distribution` is `null` with a `note: "skipped: unlabeled"`.
+  - `report.md` calls out the unlabeled split distinctly.
+- [ ] **Filter interaction.**
+  - `filter_by_label` against an unlabeled split → validator-time error (recipe is statically analyzable — we know which splits are unlabeled before materialize).
+  - Other filters (`random_sample`, future label-independent filters) work normally on unlabeled splits.
+- [ ] **Validator check 21 — `unlabeled_consistency`.** Cover:
+  - `unlabeled: true` requires `partition`.
+  - `unlabeled: true` on `image_flat` requires `label_from` to be unset (no contradiction).
+  - `Splits.stratify_by` is incompatible with `Splits.applies_to == <unlabeled-partition>`.
+  - `filter_by_label` ops referencing an unlabeled split → fail.
+  - Validator check 16 (`sample_data_strict_subset`) is skipped for unlabeled partitions.
+- [ ] **Featurization interaction.** Featurizations that read the `label` field (e.g., the existing `label_from_path` op's *output*) must not target unlabeled splits in their `splits: [...]` list. Validator-enforced.
+- [ ] **Recipe-authoring guide.** New § "Unlabeled partitions" subsection covering the use case, the recipe shape, what works/what's skipped for unlabeled records, and the recommended pattern for "train a labeled model, run it on the unlabeled partition for inference output."
+- [ ] **README quickstart variant.** Brief snippet for "Kaggle-style train.csv + test.csv-without-labels" shape, plus a sentence on what downstream inference looks like.
+- [ ] **Tests.**
+  - Pydantic-model: `unlabeled` is a bool defaulting to False.
+  - Loader: `unlabeled: true` produces records without a `label` field; partitioned-loader integration.
+  - Splits-stage: sub-partitioning an unlabeled partition produces unlabeled sub-splits; stratify_by on unlabeled partition rejected.
+  - Drift/report: class_distribution null for unlabeled splits; report renders the "skipped: unlabeled" marker.
+  - Filter: `filter_by_label` on unlabeled split fails at validate time.
+  - Validator: check 21 green on each valid recipe; red on each error mode.
+  - Integration: end-to-end recipe with labeled `train` partition (subdivided into train/val) plus unlabeled `test` partition; assert the materialized instance contains labeled train+val records and unlabeled test records (no `label` key, no stratified marker, drift class_distribution null).
+- [ ] **Canonical-hash pin update.** Schema change shifts the pinned digest.
+- [ ] Bump version to v0.9.0
+- [ ] Update CHANGELOG.md
+- [ ] Verify: end-to-end on a Kaggle-shape fixture (labeled train + unlabeled test) materializes; `datarefinery validate` reports `21/21 checks passed`; `report.md` distinguishes labeled vs unlabeled splits; downstream inference can read `dataset/test.jsonl` and run a model against the records (manually verified, not pipelined).
+
+**Out of Scope**
+
+- **Per-record label-absence** (some records labeled, others not, within the same partition). v1 unlabeled-ness is partition-scoped, not record-scoped. Mixed-labeling within a partition is a different problem — likely belongs to the Featurizations layer or a separate "partial-labels" story post-v1.
+- **Auto-inference at materialize time.** Materialize produces datasets; running inference against them is a downstream concern (out of v1 scope per `concept.md` non-goals). The unlabeled partition's job is to *exist* in the materialized instance for downstream tooling to consume.
+- **Pseudo-labeling** (deriving labels for unlabeled records via a trained model). That's a model-development workflow, not a data-prep workflow.
+
+**Open questions to resolve before implementation:**
+
+1. **`image_folder` + `unlabeled: true` — allow flat directory or restrict to `image_flat`?** Strawman: restrict to `image_flat` for clarity (one shape per use case). Users with an existing flat-directory ImageFolder layout (no class subdirs) just declare `image_flat`.
+2. **Should `Labels.source.kind` change for unlabeled-only recipes?** A recipe whose only partition is unlabeled has no labels anywhere. Strawman: still require `Labels` to be declared (for downstream schema consistency) but treat `kind: direct` as "labels exist on partitions that aren't unlabeled." Alternative: a `kind: absent` discriminator. Strawman avoids adding the discriminator until a real need surfaces.
+3. **Behavior when an OutputExpectation references the `label` field.** Strawman: OutputExpectations apply only to labeled splits (skipped for unlabeled with a note); rejecting the recipe is too strict because most recipes will declare label expectations even when one partition is unlabeled.
+
 ---
 
 ## Future

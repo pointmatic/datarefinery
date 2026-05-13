@@ -168,6 +168,43 @@ record's `label` field at load time. `validate` enforces the join
 caught before `materialize` runs. See `docs/guides/recipe-authoring.md`
 for headerless manifests and `by_row_order` (CIFAR-style) variants.
 
+### Pre-partitioned sources (Kaggle-style train/test)
+
+Most third-party datasets ship pre-partitioned: a `train/` directory
+authored by the publisher and a `test/` directory intended to remain
+heldout from training. Declare each source's role with `partition`:
+
+```text
+my-dataset/
+  train/cat/, train/dog/, …            # ImageFolder layout per partition
+  test/cat/,  test/dog/,  …
+```
+
+```yaml
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./my-dataset/train
+      partition: train
+    - name: test_data
+      type: image_folder
+      path: ./my-dataset/test
+      partition: test
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train                     # carve val from train; test stays heldout
+  stratify_by: label
+  seed: 7
+```
+
+The materialized instance contains three splits: `train` and `val`
+(sub-partitioned from the source's `train` directory) and `test`
+(passed through verbatim from the source's `test` directory). Omitting
+`Splits` (or writing `Splits: {}`) honors the source partitions as the
+final splits without sub-partitioning. Validator check 20 enforces
+consistency — every record's partition declaration is honored end-to-end.
+
 ## Recipe anatomy
 
 A recipe is a single YAML file. Field names match the section set

@@ -110,6 +110,9 @@ def _load_image_classification(
                 f"image_classification loader: source {src.name!r} has "
                 f"type={src.type!r}; expected 'image_folder' or 'image_flat'"
             )
+        if src.partition is not None:
+            for record in per_source:
+                record["partition"] = src.partition
         records.extend(per_source)
 
     return records, hashes

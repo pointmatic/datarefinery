@@ -257,3 +257,94 @@ def test_empty_record_stream_yields_empty_splits() -> None:
     result = apply_splits([], section, seed=0)
     assert result.splits == {"train": [], "val": []}
     assert result.unassigned == []
+
+
+# ---------------------------------------------------------------------------
+# Partition-honoring splits (Story H.b)
+# ---------------------------------------------------------------------------
+
+
+def _r(rid: str, partition: str, label: str = "x") -> dict[str, Any]:
+    return {"record_id": rid, "partition": partition, "label": label}
+
+
+def test_partitioned_form_a_honors_source_partitions_verbatim() -> None:
+    """Form A: records carry `partition` and Splits is effectively empty."""
+    records = [_r("a", "train"), _r("b", "train"), _r("c", "test")]
+    section = SplitsSection()  # no ratios, no applies_to
+    result = apply_splits(records, section, seed=0)
+    assert set(result.splits.keys()) == {"train", "test"}
+    assert [r["record_id"] for r in result.splits["train"]] == ["a", "b"]
+    assert [r["record_id"] for r in result.splits["test"]] == ["c"]
+
+
+def test_partitioned_form_b_sub_partitions_named_partition() -> None:
+    """Form B: applies_to: train carves train/val; test is preserved verbatim."""
+    train = [_r(f"t{i}", "train") for i in range(10)]
+    test = [_r(f"e{i}", "test") for i in range(3)]
+    section = SplitsSection(
+        ratios={"train": 0.8, "val": 0.2},
+        applies_to="train",
+        seed=11,
+    )
+    result = apply_splits(train + test, section, seed=11)
+    assert set(result.splits.keys()) == {"train", "val", "test"}
+    assert [r["record_id"] for r in result.splits["test"]] == ["e0", "e1", "e2"]
+    sub_total = len(result.splits["train"]) + len(result.splits["val"])
+    assert sub_total == 10
+
+
+def test_partitioned_test_split_is_byte_equal_across_forms() -> None:
+    """Form A and Form B should yield the same test split when applies_to=train."""
+    train = [_r(f"t{i}", "train") for i in range(10)]
+    test = [_r(f"e{i}", "test") for i in range(3)]
+    form_a = apply_splits(train + test, SplitsSection(), seed=11)
+    form_b = apply_splits(
+        train + test,
+        SplitsSection(ratios={"train": 0.8, "val": 0.2}, applies_to="train", seed=11),
+        seed=11,
+    )
+    assert form_a.splits["test"] == form_b.splits["test"]
+
+
+def test_applies_to_without_partitioned_records_errors() -> None:
+    records: list[dict[str, Any]] = [{"record_id": "a", "label": "x"}]  # no partition
+    section = SplitsSection(ratios={"train": 1.0}, applies_to="train")
+    with pytest.raises(MaterializeError, match=r"applies_to.*no record carries"):
+        apply_splits(records, section, seed=0)
+
+
+def test_partitioned_records_with_ratios_no_applies_to_errors() -> None:
+    """Source partitions + non-empty ratios without applies_to is contradictory."""
+    records = [_r("a", "train"), _r("b", "test")]
+    section = SplitsSection(ratios={"train": 0.5, "val": 0.5})
+    with pytest.raises(MaterializeError, match="applies_to"):
+        apply_splits(records, section, seed=0)
+
+
+def test_applies_to_targeting_unknown_partition_errors() -> None:
+    records = [_r("a", "train"), _r("b", "test")]
+    section = SplitsSection(ratios={"train": 0.5, "val": 0.5}, applies_to="ghost")
+    with pytest.raises(MaterializeError, match="ghost"):
+        apply_splits(records, section, seed=0)
+
+
+def test_applies_to_sub_partition_name_colliding_with_sibling_errors() -> None:
+    """ratios cannot produce a split named the same as an existing sibling partition."""
+    records = [_r("a", "train"), _r("b", "test")]
+    section = SplitsSection(
+        ratios={"train": 0.5, "test": 0.5},  # 'test' collides
+        applies_to="train",
+    )
+    with pytest.raises(MaterializeError, match="collides"):
+        apply_splits(records, section, seed=0)
+
+
+def test_mixed_partitioned_and_unpartitioned_records_errors() -> None:
+    records: list[dict[str, Any]] = [
+        _r("a", "train"),
+        {"record_id": "b", "label": "x"},
+    ]
+    section = SplitsSection()
+    with pytest.raises(MaterializeError, match="missing 'partition'"):
+        apply_splits(records, section, seed=0)

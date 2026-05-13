@@ -239,3 +239,32 @@ def test_label_from_spec_join_must_be_known() -> None:
                 "label_field": "class",
             }
         )
+
+
+# ---------------------------------------------------------------------------
+# InputSource.partition + SplitsSection.applies_to (Story H.b)
+# ---------------------------------------------------------------------------
+
+
+def test_input_source_partition_defaults_to_none() -> None:
+    recipe = Recipe.model_validate(_minimal_recipe_dict())
+    assert recipe.Input.sources[0].partition is None
+
+
+def test_input_source_partition_accepts_string() -> None:
+    payload = _minimal_recipe_dict()
+    payload["Input"]["sources"][0]["partition"] = "train"
+    recipe = Recipe.model_validate(payload)
+    assert recipe.Input.sources[0].partition == "train"
+
+
+def test_splits_section_applies_to_defaults_to_none() -> None:
+    recipe = Recipe.model_validate(_minimal_recipe_dict())
+    assert recipe.Splits.applies_to is None
+
+
+def test_splits_section_applies_to_accepts_string() -> None:
+    payload = _minimal_recipe_dict()
+    payload["Splits"]["applies_to"] = "train"
+    recipe = Recipe.model_validate(payload)
+    assert recipe.Splits.applies_to == "train"

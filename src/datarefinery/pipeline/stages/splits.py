@@ -68,14 +68,112 @@ def apply_splits(
     The caller resolves seed precedence (section seed wins over recipe
     seed - see :func:`resolve_seed`); this function takes a single
     final seed for clarity at call sites.
+
+    Three top-level modes:
+
+    1. **Source partitions, no sub-partitioning** — when any record
+       carries a loader-stamped ``partition`` field and the section
+       has no ``ratios``/``key_assignment``/``applies_to``, group by
+       ``partition`` and return verbatim (Story H.b "Form A").
+    2. **Source partitions + applies_to sub-partitioning** — group by
+       ``partition``; pull out the named partition; run the existing
+       ratio-based partitioning on it; preserve the other partitions
+       as-is (Story H.b "Form B").
+    3. **Global pool** — no record carries ``partition``; behave as
+       before (ratios or key_assignment over the whole stream).
     """
     materialized = list(records)
+    has_partition = any("partition" in r for r in materialized)
+    if has_partition:
+        return _apply_partitioned(materialized, section, seed)
+    if section.applies_to is not None:
+        raise MaterializeError(
+            "Splits.applies_to is set but no record carries a 'partition' field; "
+            "declare InputSource.partition on each source or remove applies_to"
+        )
     if section.key_assignment is not None:
         return _apply_key_assignment(materialized, section, seed)
     if section.ratios:
         return _apply_ratios(materialized, section, seed)
     # Validator check 8 prevents this combination; defensive only.
     raise MaterializeError("SplitsSection has neither ratios nor key_assignment")
+
+
+# ---------------------------------------------------------------------------
+# Partition-honoring splits (Story H.b)
+# ---------------------------------------------------------------------------
+
+
+def _apply_partitioned(
+    records: list[Record],
+    section: SplitsSection,
+    seed: int,
+) -> SplitResult:
+    """Honor loader-stamped ``partition`` values.
+
+    If ``section.applies_to`` is set, the named partition is fed
+    through the existing ratio-based partitioning logic; sibling
+    partitions are returned verbatim.
+    """
+    by_partition: dict[str, list[Record]] = {}
+    missing: list[int] = []
+    for i, r in enumerate(records):
+        p = r.get("partition")
+        if p is None:
+            missing.append(i)
+            continue
+        by_partition.setdefault(str(p), []).append(r)
+    if missing:
+        raise MaterializeError(
+            f"records[{missing[0]}:] are missing 'partition' field but the stream "
+            f"otherwise has partition declarations; mixed partitioned/unpartitioned "
+            f"records are not supported"
+        )
+
+    applies_to = section.applies_to
+    if applies_to is None:
+        if section.ratios:
+            raise MaterializeError(
+                "Splits.ratios is set with source partitions but no applies_to; "
+                "either remove ratios (to honor source partitions verbatim) or "
+                "set applies_to to name the partition to sub-partition"
+            )
+        return SplitResult(
+            splits=by_partition,
+            unassigned=[],
+            class_balance=section.class_balance,
+            warnings=(),
+            seed=seed,
+        )
+
+    if applies_to not in by_partition:
+        raise MaterializeError(
+            f"Splits.applies_to={applies_to!r} not present in source partitions "
+            f"{sorted(by_partition.keys())!r}"
+        )
+    if not section.ratios:
+        raise MaterializeError(
+            "Splits.applies_to is set but no ratios declared; "
+            "applies_to is only meaningful with a ratio-based sub-partition"
+        )
+
+    target_records = by_partition.pop(applies_to)
+    sub_result = _apply_ratios(target_records, section, seed)
+    merged: dict[str, list[Record]] = dict(sub_result.splits)
+    for sibling, sibling_records in by_partition.items():
+        if sibling in merged:
+            raise MaterializeError(
+                f"applies_to sub-partition produced a split named {sibling!r} "
+                f"that collides with an existing source partition"
+            )
+        merged[sibling] = sibling_records
+    return SplitResult(
+        splits=merged,
+        unassigned=sub_result.unassigned,
+        class_balance=section.class_balance,
+        warnings=sub_result.warnings,
+        seed=seed,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -103,7 +103,7 @@ src/datarefinery/
     __init__.py
     models.py                # pydantic v2 Recipe model + per-section models
     loader.py                # FR-1 load + schema-version gate
-    validator.py             # FR-2 enumerated checks 1–18
+    validator.py             # FR-2 enumerated checks 1–20
     canonical.py             # JSON-canonical bytes for cache identity (FR-4)
     variants.py              # FR-14 variant overlay
   cache/
@@ -115,6 +115,7 @@ src/datarefinery/
   pipeline/
     __init__.py
     runner.py                # PipelineRunner: stage sequencing
+    inputs.py                # disk-backed input loader (FR-3): image_folder + image_flat with label_from join
     fitted_stats.py          # FR-6 persistence (JSON for scalars, parquet for vectors)
     contracts.py             # FR-23 InputContracts / OutputExpectations evaluation
     workers.py               # opt-in ProcessPoolExecutor wrapper with deterministic seeding
@@ -267,7 +268,7 @@ Edge cases mapped to features.md FR-1:
 
 ### `recipe.validator` (FR-2)
 
-Each of the 18 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
+Each of the 20 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
 
 ```python
 def validate(recipe: Recipe, plugin: Plugin) -> ValidationReport: ...
@@ -440,7 +441,7 @@ def scaffold_image_classification(
     the optional lmentry layer (lazy import; raises if not installed)."""
 ```
 
-v1 scaffolder supports `image_classification` only; `tabular` and `text` recipes are written by hand against the stub plugins.
+v1 scaffolder supports `image_classification` only; `tabular` and `text` recipes are written by hand against the stub plugins. Within `image_classification`, the scaffolder emits `image_folder` recipes only; users of `image_flat` + `label_from` hand-author the recipe in v1. Extending the scaffolder to detect flat layouts and emit `image_flat` recipes is a follow-up story.
 
 ### `scaffolder.llm` (FR-17 optional layer)
 
@@ -479,14 +480,15 @@ Per-section models (sketch; full field definitions land alongside the FR-1 imple
 
 | Model | Required fields |
 |---|---|
-| `InputSection` | `sources: list[InputSource]` (each with `name`, `type`, `path`, type-specific fields like `label_from`) |
+| `InputSection` | `sources: list[InputSource]` (each with `name`, `type`, `path`, optional `label_from: LabelFromSpec`, optional `partition: str`) |
+| `LabelFromSpec` | `path: pathlib.Path`, `join: Literal["by_id", "by_row_order"]`, `header: list[str] | None`, `id_field: str | None`, `label_field: str`. When `header` is omitted the loader reads column names from the CSV's header row; when `header` is provided the file is treated as **headerless** and the recipe-supplied names *are* the column names (recipe-as-truth, no heuristic header detection). |
 | `OutputSection` | `record_schema: dict[str, FieldSpec]` (field name -> dtype/shape) |
 | `LabelsSection` | `field: str`, `source: LabelSource` (direct or derived; FR-22) |
 | `SampleDataSection` | `selector: SampleSelector` (declarative subset of `Input`) |
 | `Contract` / `Expectation` | `field: str | None`, `assertion: AssertionExpr`, `severity: Severity` |
 | `FilterOp` | `name`, `predicate`, `stages`, `splits`, `seed` (sampling only) |
 | `GenerationOp` | `name`, `inputs`, `output_schema`, `seed`, `applies_at` |
-| `SplitsSection` | `ratios: dict[str, float]` or `key_assignment: KeyAssignment`, `stratify_by: str | None`, `seed: int | None`, `class_balance: ClassBalanceStrategy | None` |
+| `SplitsSection` | `ratios: dict[str, float]` or `key_assignment: KeyAssignment`, `stratify_by: str | None`, `seed: int | None`, `class_balance: ClassBalanceStrategy | None`, `applies_to: str | None`. When `applies_to` is set, it names a single source-declared partition to sub-partition via `ratios`; sibling partitions are preserved verbatim. |
 | `TransformationOp` | `name`, `op`, `params`, `fit_source: str | None`, `splits` |
 | `AugmentationOp` | `name`, `op`, `params`, `splits` (validator rejects non-train), `seed` |
 | `FeaturizationOp` | `name`, `inputs`, `output_field`, `op`, `params`, `splits`, `fit_source: str | None` |

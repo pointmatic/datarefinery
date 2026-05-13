@@ -65,6 +65,7 @@ class InputSource(_Frozen):
     type: str
     path: Path
     label_from: LabelFromSpec | None = None
+    partition: str | None = None
 
 
 class InputSection(_Frozen):
@@ -139,6 +140,7 @@ class SplitsSection(_Frozen):
     stratify_by: str | None = None
     seed: int | None = None
     class_balance: str | None = None
+    applies_to: str | None = None
 
 
 class TransformationOp(_Frozen):

@@ -75,7 +75,7 @@ DataRefinery compiles a single YAML **recipe** — declaring data category, raw 
 **Raw data sources** (declared in the recipe's `Input` section):
 
 - One or more declared sources. Each source has a type (e.g., directory of image files, parquet file, CSV file) and a path or URI.
-- Multiple sources may be joined by a declared key (e.g., filename, foreign key column).
+- Sources are independent in v1: cross-source joins (records from source A joined with records from source B by a shared key) are out of scope. The one form of join the v1 image plugin supports is sidecar-manifest label joining within a single source via `InputSource.label_from`, where a CSV manifest supplies labels for an `image_flat` directory.
 - Per-record metadata available alongside the primary content (filenames, directory paths, sidecar files) is addressable in derived operations.
 - Example (image classification — ImageFolder layout, class subdirectories provide labels):
   ```yaml
@@ -97,6 +97,19 @@ DataRefinery compiles a single YAML **recipe** — declaring data category, raw 
           join: by_id
           id_field: filename
           label_field: class
+  ```
+- Example (image classification — pre-partitioned Kaggle-style `train/` + `test/`):
+  ```yaml
+  Input:
+    sources:
+      - name: train_data
+        type: image_folder
+        path: data/raw/myset/train
+        partition: train
+      - name: test_data
+        type: image_folder
+        path: data/raw/myset/test
+        partition: test
   ```
 
 **Recipe file** (single YAML file):
@@ -211,6 +224,8 @@ Verify a recipe's correctness without running the pipeline. Covers schema correc
 16. `SampleData` declaration is resolvable to a strict subset of the declared input.
 17. `InputContracts` and `OutputExpectations` reference only fields that exist at the relevant pipeline stage.
 18. Plugin-specific operation parameters validate against the plugin's declared operation schemas.
+19. `label_from_spec_resolves` — `InputSource.label_from` is structurally valid; manifest file at `label_from.path` exists; declared `header` (when present) matches the file's column count; `id_field` / `label_field` reference columns that resolve; no duplicate ids for `join: by_id`; row count matches enumerated record count for `join: by_row_order`; source-type consistency (`image_folder` + `label_from` is rejected; `image_flat` without `label_from` is rejected). Plugin-specific: only applies to `image_classification` in v1.
+20. `partitions_consistent` — `InputSource.partition` declarations are all-or-nothing across sources; `partition` is not declared in `Output.record_schema` (reserved name); `Splits.applies_to` (when set) references a declared partition; `Splits.ratios` keys do not collide with sibling partition names when `applies_to` is set; `Splits.ratios` is empty (or unset) when source partitions are declared and `applies_to` is unset. Plugin-specific: only applies to plugins whose loader stamps `partition` (initially `image_classification`).
 
 **Edge Cases:**
 - Plugin not installed -> hard error pointing at the plugin name and discovery path.
@@ -292,11 +307,14 @@ Define train/validation/test partitioning, including stratification, class-balan
 2. Each split is declared by name with a ratio (or key-based assignment), optional stratification key, and optional class-balance strategy.
 3. The split seed is the recipe-level seed unless overridden.
 4. Class-imbalance handled by *weighting or resampling at training time* lives in `Splits` as a sampling strategy ModelFoundry honors. Class-imbalance handled by *removing data* lives in `Filters` (FR-8).
+5. When `Input.sources[*].partition` is declared on every source, the materialized splits honor those declarations (each partition becomes a split). Setting `Splits.applies_to: <partition-name>` together with `ratios: {...}` sub-partitions just that partition; sibling partitions are preserved verbatim (so `test` can stay heldout while `train` is carved into train/val). When `applies_to` is unset, `Splits.ratios` must be empty (or omitted) — declared partitions are the final partitioning.
 
 **Edge Cases:**
 - Ratio-based splits summing to less than 1.0 -> remainder is unassigned; recorded in the manifest.
 - Stratification key with sparse classes -> reported as a warning during materialization with class counts per split.
 - Key-based splits with unmapped records -> hard error during materialization.
+- Some sources declare `partition` and some do not -> caught by `validate` (check 20).
+- `Splits.applies_to` set but no source declares `partition` -> `MaterializeError` (defensively re-checked at load time even though check 20 catches it earlier).
 
 ### FR-8: Filters
 
@@ -498,6 +516,7 @@ Declare what the label is and how it is obtained: present in the raw input, or d
 1. The `Labels` section declares the label field name and its source.
 2. A directly-present label cites the source field.
 3. A derived label is produced by the same machinery as featurizations (FR-12) and may draw on any declared input source, including filenames and metadata.
+4. For `image_classification`, the `image_flat` source type accepts a `label_from` spec (see `Input` examples) that populates labels at load time from a sidecar CSV manifest. From `Labels`'s perspective this is `kind: direct` — the labels arrive intrinsically; no Featurization is involved.
 
 **Edge Cases:**
 - Label source unresolvable from declared inputs -> caught by `validate` (check 13).

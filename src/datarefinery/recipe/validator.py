@@ -270,6 +270,9 @@ def check_08_splits_partition_correctly(recipe: Recipe, plugin: Plugin) -> Check
     splits = recipe.Splits
     has_ratios = splits.ratios is not None
     has_keys = splits.key_assignment is not None
+    # Source-declared partitions provide the partitioning surface; ratios
+    # and key_assignment become optional under that mode (Story H.b).
+    sources_partition = any(s.partition is not None for s in recipe.Input.sources)
     if has_ratios and has_keys:
         return CheckResult(
             check_id=8,
@@ -278,13 +281,16 @@ def check_08_splits_partition_correctly(recipe: Recipe, plugin: Plugin) -> Check
             location="Splits",
             message="declare exactly one of 'ratios' or 'key_assignment', got both",
         )
-    if not has_ratios and not has_keys:
+    if not has_ratios and not has_keys and not sources_partition:
         return CheckResult(
             check_id=8,
             descriptor=descriptor,
             status="fail",
             location="Splits",
-            message="must declare one of 'ratios' or 'key_assignment'",
+            message=(
+                "must declare one of 'ratios', 'key_assignment', or "
+                "InputSource.partition on every source"
+            ),
         )
     if has_ratios:
         ratios = splits.ratios or {}
@@ -306,7 +312,7 @@ def check_08_splits_partition_correctly(recipe: Recipe, plugin: Plugin) -> Check
                 location="Splits.ratios",
                 message=f"ratios sum to {total}, must be <= 1.0",
             )
-    else:  # key_assignment present
+    elif has_keys:  # key_assignment branch
         assert splits.key_assignment is not None  # narrow for mypy
         if not splits.key_assignment.mapping:
             return CheckResult(
@@ -316,6 +322,8 @@ def check_08_splits_partition_correctly(recipe: Recipe, plugin: Plugin) -> Check
                 location="Splits.key_assignment.mapping",
                 message="key_assignment.mapping is empty",
             )
+    # else: source partitions provide the partitioning surface;
+    # check 20 enforces consistency.
     return _passed(8, descriptor)
 
 
@@ -756,6 +764,86 @@ def _read_manifest_for_validation(
     return columns, data_rows
 
 
+_PARTITION_PLUGINS = frozenset({"image_classification"})
+
+
+def check_20_partitions_consistent(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Validate `InputSource.partition` + `SplitsSection.applies_to`.
+
+    Cross-rules:
+    - All-or-nothing: if any source declares `partition`, every source must.
+    - `Output.record_schema` must not declare a `partition` field (reserved
+      for the loader-stamped value, analogous to `record_id`).
+    - `Splits.applies_to` (when set) must reference a partition declared
+      by some source.
+    - `Splits.ratios` keys (when set with `applies_to`) must not collide
+      with sibling partition names.
+    - When source partitions are declared but `Splits.applies_to` is unset,
+      `Splits.ratios` must be empty (or omitted) — otherwise the recipe is
+      simultaneously asking to honor sources and re-shuffle globally.
+
+    Plugin-specific: only applies to plugins whose loader stamps `partition`
+    (initially `image_classification`); for other plugins this check
+    short-circuits as `pass`.
+    """
+    del plugin
+    descriptor = "partitions_consistent"
+    if recipe.plugin not in _PARTITION_PLUGINS:
+        return _passed(20, descriptor)
+    issues: list[str] = []
+    sources = recipe.Input.sources
+    declared = [s for s in sources if s.partition is not None]
+    if 0 < len(declared) < len(sources):
+        names = [s.name for s in sources if s.partition is None]
+        issues.append(
+            f"Input.sources: some sources declare 'partition' and some do not "
+            f"(missing on {names!r}); declare on all or none"
+        )
+    if "partition" in recipe.Output.record_schema:
+        issues.append(
+            "Output.record_schema declares a 'partition' field; the name is "
+            "reserved for the loader-stamped partition value (see Story H.b)"
+        )
+
+    partition_names = {s.partition for s in declared if s.partition is not None}
+    splits_section = recipe.Splits
+    applies_to = splits_section.applies_to
+    if applies_to is not None:
+        if not partition_names:
+            issues.append(f"Splits.applies_to={applies_to!r} but no source declares 'partition'")
+        elif applies_to not in partition_names:
+            issues.append(
+                f"Splits.applies_to={applies_to!r} not present in source partitions "
+                f"{sorted(partition_names)!r}"
+            )
+        if splits_section.ratios:
+            sub_names = set(splits_section.ratios.keys())
+            siblings = partition_names - {applies_to}
+            collision = sub_names & siblings
+            if collision:
+                issues.append(
+                    f"Splits.ratios produces split name(s) {sorted(collision)!r} that "
+                    f"collide with sibling partition(s)"
+                )
+    else:
+        if partition_names and splits_section.ratios:
+            issues.append(
+                "Input.sources declare 'partition' but Splits.applies_to is unset "
+                "while Splits.ratios is non-empty; either omit ratios (to honor "
+                "source partitions verbatim) or set applies_to"
+            )
+
+    if not issues:
+        return _passed(20, descriptor)
+    return CheckResult(
+        check_id=20,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -815,6 +903,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         19,
         "label_from_spec_resolves",
         check_19_label_from_spec_resolves,
+    ),
+    (
+        20,
+        "partitions_consistent",
+        check_20_partitions_consistent,
     ),
 )
 

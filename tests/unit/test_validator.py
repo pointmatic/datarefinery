@@ -144,12 +144,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_nineteen_checks() -> None:
+def test_valid_recipe_passes_all_twenty_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 19
-    assert {r.check_id for r in report.results} == set(range(1, 20))
+    assert len(report.results) == 20
+    assert {r.check_id for r in report.results} == set(range(1, 21))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -1121,3 +1121,111 @@ def test_check_19_fails_on_row_count_mismatch_for_by_row_order(tmp_path: Any) ->
     }
     failures = _failures_for(validate(_build(payload), _ic_plugin()), 19)
     assert failures and "by_row_order" in failures[0].message
+
+
+# ---------------------------------------------------------------------------
+# Check 20 (Story H.b) — partitions_consistent
+#
+# Uses the image_classification plugin since check 20 short-circuits as
+# `pass` for plugins whose loader doesn't stamp `partition`.
+# ---------------------------------------------------------------------------
+
+
+def _ic_two_source_dict() -> dict[str, Any]:
+    """Two image_folder sources, both declaring distinct partitions."""
+    base = _ic_base_dict()
+    base["Input"]["sources"] = [
+        {
+            "name": "train_data",
+            "type": "image_folder",
+            "path": "/data/train",
+            "partition": "train",
+        },
+        {
+            "name": "test_data",
+            "type": "image_folder",
+            "path": "/data/test",
+            "partition": "test",
+        },
+    ]
+    base["Splits"] = {}  # Form A: honor source partitions verbatim
+    return base
+
+
+def test_check_20_passes_when_no_partitions_declared() -> None:
+    report = validate(_build(_ic_base_dict()), _ic_plugin())
+    assert not _failures_for(report, 20)
+
+
+def test_check_20_passes_for_form_a() -> None:
+    report = validate(_build(_ic_two_source_dict()), _ic_plugin())
+    assert not _failures_for(report, 20)
+
+
+def test_check_20_passes_for_form_b() -> None:
+    payload = _ic_two_source_dict()
+    payload["Splits"] = {
+        "ratios": {"train": 0.8, "val": 0.2},
+        "applies_to": "train",
+        "seed": 11,
+    }
+    report = validate(_build(payload), _ic_plugin())
+    assert not _failures_for(report, 20)
+
+
+def test_check_20_fails_on_partial_partition_declaration() -> None:
+    payload = _ic_two_source_dict()
+    del payload["Input"]["sources"][1]["partition"]  # mixed mode
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
+    assert failures and "declare on all or none" in failures[0].message
+
+
+def test_check_20_fails_when_output_schema_declares_partition_field() -> None:
+    payload = _ic_base_dict()
+    payload["Output"]["record_schema"]["partition"] = {"dtype": "string"}
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
+    assert failures and "reserved" in failures[0].message
+
+
+def test_check_20_fails_when_applies_to_references_unknown_partition() -> None:
+    payload = _ic_two_source_dict()
+    payload["Splits"] = {
+        "ratios": {"train": 1.0},
+        "applies_to": "ghost",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
+    assert failures and "ghost" in failures[0].message
+
+
+def test_check_20_fails_when_applies_to_set_without_partitions() -> None:
+    payload = _ic_base_dict()
+    payload["Splits"]["applies_to"] = "train"
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
+    assert failures and "no source declares 'partition'" in failures[0].message
+
+
+def test_check_20_fails_on_sibling_collision_in_applies_to_ratios() -> None:
+    payload = _ic_two_source_dict()
+    payload["Splits"] = {
+        "ratios": {"train": 0.5, "test": 0.5},  # 'test' collides with sibling
+        "applies_to": "train",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
+    assert failures and "collide" in failures[0].message
+
+
+def test_check_20_fails_when_ratios_set_without_applies_to_under_partitions() -> None:
+    payload = _ic_two_source_dict()
+    payload["Splits"] = {"ratios": {"train": 0.5, "val": 0.5}}  # contradicts partitions
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
+    assert failures and "applies_to" in failures[0].message
+
+
+def test_check_20_skips_for_non_partition_plugin() -> None:
+    """Plugin not in _PARTITION_PLUGINS short-circuits as pass."""
+    payload = _ic_base_dict()
+    payload["plugin"] = "test_plugin"  # not an image_classification plugin name
+    payload["Input"]["sources"][0]["partition"] = "train"  # would normally trigger checks
+    # Use the default _Plugin which has name='test_plugin'.
+    report = validate(_build(payload), _Plugin())
+    assert not _failures_for(report, 20)

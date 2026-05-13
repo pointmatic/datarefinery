@@ -5,6 +5,129 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-05-12
+
+### Changed
+
+- **Story H.c — `features.md` + `tech-spec.md` alignment with H.a + H.b.**
+  Documentation-only catch-up: the specs now reflect the structured
+  `LabelFromSpec`, the `image_flat` source type, the
+  `InputSource.partition` field, the `SplitsSection.applies_to` field,
+  validator checks 19 and 20, and the new `pipeline/inputs.py` module
+  that shipped in v0.7.0 and v0.8.0. No code changes; no behavior
+  changes; no test changes.
+
+  - `features.md` Inputs prose tightened ("multiple sources may be
+    joined by a declared key" replaced with an accurate v1 description:
+    sources are independent; the only v1 join is sidecar-manifest label
+    joining within an `image_flat` source via `label_from`).
+  - `features.md` Inputs: third example added for pre-partitioned
+    Kaggle-style `train/` + `test/` sources.
+  - `features.md` FR-2 enumerated checks: added 19 (`label_from_spec_resolves`)
+    and 20 (`partitions_consistent`).
+  - `features.md` FR-7 Splits: Behavior bullet 5 documents partition-honoring
+    and sub-partition modes; Edge Cases note the partition-related failures
+    caught by `validate` and the load-time defensive check.
+  - `features.md` FR-22 Labels: Behavior bullet 4 connects the
+    sidecar-manifest direct-label route (the `image_flat` + `label_from`
+    shape from `Input`) back to `Labels.source.kind: direct`.
+  - `tech-spec.md` Package Structure: added `pipeline/inputs.py`; bumped
+    the `validator.py` comment from `checks 1–18` to `checks 1–20`.
+  - `tech-spec.md` `recipe.validator` section heading prose: "18
+    enumerated checks" → "20 enumerated checks".
+  - `tech-spec.md` Data Models: `InputSection` row updated to include
+    optional `label_from` and `partition`; new `LabelFromSpec` row with
+    the headerless/headered semantics; `SplitsSection` row gained
+    `applies_to`.
+  - `tech-spec.md` `scaffolder.init`: noted that within
+    `image_classification` the v1 scaffolder emits `image_folder`
+    recipes only; `image_flat` + `label_from` users hand-author the
+    recipe.
+
+## [0.8.0] - 2026-05-12
+
+### Added
+
+- **Story H.b — InputSource partitions: honor pre-existing train/test
+  directories.** Adds first-class support for datasets that ship
+  pre-partitioned (Kaggle-style `train/` plus `test/`). Each
+  `Input.sources[*]` may declare `partition: <name>`; the loader stamps
+  the declared value onto every record from that source; the Splits
+  stage honors the declared partitioning instead of pooling-then-
+  shuffling. Two recipe shapes:
+
+  - **Form A — pure honor.** Omit `Splits` (or write `Splits: {}`); the
+    materialized instance carries one split per declared partition,
+    record-for-record from the source directory.
+  - **Form B — sub-partition.** Set `Splits.applies_to: <partition>`
+    with `ratios: {...}` to carve sub-splits out of a single declared
+    partition (typically `train` → `train`/`val`); sibling partitions
+    (e.g. `test`) are preserved verbatim. `stratify_by` applies only
+    within the named partition.
+
+  ```yaml
+  Input:
+    sources:
+      - name: train_data
+        type: image_folder
+        path: ./data/train
+        partition: train                  # NEW
+      - name: test_data
+        type: image_folder
+        path: ./data/test
+        partition: test                   # NEW
+  Splits:
+    ratios: { train: 0.85, val: 0.15 }
+    applies_to: train                     # NEW: sub-partition only this
+    stratify_by: label
+    seed: 7
+  ```
+
+  **`partition` is now a reserved record-field name**, analogous to
+  `record_id`. The loader stamps it on every record when declared; the
+  validator (new check 20) rejects recipes that also declare a
+  `partition` field in `Output.record_schema`.
+
+  **New validator check 20 — `partitions_consistent`.** Enforces:
+  all-or-nothing partition declaration across sources; `partition` is
+  not declared in `Output.record_schema`; `applies_to` references a
+  declared partition; sub-partition names don't collide with sibling
+  partition names; `ratios` is empty when `applies_to` is unset (no
+  global re-shuffle of partitioned sources).
+
+  **Backward-compat is clean.** Recipes that don't declare `partition`
+  on any source keep working exactly as before — loader pools, Splits
+  partitions the whole stream. The new fields default to `None`/`{}`
+  and are additive.
+
+  **Cache identity:** the new fields participate in canonical recipe
+  bytes; the canonical-hash pin (`test_canonical_hash_pin`) shifted
+  accordingly. Pre-production rules apply per
+  `project-essentials.md` § "Cache identity": users re-materialize
+  after upgrade, no migration ceremony required.
+
+### Changed
+
+- `Recipe` validator check count is now **20** (was 19). CLI output
+  reports `20/20 checks passed` on clean recipes.
+- Validator check 8 (`splits_partition_correctly`) is relaxed: it no
+  longer rejects an empty `Splits` section when at least one
+  `InputSource` declares `partition`. Source partitions are a valid
+  partitioning surface; check 20 enforces consistency.
+- `features.md` § Recipe ⇢ Splits and `docs/guides/recipe-authoring.md`
+  § Input + § Splits gained "Pre-partitioned sources" and
+  "Sub-partitioning via `applies_to`" subsections.
+- `README.md` § Quickstart gained a "Pre-partitioned sources
+  (Kaggle-style train/test)" subsection.
+
+### Migration notes
+
+- No action required for existing recipes; the `partition` and
+  `applies_to` fields are optional. Recipes that previously used a
+  Featurization to parse `record_id` and emit a per-record partition
+  field as a workaround can now drop that Featurization and declare
+  `InputSource.partition` directly.
+
 ## [0.7.0] - 2026-05-12
 
 ### Added
