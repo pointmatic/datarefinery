@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-05-12
+
+### Documentation
+
+- **Story H.h — README check-count fix + PyPI installability promoted
+  to a requirement.** Doc-only cleanup; no code, tests, or workflows
+  touched.
+
+  - `README.md` CLI verbs table: `validate` now correctly says
+    "Schema + 21 enumerated static logical checks" (was "18" —
+    stale since H.a, H.b, and H.d added checks 19, 20, and 21).
+  - `docs/specs/features.md` § Usability Requirements gains a new
+    bullet, **Discoverable installation**, codifying that
+    `pip install ml-datarefinery` from a clean Python 3.12 venv
+    works with no extra configuration and explaining the
+    distribution-name / import-name divergence.
+  - `docs/specs/features.md` § Acceptance Criteria gains AC 12: the
+    PyPI install succeeds in a clean venv and exposes
+    `import datarefinery` plus the `datarefinery` console script.
+    Verified manually on each release per the releasing guide.
+  - `docs/specs/tech-spec.md` § Publishing: the "First publish" line
+    is simplified from a v0.9.2/v0.9.3 conditional (written while
+    H.f and H.g were both in flight) to the concrete
+    "v0.9.3 (Story H.g). Pre-v0.9.3 tags exist but were never
+    published to PyPI."
+
+  No canonical-hash shift; no code surface affected.
+
 ## [0.9.3] - 2026-05-12
 
 ### Removed

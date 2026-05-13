@@ -358,7 +358,7 @@ datarefinery --help
 |------|---------|----|
 | `check` | Report environment soundness (Python, deps, plugins discovered). | FR-18 |
 | `init` | Scaffold a starter recipe deterministically from raw inputs. | FR-17 |
-| `validate` | Schema + 18 enumerated static logical checks. | FR-2 |
+| `validate` | Schema + 21 enumerated static logical checks. | FR-2 |
 | `materialize` | Run the pipeline end-to-end against the recipe's inputs. | FR-3 |
 | `status` | Summarize a materialized instance or resolve a recipe to one. | FR-19 |
 | `report` | Re-render `report.md`, `drift.json`, and reporting visualizations. | FR-15 |

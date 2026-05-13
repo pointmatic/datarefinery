@@ -791,7 +791,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ml-datarefinery"     # distribution name; import name remains `datarefinery` (Hatch packages = ["src/datarefinery"])
-version = "0.9.3"            # bumped per-story; first successful PyPI publish is v0.9.3
+version = "0.9.4"            # bumped per-story; first successful PyPI publish is v0.9.3
 description = "Compile a YAML recipe into a reproducible, training-ready ML dataset instance."
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
@@ -851,7 +851,7 @@ include = ["src/datarefinery", "LICENSE", "README.md", "pyproject.toml"]
   - Triggered on tag push matching `v*`.
   - Job 1 (`build`) builds wheel + sdist with `python -m build` and uploads to GH Actions artifact storage.
   - Job 2 (`publish-pypi`) publishes to **PyPI** under the `pypi` GitHub environment (required-reviewer protection — a maintainer must approve each deploy).
-- **First publish:** v0.9.3 if v0.9.2 was not tagged before Story H.g landed (and the developer pushed a single tag after both H.f and H.g were complete), otherwise v0.9.2. Pre-publish tags remain GitHub-Release-only.
+- **First publish:** v0.9.3 (Story H.g). Pre-v0.9.3 tags exist but were never published to PyPI.
 - **Trusted-publisher setup:** the PyPI "pending publisher" binding plus the `pypi` GitHub Actions environment are configured once outside the repo. See `docs/guides/releasing.md` § "One-time PyPI Trusted Publisher setup".
 
 ### Package data

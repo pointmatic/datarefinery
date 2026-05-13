@@ -53,6 +53,7 @@ DataRefinery compiles a single YAML **recipe** — declaring data category, raw 
 - **Primary user — deep-learning curriculum.** A student or instructor can take raw image data and produce a training-ready instance for an image-classification dataset (CIFAR-10-scale) using the deterministic `init` scaffolder followed by `validate` and `materialize`, without manual workarounds.
 - **Secondary user — ML practitioner.** A practitioner familiar with the standard scientific Python stack can read a recipe and understand the pipeline without reading DataRefinery source.
 - **Co-equal surfaces.** Library users compose `DataRefinery` objects programmatically; CLI users invoke verbs against a recipe path. Both produce identical instances given the same inputs.
+- **Discoverable installation.** End users install DataRefinery via `pip install ml-datarefinery` from a clean Python 3.12 venv with no extra configuration. The distribution name (`ml-datarefinery`) diverges from the import name and console script (both `datarefinery`); the install command is the only place users see the prefixed name.
 - **Recipe legibility.** Section names use intent-driven vocabulary (`InputContracts`, `SampleData`, `OutputExpectations`, `Filters`, `Generation`, `Splits`, `Transformations`, `Augmentations`, `Featurizations`, `Visualizations`) chosen to avoid collision with standard ML terminology.
 
 ### Non-goals
@@ -641,3 +642,4 @@ DataRefinery v1 is complete when:
 9. The deterministic path runs offline; LLM enhancement during `init` is exercised only when `lmentry` is installed and explicitly configured.
 10. Test coverage thresholds are met for the current release tier (≥ 95% on core invariants always; smoke-level FR coverage pre-production; ≥ 85% overall after production release); `ruff` and `mypy --strict` pass clean.
 11. The report's `drift.json` placeholder schema is documented in the tech spec, structured (typed JSON), and exercised by a fixture so DataMachine work can begin coding against it. The schema is finalized and frozen as a precondition for production release.
+12. `pip install ml-datarefinery==<version>` succeeds in a clean Python 3.12 venv and the installed package exposes `import datarefinery` plus the `datarefinery` console script. Verified manually on each release per `docs/guides/releasing.md` step 6.

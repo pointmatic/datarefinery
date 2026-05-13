@@ -343,9 +343,9 @@ Reverses the deferred-PyPI decision recorded for Phase G. The unprefixed `datare
 - [x] **`docs/guides/releasing.md`.** Replace the "PyPI publishing is intentionally deferred" callout with a § documenting the new flow: trusted-publisher binding setup (one-time, on PyPI), the `testpypi` → `pypi` two-step on each tag push, and the maintainer-approval gate on the `pypi` GitHub environment. Update the "What this workflow does *not* do" section: PyPI upload is now done by `publish.yml`, not deferred.
 - [x] **`docs/specs/tech-spec.md`.** § Publishing already prescribes Trusted Publishing; update the line `**PyPI:** datarefinery` → `**PyPI:** ml-datarefinery` and add a one-line note that the import name remains `datarefinery`. § Installation methods: `pip install datarefinery` → `pip install ml-datarefinery`. § Package metadata: the `[project].name` example value moves to `ml-datarefinery`.
 - [x] **CHANGELOG.md.** New `## [0.9.1]` section under "Changed" describing the distribution-name change and the publish workflow.
-- [x] **Memory update.** Rewrite `project_pypi_deferred.md` (and its `MEMORY.md` index line) from "deferred" → "PyPI distribution name is `ml-datarefinery`; first publish is v0.9.1 via `.github/workflows/publish.yml`." Keep the historical reason in the body so a future LLM understands why the distribution name diverges from the import name.
+- [x] **Memory update.** Rewrite `project_pypi_deferred.md` (and its `MEMORY.md` index line) from "deferred" → "PyPI distribution name is `ml-datarefinery`; first publish attempt is v0.9.1 via `.github/workflows/publish.yml`." Keep the historical reason in the body so a future LLM understands why the distribution name diverges from the import name.
 - [x] **No canonical-hash shift.** `Recipe` does not contain the distribution name. Confirm `test_canonical_hash_pin` still passes without an update.
-- [x] **Developer-side setup (out-of-band, before first publish).** Listed here so future readers can verify the workflow's preconditions, not as LLM-executable tasks:
+- [x] **Developer-side setup (out-of-band, before first publish attempt).** Listed here so future readers can verify the workflow's preconditions, not as LLM-executable tasks:
   - PyPI: add a "pending publisher" for `ml-datarefinery` bound to GitHub repo `pointmatic/datarefinery`, workflow `publish.yml`, environment `pypi`.
   - TestPyPI: same binding under environment `testpypi`.
   - GitHub: create Actions environments `pypi` (with required-reviewer protection) and `testpypi` (no protection).
@@ -400,6 +400,33 @@ This story deletes `release.yml` and trims every doc that references it. `publis
 
 - Re-adding a GitHub-Releases workflow later. Easy to revive (the deleted file remains in git history); deferred until a real need surfaces.
 - Backfilling GitHub Releases for v0.7.0 – v0.9.2. Their tags already exist; their CHANGELOG entries are the canonical notes. Not worth the manual `gh release create` per version.
+
+### Story H.h: v0.9.4 README check-count fix + PyPI installability promoted to a requirement [Done]
+
+Doc-only cleanup story. Three drift fixes that surfaced during a post-H.g audit:
+
+1. `README.md`'s CLI verbs table says `validate` runs "18 enumerated static logical checks" — stale since H.b added check 20 and H.d added check 21 (H.a's check 19 also predates this fact going stale).
+2. `features.md` has no explicit requirement covering PyPI installability. H.e shipped the PyPI publish workflow and renamed the distribution, but the requirement that motivates that work is not written down — leaving the developer-facing acceptance bar implicit. PyPI installability earns a real Usability Requirement + Acceptance Criterion.
+3. `tech-spec.md`'s "First publish" line was written while H.f and H.g were both still in flight and hedges between v0.9.2 and v0.9.3. In practice H.g superseded H.f before any tag push, so v0.9.2 will never be tagged — the line can be simplified.
+
+No code or tests touched. Patch bump (v0.9.4) since no behavior changed.
+
+**Tasks:**
+
+- [x] `README.md` line 361: `Schema + 18 enumerated static logical checks` → `Schema + 21 enumerated static logical checks`.
+- [x] `docs/specs/features.md` § Usability Requirements: insert a new bullet between "Co-equal surfaces" and "Recipe legibility":
+  > **Discoverable installation.** End users install DataRefinery via `pip install ml-datarefinery` from a clean Python 3.12 venv with no extra configuration. The distribution name (`ml-datarefinery`) diverges from the import name and console script (both `datarefinery`); the install command is the only place users see the prefixed name.
+- [x] `docs/specs/features.md` § Acceptance Criteria: add AC 12:
+  > `pip install ml-datarefinery==<version>` succeeds in a clean Python 3.12 venv and the installed package exposes `import datarefinery` plus the `datarefinery` console script. Verified manually on each release per `docs/guides/releasing.md` step 6.
+- [x] `docs/specs/tech-spec.md` § Publishing: simplify the "First publish" line — drop the v0.9.2/v0.9.3 conditional and state `First publish: v0.9.3 (Story H.g). Pre-v0.9.3 tags exist but were never published to PyPI.`
+- [x] `CHANGELOG.md`: new `## [0.9.4]` "Documentation" section.
+- [x] `pyproject.toml` and `src/datarefinery/__init__.py`: bump to `0.9.4`.
+- [x] Verify: tests green, ruff + ruff format + mypy clean, canonical-hash pin unchanged.
+
+**Out of Scope**
+
+- The `pyve run pip install -e /path/to/datarefinery` placeholders in README's "From source (development)" section. The developer authored those intentionally to make it explicit how to install the locally-cloned package from another codebase; not a defect.
+- Promoting any other operational concern (release workflow, CI matrix, codecov) to a features.md requirement. PyPI installability is user-visible and warrants the seat; the others are internal-quality concerns and already live in tech-spec.md.
 
 ---
 
