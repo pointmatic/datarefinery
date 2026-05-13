@@ -81,7 +81,7 @@ Splits:
 # are deliberately invalidating the cache and updating this in the same
 # commit — see project-essentials.md "Cache identity is the
 # reproducibility contract — invalidations are ceremonious."
-_PINNED_DIGEST = "a09614a4b59d2fecd20ef19b3e4894e0fdc6313a3818a770f5e96072957b9cc0"
+_PINNED_DIGEST = "11a6ca0fd15e2995092fe6755ff188c05e9e814344209a9b6926a420fd487731"
 
 _FAILURE_MESSAGE = """
 Canonical hash drift detected.

@@ -147,3 +147,37 @@ def test_drift_json_is_canonical_sorted(tmp_path: Path) -> None:
     # Sorted-keys: a < f < n < p < s for the top level.
     keys = list(parsed.keys())
     assert keys == sorted(keys)
+
+
+# ---------------------------------------------------------------------------
+# Unlabeled splits (Story H.d)
+# ---------------------------------------------------------------------------
+
+
+def test_unlabeled_split_gets_null_class_distribution_and_note() -> None:
+    splits: dict[str, list[Mapping[str, object]]] = {
+        "train": [{"label": "cat"}, {"label": "dog"}],
+        "test": [{"record_id": "t/1"}, {"record_id": "t/2"}, {"record_id": "t/3"}],
+    }
+    drift = compute_drift_placeholder(
+        splits,
+        plugin_name="image_classification",
+        label_field="label",
+        unlabeled_splits={"test"},
+    )
+    train_rec = drift.splits["train"]
+    assert train_rec.class_distribution == {"cat": 1, "dog": 1}
+    assert train_rec.note is None
+    test_rec = drift.splits["test"]
+    assert test_rec.record_count == 3
+    assert test_rec.class_distribution is None
+    assert test_rec.note == "skipped: unlabeled"
+
+
+def test_unlabeled_splits_default_empty_preserves_legacy_behavior() -> None:
+    splits: dict[str, list[Mapping[str, object]]] = {
+        "train": [{"label": "a"}],
+    }
+    drift = compute_drift_placeholder(splits, plugin_name="x", label_field="label")
+    assert drift.splits["train"].note is None
+    assert drift.splits["train"].class_distribution == {"a": 1}

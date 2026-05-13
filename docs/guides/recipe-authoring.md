@@ -288,6 +288,80 @@ Splits:
   loader concatenates per-source records and `Splits` partitions the
   whole stream as before. Backward-compatible.
 
+#### Unlabeled partitions
+
+Some pre-partitioned datasets ship a labeled training set together with
+an unlabeled heldout partition intended for downstream inference (the
+classic Kaggle shape: `train.csv` with labels + `test.csv` with no
+labels). Declare such a source with `unlabeled: true`:
+
+```yaml
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./data/train
+      partition: train
+    - name: test_data
+      type: image_flat                 # flat layout, no label_from
+      path: ./data/test
+      partition: test
+      unlabeled: true                  # NEW
+Labels:
+  field: label
+  source: { kind: direct }             # labels exist for labeled partitions
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train                    # sub-partition only the labeled side
+  stratify_by: label                   # stratifies within train; safe because
+                                       # applies_to is the labeled partition
+```
+
+**What happens:**
+
+- The loader walks `test_data` like any `image_flat` source but does
+  not read a manifest and does not attach a `label` field to records.
+  Records flow through label-independent stages (resize, normalize,
+  augmentation) normally.
+- Label-dependent stages refuse to operate on unlabeled splits at
+  **validate time** (check 21):
+  - `Splits.stratify_by` with `applies_to: <unlabeled-partition>` →
+    rejected.
+  - Filters using `filter_by_label` whose `splits:` list contains an
+    unlabeled split → rejected.
+  - Featurizations using `label_from_path` (or whose `inputs` reference
+    the label field) targeting an unlabeled split → rejected.
+- `drift.json` reports `class_distribution: null` for unlabeled splits
+  with a `"skipped: unlabeled"` note; `report.md` flags those splits
+  with `*(unlabeled)*` in the Splits section.
+- `OutputExpectations` whose `field` equals `Labels.field` treat records
+  lacking the label as "skipped" rather than failures when any source
+  declares `unlabeled: true`. Records where the label is present but
+  `None` still fail. This lets `required_field: label` coexist with an
+  unlabeled partition.
+
+**Rules:**
+
+- `unlabeled: true` requires `partition: <name>` on the same source
+  (model-level validation; no recipe can mix unlabeled records into a
+  global pool).
+- `unlabeled: true` is incompatible with `label_from` (a sidecar
+  manifest provides labels, contradicting unlabeled-ness).
+- `unlabeled: true` requires `type: image_flat` in v1 (check 21).
+  `image_folder` derives labels from class subdirectories, which would
+  contradict the declaration. Users with an existing flat-directory
+  `image_folder` layout just rewrite it as `image_flat`.
+- Sub-partitioning an unlabeled partition is allowed. The resulting
+  sub-splits are also unlabeled.
+
+**Downstream inference pattern.** The materialized instance contains
+labeled `train`/`val` splits and an unlabeled `test` split as
+`dataset/test.jsonl`. Train a model on `train`+`val`; run it against
+the records in `test.jsonl` to produce predictions. That last step is
+external to DataRefinery (per `concept.md` non-goals); the unlabeled
+partition's job is to *exist* in the materialized instance for
+downstream tooling to consume.
+
 ### `Output`
 
 Declares the record schema the materialized dataset must satisfy. Field

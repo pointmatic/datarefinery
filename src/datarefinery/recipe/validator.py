@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""FR-2 recipe validator framework + checks 1-18.
+"""FR-2 recipe validator framework + checks 1-21.
 
 Each enumerated check from features.md becomes a `check_NN_<descriptor>`
 function returning a `CheckResult`. `validate(recipe, plugin)` runs every
@@ -654,10 +654,11 @@ def check_19_label_from_spec_resolves(recipe: Recipe, plugin: Plugin) -> CheckRe
                 f"image_folder takes labels from class subdirectories"
             )
             continue
-        if src.type == "image_flat" and src.label_from is None:
+        if src.type == "image_flat" and src.label_from is None and not src.unlabeled:
             issues.append(
                 f"{location}: type='image_flat' but no label_from declared; "
-                f"flat sources require a sidecar manifest"
+                f"flat sources require a sidecar manifest (or set unlabeled=true "
+                f"for inference-only partitions)"
             )
             continue
         if src.label_from is None:
@@ -844,6 +845,106 @@ def check_20_partitions_consistent(recipe: Recipe, plugin: Plugin) -> CheckResul
     )
 
 
+def unlabeled_split_names(recipe: Recipe) -> set[str]:
+    """Names of splits that materialize without labels.
+
+    A split is unlabeled when it is either (a) a source partition
+    declared with ``unlabeled: true`` and not selected for sub-partitioning
+    by ``Splits.applies_to``, or (b) a sub-split produced by sub-partitioning
+    such an unlabeled partition. Source partitions selected for
+    sub-partitioning lose their original name in favor of the
+    ``Splits.ratios`` keys; those sub-splits inherit unlabeled-ness.
+    """
+    unlabeled_partitions = {
+        s.partition for s in recipe.Input.sources if s.unlabeled and s.partition is not None
+    }
+    if not unlabeled_partitions:
+        return set()
+    applies_to = recipe.Splits.applies_to
+    ratios = recipe.Splits.ratios or {}
+    if applies_to in unlabeled_partitions and ratios:
+        # The named partition is exploded into sub-splits, all unlabeled.
+        return (unlabeled_partitions - {applies_to}) | set(ratios.keys())
+    return unlabeled_partitions
+
+
+def check_21_unlabeled_consistency(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Validate ``InputSource.unlabeled`` cross-section interactions.
+
+    Cross-rules:
+    - ``unlabeled: true`` requires ``type == "image_flat"`` (v1 restriction;
+      ``image_folder`` derives labels from class subdirectories so the
+      combination is contradictory). Model-level validators already
+      enforce that ``unlabeled`` requires ``partition`` and forbids
+      ``label_from``; this check covers the type rule.
+    - ``Splits.stratify_by`` is incompatible with
+      ``Splits.applies_to == <unlabeled-partition>`` (cannot stratify by
+      a field that does not exist on the records).
+    - Filters using ``filter_by_label`` must not target an unlabeled split.
+    - Featurizations whose op is ``label_from_path`` or whose ``inputs``
+      reference the recipe's label field must not target an unlabeled
+      split (label is absent from those records).
+
+    Plugin-specific: only applies to plugins whose loader honors
+    ``unlabeled`` (initially ``image_classification``); for other plugins
+    this check short-circuits as ``pass``.
+    """
+    del plugin
+    descriptor = "unlabeled_consistency"
+    if recipe.plugin not in _PARTITION_PLUGINS:
+        return _passed(21, descriptor)
+    issues: list[str] = []
+    for src in recipe.Input.sources:
+        if src.unlabeled and src.type != "image_flat":
+            issues.append(
+                f"Input.sources[{src.name!r}]: unlabeled=true requires "
+                f"type='image_flat' in v1 (got {src.type!r}); image_folder "
+                f"derives labels from class subdirectories"
+            )
+
+    unlabeled_splits = unlabeled_split_names(recipe)
+    applies_to = recipe.Splits.applies_to
+    unlabeled_partitions = {
+        s.partition for s in recipe.Input.sources if s.unlabeled and s.partition is not None
+    }
+
+    if recipe.Splits.stratify_by is not None and applies_to in unlabeled_partitions:
+        issues.append(
+            f"Splits.stratify_by={recipe.Splits.stratify_by!r} is incompatible "
+            f"with applies_to={applies_to!r} (an unlabeled partition has no "
+            f"label field to stratify by)"
+        )
+
+    label_field = recipe.Labels.field
+    for filt in recipe.Filters:
+        if filt.predicate.get("op") == "filter_by_label":
+            bad = [s for s in filt.splits if s in unlabeled_splits]
+            if bad:
+                issues.append(
+                    f"Filters[{filt.name!r}] uses 'filter_by_label' on unlabeled "
+                    f"split(s) {sorted(bad)!r}; the label field is absent there"
+                )
+    for feat in recipe.Featurizations:
+        reads_label = feat.op == "label_from_path" or label_field in feat.inputs
+        if reads_label:
+            bad = [s for s in feat.splits if s in unlabeled_splits]
+            if bad:
+                issues.append(
+                    f"Featurizations[{feat.name!r}] (op={feat.op!r}) reads/produces "
+                    f"label but targets unlabeled split(s) {sorted(bad)!r}"
+                )
+
+    if not issues:
+        return _passed(21, descriptor)
+    return CheckResult(
+        check_id=21,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -908,6 +1009,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         20,
         "partitions_consistent",
         check_20_partitions_consistent,
+    ),
+    (
+        21,
+        "unlabeled_consistency",
+        check_21_unlabeled_consistency,
     ),
 )
 

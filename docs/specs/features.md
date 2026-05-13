@@ -111,6 +111,21 @@ DataRefinery compiles a single YAML **recipe** — declaring data category, raw 
         path: data/raw/myset/test
         partition: test
   ```
+- Example (image classification — labeled `train/` + **unlabeled** `test/` for downstream inference):
+  ```yaml
+  Input:
+    sources:
+      - name: train_data
+        type: image_folder
+        path: data/raw/myset/train
+        partition: train
+      - name: test_data
+        type: image_flat
+        path: data/raw/myset/test
+        partition: test
+        unlabeled: true
+  ```
+  Records loaded from the `test_data` source land without a `label` field; the partition flows through label-independent transformations (resize, normalize) and lands in the materialized instance for downstream inference. Label-dependent stages (`stratify_by`, `filter_by_label`, label-reading featurizations) are rejected at validate time when they target an unlabeled split (check 21).
 
 **Recipe file** (single YAML file):
 
@@ -226,6 +241,7 @@ Verify a recipe's correctness without running the pipeline. Covers schema correc
 18. Plugin-specific operation parameters validate against the plugin's declared operation schemas.
 19. `label_from_spec_resolves` — `InputSource.label_from` is structurally valid; manifest file at `label_from.path` exists; declared `header` (when present) matches the file's column count; `id_field` / `label_field` reference columns that resolve; no duplicate ids for `join: by_id`; row count matches enumerated record count for `join: by_row_order`; source-type consistency (`image_folder` + `label_from` is rejected; `image_flat` without `label_from` is rejected). Plugin-specific: only applies to `image_classification` in v1.
 20. `partitions_consistent` — `InputSource.partition` declarations are all-or-nothing across sources; `partition` is not declared in `Output.record_schema` (reserved name); `Splits.applies_to` (when set) references a declared partition; `Splits.ratios` keys do not collide with sibling partition names when `applies_to` is set; `Splits.ratios` is empty (or unset) when source partitions are declared and `applies_to` is unset. Plugin-specific: only applies to plugins whose loader stamps `partition` (initially `image_classification`).
+21. `unlabeled_consistency` — `InputSource.unlabeled` cross-section consistency. `unlabeled: true` requires `type: image_flat` (v1 restriction; `image_folder` derives labels from class subdirectories so the combination is contradictory). Model-level validation already enforces that `unlabeled: true` requires `partition` and forbids `label_from`. `Splits.stratify_by` is rejected when `Splits.applies_to` names an unlabeled partition (no label field to stratify by). Filters using `filter_by_label` and Featurizations using `label_from_path` (or whose `inputs` reference the recipe's label field) are rejected when they target unlabeled splits. Plugin-specific: only applies to plugins whose loader honors `unlabeled` (initially `image_classification`).
 
 **Edge Cases:**
 - Plugin not installed -> hard error pointing at the plugin name and discovery path.
@@ -308,6 +324,7 @@ Define train/validation/test partitioning, including stratification, class-balan
 3. The split seed is the recipe-level seed unless overridden.
 4. Class-imbalance handled by *weighting or resampling at training time* lives in `Splits` as a sampling strategy ModelFoundry honors. Class-imbalance handled by *removing data* lives in `Filters` (FR-8).
 5. When `Input.sources[*].partition` is declared on every source, the materialized splits honor those declarations (each partition becomes a split). Setting `Splits.applies_to: <partition-name>` together with `ratios: {...}` sub-partitions just that partition; sibling partitions are preserved verbatim (so `test` can stay heldout while `train` is carved into train/val). When `applies_to` is unset, `Splits.ratios` must be empty (or omitted) — declared partitions are the final partitioning.
+6. When a source declares `unlabeled: true`, the resulting split (or sub-splits, if `applies_to` selects the unlabeled partition) materializes without a `label` field. `Splits.stratify_by` is rejected when `applies_to` names an unlabeled partition (check 21); sub-partitioning an unlabeled partition is allowed and produces unlabeled sub-splits.
 
 **Edge Cases:**
 - Ratio-based splits summing to less than 1.0 -> remainder is unassigned; recorded in the manifest.
@@ -517,6 +534,7 @@ Declare what the label is and how it is obtained: present in the raw input, or d
 2. A directly-present label cites the source field.
 3. A derived label is produced by the same machinery as featurizations (FR-12) and may draw on any declared input source, including filenames and metadata.
 4. For `image_classification`, the `image_flat` source type accepts a `label_from` spec (see `Input` examples) that populates labels at load time from a sidecar CSV manifest. From `Labels`'s perspective this is `kind: direct` — the labels arrive intrinsically; no Featurization is involved.
+5. An `image_flat` source may also declare `unlabeled: true` to indicate the partition has no labels (typical for Kaggle-style heldout test sets). `Labels.source.kind` remains `direct` — labels exist on partitions that aren't unlabeled. `OutputExpectations` whose `field` equals `Labels.field` treat records lacking the field as "skipped" when any source declares `unlabeled: true` (so `required_field: <label>` no longer fails on the unlabeled partition); records where the field is present but `None` still fail.
 
 **Edge Cases:**
 - Label source unresolvable from declared inputs -> caught by `validate` (check 13).

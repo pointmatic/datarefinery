@@ -68,10 +68,14 @@ def render_report_md(
         lines.append(f"- `{src.name}` (`{src.type}`) -> `{src.path}`")
     lines.append("")
 
+    from datarefinery.recipe.validator import unlabeled_split_names
+
+    unlabeled = unlabeled_split_names(recipe)
     lines.append("## Splits")
     lines.append("")
     for split, count in sorted(manifest.record_counts.items()):
-        lines.append(f"- `{split}`: {count} record(s)")
+        marker = " *(unlabeled)*" if split in unlabeled else ""
+        lines.append(f"- `{split}`: {count} record(s){marker}")
     lines.append(f"- **Total**: {sum(manifest.record_counts.values())}")
     lines.append("")
 
@@ -227,10 +231,13 @@ def re_render_report(
     # Pydantic-validated `Mapping` parameters are invariant in mypy;
     # the runtime types are a strict subset, so cast through `Any`.
     splits_any: Any = splits
+    from datarefinery.recipe.validator import unlabeled_split_names
+
     drift = compute_drift_placeholder(
         splits_any,
         plugin_name=plugin.name,
         label_field=recipe.Labels.field,
+        unlabeled_splits=unlabeled_split_names(recipe),
     )
     write_drift(report_root / DRIFT_FILENAME, drift)
 

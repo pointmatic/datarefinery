@@ -394,3 +394,59 @@ def test_partition_per_source_flows_through(tmp_path: Path) -> None:
     assert set(by_partition.keys()) == {"train", "test"}
     assert by_partition["train"] == ["train_data/cat/a.png"]
     assert by_partition["test"] == ["test_data/cat/b.png"]
+
+
+# ---------------------------------------------------------------------------
+# Unlabeled image_flat sources (Story H.d)
+# ---------------------------------------------------------------------------
+
+
+def test_image_flat_unlabeled_loads_records_without_label(tmp_path: Path) -> None:
+    images = tmp_path / "imgs"
+    _make_flat_images(images, ["a.png", "b.png"])
+    recipe_dict = _base_recipe_dict(images)
+    recipe_dict["Input"]["sources"][0]["partition"] = "test"
+    recipe_dict["Input"]["sources"][0]["unlabeled"] = True
+    # No Splits ratios — Form A
+    recipe_dict["Splits"] = {}
+    recipe = Recipe.model_validate(recipe_dict)
+    records, hashes = load_raw_records(recipe, IMAGE_PLUGIN)
+    assert len(records) == 2
+    for r in records:
+        assert "label" not in r
+        assert r["partition"] == "test"
+    assert "images" in hashes
+
+
+def test_image_folder_with_unlabeled_rejected_at_load_time(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    cls_dir = root / "cat"
+    _make_flat_images(cls_dir, ["a.png"])
+    recipe = Recipe.model_validate(
+        {
+            "schema_version": 1,
+            "plugin": "image_classification",
+            "Input": {
+                "sources": [
+                    {
+                        "name": "test",
+                        "type": "image_folder",
+                        "path": str(root),
+                        "partition": "test",
+                        # Bypassing check 21 to verify loader's defensive guard
+                    }
+                ]
+            },
+            "Output": {"record_schema": {"image": {"dtype": "uint8", "shape": [4, 4, 3]}}},
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": {},
+        }
+    )
+    # Manually mutate the loaded model bypassing frozen=True via dict round-trip
+    # only when we *can*. Instead, build directly:
+    src = recipe.Input.sources[0]
+    new_src = src.model_copy(update={"unlabeled": True, "label_from": None})
+    new_input = recipe.Input.model_copy(update={"sources": [new_src]})
+    bad_recipe = recipe.model_copy(update={"Input": new_input})
+    with pytest.raises(RecipeError, match="image_folder"):
+        load_raw_records(bad_recipe, IMAGE_PLUGIN)

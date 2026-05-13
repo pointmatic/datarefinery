@@ -144,12 +144,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_twenty_checks() -> None:
+def test_valid_recipe_passes_all_twenty_one_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 20
-    assert {r.check_id for r in report.results} == set(range(1, 21))
+    assert len(report.results) == 21
+    assert {r.check_id for r in report.results} == set(range(1, 22))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -1229,3 +1229,125 @@ def test_check_20_skips_for_non_partition_plugin() -> None:
     # Use the default _Plugin which has name='test_plugin'.
     report = validate(_build(payload), _Plugin())
     assert not _failures_for(report, 20)
+
+
+# ---------------------------------------------------------------------------
+# Check 21 — `unlabeled_consistency` (Story H.d)
+# ---------------------------------------------------------------------------
+
+
+def _ic_unlabeled_dict() -> dict[str, Any]:
+    """Labeled train + unlabeled test sources (image_flat for unlabeled)."""
+    base = _ic_base_dict()
+    base["Input"]["sources"] = [
+        {
+            "name": "train_data",
+            "type": "image_folder",
+            "path": "/data/train",
+            "partition": "train",
+        },
+        {
+            "name": "test_data",
+            "type": "image_flat",
+            "path": "/data/test",
+            "partition": "test",
+            "unlabeled": True,
+        },
+    ]
+    base["Splits"] = {"ratios": {"train": 0.85, "val": 0.15}, "applies_to": "train"}
+    return base
+
+
+def test_check_21_passes_on_valid_unlabeled_recipe() -> None:
+    report = validate(_build(_ic_unlabeled_dict()), _ic_plugin())
+    assert not _failures_for(report, 21)
+
+
+def test_check_21_fails_on_image_folder_with_unlabeled() -> None:
+    payload = _ic_unlabeled_dict()
+    payload["Input"]["sources"][1]["type"] = "image_folder"
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 21)
+    assert failures and "image_flat" in failures[0].message
+
+
+def test_check_21_fails_on_stratify_by_with_unlabeled_applies_to() -> None:
+    payload = _ic_unlabeled_dict()
+    payload["Splits"] = {
+        "ratios": {"sub_a": 0.5, "sub_b": 0.5},
+        "applies_to": "test",
+        "stratify_by": "label",
+    }
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 21)
+    assert failures and "stratify_by" in failures[0].message
+
+
+def test_check_21_fails_on_filter_by_label_targeting_unlabeled_split() -> None:
+    payload = _ic_unlabeled_dict()
+    payload["Filters"] = [
+        {
+            "name": "drop_other",
+            "predicate": {"op": "filter_by_label", "labels": ["cat"]},
+            "stages": ["post_split"],
+            "splits": ["test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 21)
+    assert failures and "filter_by_label" in failures[0].message
+
+
+def test_check_21_fails_on_label_from_path_featurization_on_unlabeled_split() -> None:
+    payload = _ic_unlabeled_dict()
+    payload["Featurizations"] = [
+        {
+            "name": "derive_label",
+            "op": "label_from_path",
+            "inputs": ["path"],
+            "output_field": "label",
+            "splits": ["test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 21)
+    assert failures and "label_from_path" in failures[0].message
+
+
+def test_check_21_passes_on_label_independent_featurization_on_unlabeled_split() -> None:
+    """image_size_stats does not read label; targeting unlabeled splits is fine."""
+    payload = _ic_unlabeled_dict()
+    payload["Featurizations"] = [
+        {
+            "name": "sizes",
+            "op": "image_size_stats",
+            "inputs": ["image"],
+            "output_field": "size",
+            "splits": ["test"],
+        }
+    ]
+    assert not _failures_for(validate(_build(payload), _ic_plugin()), 21)
+
+
+def test_check_21_skips_for_non_partition_plugin() -> None:
+    payload = _ic_base_dict()
+    payload["plugin"] = "test_plugin"
+    report = validate(_build(payload), _Plugin())
+    assert not _failures_for(report, 21)
+
+
+def test_check_21_propagates_unlabeled_to_sub_splits() -> None:
+    """When applies_to targets an unlabeled partition, sub-split names inherit
+    unlabeled-ness for filter/featurization checks."""
+    payload = _ic_unlabeled_dict()
+    payload["Splits"] = {
+        "ratios": {"sub_a": 0.5, "sub_b": 0.5},
+        "applies_to": "test",
+    }
+    # filter_by_label on sub_a — derived from the unlabeled 'test' partition.
+    payload["Filters"] = [
+        {
+            "name": "f",
+            "predicate": {"op": "filter_by_label", "labels": ["cat"]},
+            "stages": ["post_split"],
+            "splits": ["sub_a"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 21)
+    assert failures and "sub_a" in failures[0].message

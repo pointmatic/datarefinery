@@ -268,3 +268,55 @@ def test_splits_section_applies_to_accepts_string() -> None:
     payload["Splits"]["applies_to"] = "train"
     recipe = Recipe.model_validate(payload)
     assert recipe.Splits.applies_to == "train"
+
+
+# ---------------------------------------------------------------------------
+# InputSource.unlabeled (Story H.d)
+# ---------------------------------------------------------------------------
+
+
+def test_input_source_unlabeled_defaults_to_false() -> None:
+    recipe = Recipe.model_validate(_minimal_recipe_dict())
+    assert recipe.Input.sources[0].unlabeled is False
+
+
+def test_input_source_unlabeled_true_requires_partition() -> None:
+    payload = _minimal_recipe_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    payload["Input"]["sources"][0]["unlabeled"] = True
+    # partition not set — should fail
+    with pytest.raises(ValidationError, match="requires 'partition'"):
+        Recipe.model_validate(payload)
+
+
+def test_input_source_unlabeled_true_rejects_label_from() -> None:
+    payload = _minimal_recipe_dict()
+    payload["Input"]["sources"][0].update(
+        {
+            "type": "image_flat",
+            "partition": "test",
+            "unlabeled": True,
+            "label_from": {
+                "path": "labels.csv",
+                "join": "by_id",
+                "id_field": "filename",
+                "label_field": "class",
+            },
+        }
+    )
+    with pytest.raises(ValidationError, match="incompatible with label_from"):
+        Recipe.model_validate(payload)
+
+
+def test_input_source_unlabeled_true_with_partition_validates() -> None:
+    payload = _minimal_recipe_dict()
+    payload["Input"]["sources"][0].update(
+        {
+            "type": "image_flat",
+            "partition": "test",
+            "unlabeled": True,
+        }
+    )
+    recipe = Recipe.model_validate(payload)
+    assert recipe.Input.sources[0].unlabeled is True
+    assert recipe.Input.sources[0].partition == "test"

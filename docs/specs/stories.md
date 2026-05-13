@@ -265,7 +265,7 @@ This story is a bookkeeping correction. No code changes; tests don't move. The p
 - Tech-spec coverage of the `partitioned` Splits-stage internals (`_apply_partitioned`, `applies_to` sub-partitioning). The Data Models update covers the recipe-surface change; implementation depth lives in the code itself.
 - README / authoring-guide updates. Both were updated alongside H.a and H.b; only `features.md` and `tech-spec.md` are out of date.
 
-### Story H.d: v0.9.0 Unlabeled partition support [Planned]
+### Story H.d: v0.9.0 Unlabeled partition support [Done]
 
 **Depends on H.b.** Adds first-class support for partitions that ship without labels — the Kaggle/inference-set shape where `test/` (or any held-out partition) has no `labels.csv` and exists only for downstream prediction. The pipeline today assumes every record has a label, which makes "ship the unlabeled test partition through the same pipeline as the labeled train partition" unexpressible.
 
@@ -298,40 +298,22 @@ Splits:
 
 **Tasks:**
 
-- [ ] **Pydantic model.** Add `InputSource.unlabeled: bool = False`. Cross-field validator (or check 21): `unlabeled: true` requires the source to declare a `partition` (you can't have unlabeled records mixed into the global pool — semantics get muddled).
-- [ ] **Loader wiring.**
-  - `image_flat` + `unlabeled: true`: `label_from` must NOT be set (validator + load-time defense). Records load without a `label` field.
-  - `image_folder` + `unlabeled: true`: relax the "must have class subdirs" rule — flat directory layout is accepted; records load with no `label` field. (Or restrict to `image_flat` only and document; pick at review.)
-- [ ] **Splits-stage interaction.**
-  - `stratify_by: label` is rejected when `applies_to` is an unlabeled partition (validator check 21).
-  - Sub-partitioning an unlabeled partition is allowed; the resulting sub-splits are also unlabeled.
-- [ ] **Drift/reporting interaction.**
-  - For unlabeled splits, `drift.json`'s `class_distribution` is `null` with a `note: "skipped: unlabeled"`.
-  - `report.md` calls out the unlabeled split distinctly.
-- [ ] **Filter interaction.**
-  - `filter_by_label` against an unlabeled split → validator-time error (recipe is statically analyzable — we know which splits are unlabeled before materialize).
-  - Other filters (`random_sample`, future label-independent filters) work normally on unlabeled splits.
-- [ ] **Validator check 21 — `unlabeled_consistency`.** Cover:
-  - `unlabeled: true` requires `partition`.
-  - `unlabeled: true` on `image_flat` requires `label_from` to be unset (no contradiction).
-  - `Splits.stratify_by` is incompatible with `Splits.applies_to == <unlabeled-partition>`.
-  - `filter_by_label` ops referencing an unlabeled split → fail.
-  - Validator check 16 (`sample_data_strict_subset`) is skipped for unlabeled partitions.
-- [ ] **Featurization interaction.** Featurizations that read the `label` field (e.g., the existing `label_from_path` op's *output*) must not target unlabeled splits in their `splits: [...]` list. Validator-enforced.
-- [ ] **Recipe-authoring guide.** New § "Unlabeled partitions" subsection covering the use case, the recipe shape, what works/what's skipped for unlabeled records, and the recommended pattern for "train a labeled model, run it on the unlabeled partition for inference output."
-- [ ] **README quickstart variant.** Brief snippet for "Kaggle-style train.csv + test.csv-without-labels" shape, plus a sentence on what downstream inference looks like.
-- [ ] **Tests.**
-  - Pydantic-model: `unlabeled` is a bool defaulting to False.
-  - Loader: `unlabeled: true` produces records without a `label` field; partitioned-loader integration.
-  - Splits-stage: sub-partitioning an unlabeled partition produces unlabeled sub-splits; stratify_by on unlabeled partition rejected.
-  - Drift/report: class_distribution null for unlabeled splits; report renders the "skipped: unlabeled" marker.
-  - Filter: `filter_by_label` on unlabeled split fails at validate time.
-  - Validator: check 21 green on each valid recipe; red on each error mode.
-  - Integration: end-to-end recipe with labeled `train` partition (subdivided into train/val) plus unlabeled `test` partition; assert the materialized instance contains labeled train+val records and unlabeled test records (no `label` key, no stratified marker, drift class_distribution null).
-- [ ] **Canonical-hash pin update.** Schema change shifts the pinned digest.
-- [ ] Bump version to v0.9.0
-- [ ] Update CHANGELOG.md
-- [ ] Verify: end-to-end on a Kaggle-shape fixture (labeled train + unlabeled test) materializes; `datarefinery validate` reports `21/21 checks passed`; `report.md` distinguishes labeled vs unlabeled splits; downstream inference can read `dataset/test.jsonl` and run a model against the records (manually verified, not pipelined).
+- [x] **Pydantic model.** `InputSource.unlabeled: bool = False`. Cross-field validators: `unlabeled=true` requires `partition`; `unlabeled=true` forbids `label_from`. The "image_flat only" restriction lives in check 21 (plugin-specific).
+- [x] **Loader wiring.** `image_flat` + `unlabeled=true` uses a new `_load_one_image_flat_unlabeled` path: no `label_from` read, records arrive without a `label` field. `image_folder` + `unlabeled=true` rejected at validate time (check 21) and defended at load time.
+- [x] **Splits-stage interaction.** Records lacking `label` flow through the existing partition-honoring code unchanged. `stratify_by` + `applies_to=<unlabeled-partition>` rejected via check 21. Sub-partitioning an unlabeled partition produces unlabeled sub-splits (records still lack `label`); check 21 detects this for downstream filter/featurization rules.
+- [x] **Drift/reporting interaction.** `SplitDriftRecord.note: str | None` added. `compute_drift_placeholder` accepts an `unlabeled_splits: set[str] | None` kwarg; for matching splits, `class_distribution=None` and `note="skipped: unlabeled"`. `report.md` flags unlabeled splits with `*(unlabeled)*` in the Splits section.
+- [x] **Filter interaction.** Check 21 rejects `Filters[*].predicate.op == "filter_by_label"` when `splits` contains an unlabeled split name. Other filters (`random_sample`) are unaffected.
+- [x] **Validator check 21 — `unlabeled_consistency`.** Covers: `unlabeled=true` requires `image_flat`; `stratify_by` + unlabeled `applies_to`; `filter_by_label` on unlabeled splits; `label_from_path` (or any featurization whose `inputs` include `Labels.field`) on unlabeled splits. Skips for plugins not in `_PARTITION_PLUGINS`. The model-level validators enforce the `partition` and `label_from` rules.
+- [x] **Featurization interaction.** Check 21 rejects featurizations whose `op == "label_from_path"` or whose `inputs` include the recipe's `Labels.field` when targeting an unlabeled split. `image_size_stats` (which doesn't touch the label) is allowed.
+- [x] **OutputExpectations skip rule.** `evaluate_output_expectations` accepts `skip_missing_label_field: str | None`; the runner passes `Labels.field` when any source declares `unlabeled=true`. Records lacking the field are skipped for `required_field` assertions; records with `None` still fail.
+- [x] **Recipe-authoring guide.** New § "Unlabeled partitions" subsection in `docs/guides/recipe-authoring.md`.
+- [x] **README quickstart variant.** New "Unlabeled partitions (Kaggle-style test set with no labels)" subsection.
+- [x] **features.md + tech-spec.md updates** (scope expanded by developer per Step 2 announce): FR-2 check 21 added; FR-7 Splits bullet 6; FR-22 Labels bullet 5; new Inputs example; tech-spec validator comment + section + Data Models row updated.
+- [x] **Tests.** 4 model + 2 loader + 8 validator (check 21) + 2 drift + 5 integration = 21 new tests, plus updates to existing counts (20 → 21 across `test_validator.py`, `test_validate_cmd.py`, `test_tabular_stub_smoke.py`, `test_partitioned_inputs.py`, `test_image_flat_label_from.py`).
+- [x] **Canonical-hash pin update.** Recomputed to `11a6ca0fd15e2995092fe6755ff188c05e9e814344209a9b6926a420fd487731`. CHANGELOG release notes call out the shift per the pre-prod ceremony.
+- [x] Bump version to v0.9.0
+- [x] Update CHANGELOG.md
+- [x] Verify: 719 unit + integration tests pass; ruff clean; mypy --strict clean across 71 source files; integration test materializes a Kaggle-shape fixture and asserts unlabeled test records lack `label`, drift records `null + note`, report flags split with `*(unlabeled)*`.
 
 **Out of Scope**
 

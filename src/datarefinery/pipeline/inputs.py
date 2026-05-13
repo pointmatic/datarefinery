@@ -92,19 +92,31 @@ def _load_image_classification(
                     f"'image_folder' with label_from set; image_folder takes labels "
                     f"from class subdirectories, not from a sidecar manifest"
                 )
+            if src.unlabeled:
+                raise RecipeError(
+                    f"image_classification loader: source {src.name!r} has type "
+                    f"'image_folder' with unlabeled=true; declare type='image_flat' "
+                    f"for unlabeled partitions (image_folder derives labels from "
+                    f"class subdirectories)"
+                )
             per_source = _load_one_image_folder(src.name, root, seen_ids, attach_label=attach_label)
             hashes[src.name] = _hash_image_folder(root)
         elif src.type == "image_flat":
-            if src.label_from is None:
-                raise RecipeError(
-                    f"image_classification loader: source {src.name!r} has type "
-                    f"'image_flat' but no label_from is declared; flat sources require "
-                    f"a sidecar manifest"
+            if src.unlabeled:
+                per_source = _load_one_image_flat_unlabeled(src.name, root, seen_ids)
+                hashes[src.name] = _hash_image_folder(root)
+            else:
+                if src.label_from is None:
+                    raise RecipeError(
+                        f"image_classification loader: source {src.name!r} has type "
+                        f"'image_flat' but no label_from is declared; flat sources "
+                        f"require a sidecar manifest (or set unlabeled=true for "
+                        f"inference-only partitions)"
+                    )
+                per_source = _load_one_image_flat(
+                    src.name, root, src.label_from, seen_ids, attach_label=attach_label
                 )
-            per_source = _load_one_image_flat(
-                src.name, root, src.label_from, seen_ids, attach_label=attach_label
-            )
-            hashes[src.name] = _hash_image_flat(root, src.label_from)
+                hashes[src.name] = _hash_image_flat(root, src.label_from)
         else:
             raise RecipeError(
                 f"image_classification loader: source {src.name!r} has "
@@ -289,6 +301,39 @@ def _load_one_image_flat(
             else:
                 record["label"] = label_index[i]
         out.append(record)
+    return out
+
+
+def _load_one_image_flat_unlabeled(
+    source_name: str,
+    root: Path,
+    seen_ids: set[str],
+) -> list[Record]:
+    """Load an `image_flat` source declared `unlabeled: true`.
+
+    Walks the flat directory with the same sorted enumeration as the
+    labeled `image_flat` path; produces records without a `label` field.
+    Downstream stages that need labels (stratify_by, filter_by_label,
+    label-reading featurizations) are rejected at validate time via
+    check 21.
+    """
+    images = _enumerate_flat_images(root)
+    if not images:
+        raise RecipeError(
+            f"image_classification loader: source {source_name!r} root "
+            f"{root!s} contains no .png/.jpg/.jpeg files"
+        )
+    out: list[Record] = []
+    for path in images:
+        rid = f"{source_name}/{path.relative_to(root).as_posix()}"
+        if rid in seen_ids:
+            raise RecipeError(
+                f"image_classification loader: duplicate record_id {rid!r} across input sources"
+            )
+        seen_ids.add(rid)
+        with Image.open(path) as im:
+            arr = np.asarray(im)
+        out.append({"record_id": rid, "image": arr, "path": str(path)})
     return out
 
 

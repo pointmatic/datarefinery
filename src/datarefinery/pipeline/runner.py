@@ -72,6 +72,7 @@ from datarefinery.pipeline.stages.visualizations import (
 )
 from datarefinery.plugins.base import Plugin
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.validator import unlabeled_split_names
 from datarefinery.reporting.drift import (
     compute_drift_placeholder,
     write_drift,
@@ -308,7 +309,12 @@ class PipelineRunner:
 
             _emit("OutputExpectations")
             all_records = [r for split in split_map.values() for r in split]
-            oe = evaluate_output_expectations(all_records, self.recipe.OutputExpectations)
+            has_unlabeled = any(s.unlabeled for s in self.recipe.Input.sources)
+            oe = evaluate_output_expectations(
+                all_records,
+                self.recipe.OutputExpectations,
+                skip_missing_label_field=(self.recipe.Labels.field if has_unlabeled else None),
+            )
             oe.raise_for_status()
             warnings.extend(_wrap(current_stage, (w.message for w in oe.warnings)))
             if stop_after == current_stage:
@@ -365,6 +371,7 @@ class PipelineRunner:
                 split_map,
                 plugin_name=self.plugin.name,
                 label_field=label_field,
+                unlabeled_splits=unlabeled_split_names(self.recipe),
             )
             write_drift(report_root / DRIFT_FILENAME, drift)
 

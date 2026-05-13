@@ -31,6 +31,7 @@ class SplitDriftRecord(BaseModel):
 
     record_count: int
     class_distribution: dict[str, int] | None = None
+    note: str | None = None
 
 
 class FeatureDriftRecord(BaseModel):
@@ -61,16 +62,28 @@ def compute_drift_placeholder(
     *,
     plugin_name: str,
     label_field: str | None,
+    unlabeled_splits: set[str] | None = None,
 ) -> DriftSchema:
     """Build a v1 drift placeholder from materialized splits.
 
     For each split, records the count and (when ``label_field`` is
-    supplied) the class distribution. Feature-level drift summaries are
+    supplied) the class distribution. Splits named in ``unlabeled_splits``
+    have ``class_distribution=None`` and a ``"skipped: unlabeled"`` note
+    so downstream consumers can distinguish "no labels measured" from
+    "labels measured and empty." Feature-level drift summaries are
     intentionally empty in v1 - the schema reserves the slot for
     DataMachine consumers; full per-feature analysis lands post-v1.
     """
+    unlabeled = unlabeled_splits or set()
     split_records: dict[str, SplitDriftRecord] = {}
     for split_name, recs in splits.items():
+        if split_name in unlabeled:
+            split_records[split_name] = SplitDriftRecord(
+                record_count=len(recs),
+                class_distribution=None,
+                note="skipped: unlabeled",
+            )
+            continue
         class_dist: dict[str, int] | None
         if label_field is not None:
             counts: dict[str, int] = {}

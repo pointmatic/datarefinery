@@ -116,7 +116,34 @@ def _eval_record_count(
 def _eval_required_field(
     records: list[Record],
     field: str,
+    *,
+    skip_missing_field: bool = False,
 ) -> tuple[bool, str]:
+    """``required_field`` evaluator.
+
+    When ``skip_missing_field`` is True, records that lack the field
+    entirely are ignored rather than counted as failures; records where
+    the field is present but ``None`` still fail. Used by
+    ``OutputExpectations`` against the label field when unlabeled
+    partitions are present (records from unlabeled sources legitimately
+    omit the label key).
+    """
+    if skip_missing_field:
+        considered = [r for r in records if field in r]
+        bad = [i for i, r in enumerate(considered) if r[field] is None]
+        if bad:
+            sample = bad[:3]
+            more = "" if len(bad) <= 3 else f" (+{len(bad) - 3} more)"
+            return False, (
+                f"required field {field!r} is None in "
+                f"{len(bad)} of {len(considered)} labeled records at indices "
+                f"{sample}{more}"
+            )
+        skipped = len(records) - len(considered)
+        suffix = f"; {skipped} unlabeled record(s) skipped" if skipped else ""
+        return True, (
+            f"required field {field!r} present in all {len(considered)} labeled records{suffix}"
+        )
     missing = [i for i, r in enumerate(records) if field not in r or r[field] is None]
     if missing:
         sample = missing[:3]
@@ -208,11 +235,14 @@ def _eval_distributional(
 def _evaluate_one(
     records: list[Record],
     contract: Contract | Expectation,
+    *,
+    skip_missing_label_field: str | None = None,
 ) -> AssertionResult:
     assertion = contract.assertion
     kind = assertion.get("kind")
     field = contract.field
     severity = contract.severity
+    skip_missing = skip_missing_label_field is not None and field == skip_missing_label_field
 
     if not isinstance(kind, str):
         return AssertionResult(
@@ -235,7 +265,7 @@ def _evaluate_one(
                     severity,
                     "required_field assertion needs a 'field'",
                 )
-            ok, msg = _eval_required_field(records, field)
+            ok, msg = _eval_required_field(records, field, skip_missing_field=skip_missing)
         elif kind == "dtype":
             if field is None:
                 return AssertionResult(
@@ -269,9 +299,14 @@ def _evaluate_one(
 def _evaluate_all(
     records: Iterable[Record],
     contracts: list[Contract] | list[Expectation],
+    *,
+    skip_missing_label_field: str | None = None,
 ) -> ContractResult:
     materialized = list(records)
-    results = tuple(_evaluate_one(materialized, c) for c in contracts)
+    results = tuple(
+        _evaluate_one(materialized, c, skip_missing_label_field=skip_missing_label_field)
+        for c in contracts
+    )
     return ContractResult(results=results)
 
 
@@ -290,11 +325,21 @@ def evaluate_input_contracts(
 def evaluate_output_expectations(
     dataset: Iterable[Record],
     expectations: list[Expectation],
+    *,
+    skip_missing_label_field: str | None = None,
 ) -> ContractResult:
     """Evaluate ``OutputExpectations`` against the materialized dataset.
 
     The dataset is presented as a flat record iterable in v1; per-split
     expectations are not yet expressible (deferred to a post-v1 expectation
     extension).
+
+    When ``skip_missing_label_field`` is set (the recipe's ``Labels.field``
+    name when any source declares ``unlabeled: true``), expectations whose
+    ``field`` equals that name treat records that lack the field as
+    "skipped" rather than failures. Records where the field is present
+    but ``None`` still fail. This lets a recipe that mixes labeled and
+    unlabeled partitions declare ``required_field: <label>`` without
+    being rejected for the unlabeled partition's missing labels.
     """
-    return _evaluate_all(dataset, expectations)
+    return _evaluate_all(dataset, expectations, skip_missing_label_field=skip_missing_label_field)

@@ -5,6 +5,98 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-05-12
+
+### Added
+
+- **Story H.d — Unlabeled partition support.** Adds first-class support
+  for partitions that ship without labels — the Kaggle/inference-set
+  shape where a heldout partition exists only for downstream prediction.
+  A new `InputSource.unlabeled: bool` flag (default `False`) declares
+  that a source's records arrive without labels; the loader honors the
+  declaration and threads the records through label-independent stages
+  (resize, normalize, augmentation) so they land in the materialized
+  instance as a usable dataset for downstream inference. Label-dependent
+  stages (`stratify_by`, `filter_by_label`, label-reading featurizations)
+  are rejected at validate time via the new validator check 21
+  (`unlabeled_consistency`).
+
+  Recipe shape:
+
+  ```yaml
+  Input:
+    sources:
+      - name: train_data
+        type: image_folder
+        path: ./data/train
+        partition: train
+      - name: test_data
+        type: image_flat                 # flat layout, no label_from
+        path: ./data/test
+        partition: test
+        unlabeled: true                  # NEW
+  Splits:
+    ratios: { train: 0.85, val: 0.15 }
+    applies_to: train                    # only sub-partition the labeled side
+    stratify_by: label
+  ```
+
+  Pydantic-level validation: `unlabeled: true` requires the source to
+  declare a `partition` and forbids `label_from`. Validator check 21
+  adds the remaining cross-section rules:
+
+  - `unlabeled: true` requires `type: image_flat` (v1 restriction;
+    `image_folder` derives labels from class subdirectories, which
+    contradicts the declaration). Users with an existing flat-directory
+    `image_folder` layout rewrite it as `image_flat`.
+  - `Splits.stratify_by` is rejected when `Splits.applies_to` names an
+    unlabeled partition (no label field to stratify by).
+  - `filter_by_label` filters and `label_from_path` featurizations
+    targeting an unlabeled split are rejected.
+
+  Reporting:
+
+  - `drift.json` reports `class_distribution: null` for unlabeled splits
+    with a `"skipped: unlabeled"` note (new `SplitDriftRecord.note`
+    field).
+  - `report.md` flags unlabeled splits with `*(unlabeled)*` in the
+    Splits section.
+  - `OutputExpectations` whose `field` equals `Labels.field` treat
+    records lacking the field as "skipped" rather than failures when
+    any source declares `unlabeled: true`. Records where the field is
+    present but `None` still fail — `required_field: <label>` can now
+    coexist with an unlabeled partition.
+
+### Changed
+
+- **Cache identity shift.** Adding `unlabeled: false` as a pydantic
+  default on `InputSource` shifts the canonical recipe bytes for every
+  existing recipe. The pinned canonical hash in
+  `tests/unit/test_canonical_hash_pin.py` moves to
+  `11a6ca0fd15e2995092fe6755ff188c05e9e814344209a9b6926a420fd487731`.
+  Pre-production rules apply per `project-essentials.md` § "Cache
+  identity": users re-materialize after upgrade; no migration ceremony
+  required. Recipes do not need to be edited; the new field defaults to
+  `false` and existing recipes continue to validate unchanged. Recompute
+  cost: every materialized instance is invalidated and must be rebuilt
+  on first access; the per-instance cost is one full pipeline run.
+
+### Documentation
+
+- `features.md` FR-2 enumerated checks: added 21 (`unlabeled_consistency`).
+- `features.md` Inputs: fourth example added for the labeled-train +
+  unlabeled-test shape.
+- `features.md` FR-7 Splits: Behavior bullet 6 documents the unlabeled
+  partition flow; FR-22 Labels: bullet 5 covers the
+  `OutputExpectations` skip rule.
+- `tech-spec.md`: validator section bumped to "21 enumerated checks";
+  `InputSection` row in Data Models gains `unlabeled: bool = False` and
+  model-level validation notes.
+- `docs/guides/recipe-authoring.md`: new "Unlabeled partitions"
+  subsection under § Input → Pre-partitioned sources.
+- `README.md`: new "Unlabeled partitions (Kaggle-style test set with no
+  labels)" subsection under Quickstart.
+
 ## [0.8.1] - 2026-05-12
 
 ### Changed

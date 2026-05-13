@@ -205,6 +205,45 @@ The materialized instance contains three splits: `train` and `val`
 final splits without sub-partitioning. Validator check 20 enforces
 consistency — every record's partition declaration is honored end-to-end.
 
+### Unlabeled partitions (Kaggle-style test set with no labels)
+
+The classic Kaggle shape ships a labeled training set together with an
+unlabeled heldout test partition. Declare the unlabeled source with
+`type: image_flat` (the heldout side has no class subdirectories) and
+`unlabeled: true`:
+
+```yaml
+Input:
+  sources:
+    - name: train_data
+      type: image_folder
+      path: ./my-dataset/train
+      partition: train
+    - name: test_data
+      type: image_flat                  # flat layout, no labels
+      path: ./my-dataset/test
+      partition: test
+      unlabeled: true
+Labels:
+  field: label
+  source: { kind: direct }              # labels exist for labeled partitions
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train                     # only sub-partition the labeled side
+  stratify_by: label
+```
+
+Records loaded from `test_data` land without a `label` field. They
+flow through label-independent stages (resize, normalize) normally;
+label-dependent stages (`stratify_by` on an unlabeled partition,
+`filter_by_label`, label-reading featurizations) are rejected at
+validate time (check 21). `report.md` flags the unlabeled split with
+`*(unlabeled)*`; `drift.json` reports `class_distribution: null` with
+a `"skipped: unlabeled"` note. The materialized `dataset/test.jsonl`
+is ready for downstream inference — train a model on `train`+`val`,
+predict against `test`, and submit. (Inference itself is external to
+DataRefinery.)
+
 ## Recipe anatomy
 
 A recipe is a single YAML file. Field names match the section set

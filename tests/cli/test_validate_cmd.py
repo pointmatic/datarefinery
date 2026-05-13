@@ -73,12 +73,12 @@ def test_recipe_with_failures_exits_one(tmp_path: Path) -> None:
     assert "fail" in result.stdout
 
 
-def test_validate_renders_all_twenty_check_rows(tmp_path: Path) -> None:
+def test_validate_renders_all_twenty_one_check_rows(tmp_path: Path) -> None:
     path = _write(tmp_path, _clean_recipe_dict())
     result = runner.invoke(app, ["validate", str(path)])
     assert result.exit_code == 0
     # Count rows by looking for each check id; the check_id column is rendered.
-    for check_id in range(1, 21):
+    for check_id in range(1, 22):
         assert f" {check_id} " in result.stdout or f"│ {check_id} " in result.stdout
 
 

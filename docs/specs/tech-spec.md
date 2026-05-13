@@ -103,7 +103,7 @@ src/datarefinery/
     __init__.py
     models.py                # pydantic v2 Recipe model + per-section models
     loader.py                # FR-1 load + schema-version gate
-    validator.py             # FR-2 enumerated checks 1–20
+    validator.py             # FR-2 enumerated checks 1–21
     canonical.py             # JSON-canonical bytes for cache identity (FR-4)
     variants.py              # FR-14 variant overlay
   cache/
@@ -268,7 +268,7 @@ Edge cases mapped to features.md FR-1:
 
 ### `recipe.validator` (FR-2)
 
-Each of the 20 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
+Each of the 21 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
 
 ```python
 def validate(recipe: Recipe, plugin: Plugin) -> ValidationReport: ...
@@ -480,7 +480,7 @@ Per-section models (sketch; full field definitions land alongside the FR-1 imple
 
 | Model | Required fields |
 |---|---|
-| `InputSection` | `sources: list[InputSource]` (each with `name`, `type`, `path`, optional `label_from: LabelFromSpec`, optional `partition: str`) |
+| `InputSection` | `sources: list[InputSource]` (each with `name`, `type`, `path`, optional `label_from: LabelFromSpec`, optional `partition: str`, `unlabeled: bool = False`). Model-level validation: `unlabeled=true` requires `partition` and forbids `label_from`. |
 | `LabelFromSpec` | `path: pathlib.Path`, `join: Literal["by_id", "by_row_order"]`, `header: list[str] | None`, `id_field: str | None`, `label_field: str`. When `header` is omitted the loader reads column names from the CSV's header row; when `header` is provided the file is treated as **headerless** and the recipe-supplied names *are* the column names (recipe-as-truth, no heuristic header detection). |
 | `OutputSection` | `record_schema: dict[str, FieldSpec]` (field name -> dtype/shape) |
 | `LabelsSection` | `field: str`, `source: LabelSource` (direct or derived; FR-22) |

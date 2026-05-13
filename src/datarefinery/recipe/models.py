@@ -66,6 +66,23 @@ class InputSource(_Frozen):
     path: Path
     label_from: LabelFromSpec | None = None
     partition: str | None = None
+    unlabeled: bool = False
+
+    @model_validator(mode="after")
+    def _validate_unlabeled(self) -> InputSource:
+        if self.unlabeled:
+            if self.partition is None:
+                raise ValueError(
+                    f"InputSource {self.name!r}: unlabeled=true requires 'partition' "
+                    f"to be declared (unlabeled records must live in a named partition)"
+                )
+            if self.label_from is not None:
+                raise ValueError(
+                    f"InputSource {self.name!r}: unlabeled=true is incompatible with "
+                    f"label_from (a sidecar manifest provides labels, contradicting "
+                    f"unlabeled-ness)"
+                )
+        return self
 
 
 class InputSection(_Frozen):
