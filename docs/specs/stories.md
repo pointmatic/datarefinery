@@ -359,6 +359,27 @@ Reverses the deferred-PyPI decision recorded for Phase G. The unprefixed `datare
 - **Renaming the Python package or import name.** Distribution-side only.
 - **Backporting older versions to PyPI.** Only `v0.9.1` and later are published; pre-v0.9.1 tags remain GitHub-Release-only.
 
+### Story H.f: v0.9.2 Drop TestPyPI from publish workflow [Done]
+
+Bug fix on top of H.e. The `publish.yml` shipped in H.e included a `publish-testpypi` job referencing a GitHub Actions environment `testpypi` that did not exist in the repo, causing the v0.9.1 tag's publish run to fail in CI before reaching the PyPI step. The TestPyPI half was added speculatively from `tech-spec.md`'s pre-shipped recommendation; the developer did not authorise the extra hop and prefers a single `build → publish-pypi` flow.
+
+This story strips the TestPyPI half entirely and bumps to v0.9.2 so the next tag actually publishes.
+
+**Tasks:**
+
+- [x] `.github/workflows/publish.yml`: delete the `publish-testpypi` job; `publish-pypi` depends directly on `build`.
+- [x] `docs/guides/releasing.md`: drop the TestPyPI sub-bullet from step 6, drop the TestPyPI binding from § "One-time PyPI Trusted Publisher setup", drop the `testpypi` GitHub environment row. Keep the `pypi` environment + required-reviewer guidance.
+- [x] `docs/specs/tech-spec.md` § Publishing: drop the TestPyPI job description; the workflow is `build → publish-pypi` only.
+- [x] `CHANGELOG.md`: new `## [0.9.2]` section documenting the revert and the CI failure that prompted it.
+- [x] `project_pypi_deferred.md` memory: remove the TestPyPI mention; the publish flow is single-hop.
+- [x] `pyproject.toml` and `src/datarefinery/__init__.py`: bump to `0.9.2`.
+- [x] Verify: tests green, ruff + ruff format + mypy clean, canonical-hash pin unchanged.
+
+**Out of Scope**
+
+- Re-adding TestPyPI later as a separate workflow. If a future story needs it, it can be added back deliberately with both bindings in place.
+- Investigating the v0.9.1 tag's publish-run failure beyond the `testpypi`-env cause. The GH Release for v0.9.1 succeeded (different workflow); only the publish pipeline broke.
+
 ---
 
 ## Future

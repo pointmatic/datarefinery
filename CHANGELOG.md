@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-05-12
+
+### Fixed
+
+- **Story H.f — Drop TestPyPI from publish workflow.** The
+  `publish.yml` shipped in H.e (v0.9.1) included a `publish-testpypi`
+  job that referenced a GitHub Actions environment named `testpypi`
+  which did not exist in the repo. The v0.9.1 tag's publish run
+  failed in CI at the TestPyPI step before reaching the production
+  PyPI upload, so no successful PyPI publish ever happened for
+  v0.9.1.
+
+  This release removes the TestPyPI half entirely. The publish
+  workflow is now a single `build → publish-pypi` flow; PyPI is the
+  only upload target. The required-reviewer protection on the `pypi`
+  GitHub environment continues to gate each production publish.
+
+  Setup simplification: only one PyPI trusted-publisher binding
+  (`ml-datarefinery` on https://pypi.org) and one GitHub Actions
+  environment (`pypi`) need to exist before publishing. The
+  TestPyPI/`testpypi` binding documented in v0.9.1's release notes is
+  no longer required and can be deleted if it was created.
+
+  No code or tests touched; canonical-hash pin unchanged. First
+  *successful* PyPI publish is v0.9.2.
+
 ## [0.9.1] - 2026-05-12
 
 ### Changed

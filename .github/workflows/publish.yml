@@ -1,17 +1,16 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
 #
-# Publish: on `v*` tag push, build sdist + wheel and upload to
-# TestPyPI then PyPI via PyPI Trusted Publishing (OIDC, no long-lived
-# API tokens). Distribution name is `ml-datarefinery`; the import name
-# and console script stay `datarefinery`.
+# Publish: on `v*` tag push, build sdist + wheel and upload to PyPI
+# via PyPI Trusted Publishing (OIDC, no long-lived API tokens).
+# Distribution name is `ml-datarefinery`; the import name and console
+# script stay `datarefinery`.
 #
 # Preconditions (configured once, outside this workflow):
 #   - PyPI "pending publisher" bound to repo `pointmatic/datarefinery`,
 #     workflow `publish.yml`, environment `pypi`.
-#   - TestPyPI same binding under environment `testpypi`.
-#   - GitHub Actions environments `pypi` (with required-reviewer
-#     protection) and `testpypi` (no protection).
+#   - GitHub Actions environment `pypi` with required-reviewer
+#     protection (a maintainer must approve each production deploy).
 #
 # This workflow runs in parallel with `release.yml`; the GitHub Release
 # is created from the same tag and CHANGELOG section by that workflow.
@@ -58,30 +57,9 @@ jobs:
           name: dist
           path: dist/
 
-  publish-testpypi:
-    name: Publish to TestPyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/ml-datarefinery
-    permissions:
-      id-token: write
-    steps:
-      - name: Download built distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
   publish-pypi:
     name: Publish to PyPI
-    needs: publish-testpypi
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: pypi

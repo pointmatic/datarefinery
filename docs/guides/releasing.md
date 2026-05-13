@@ -70,12 +70,10 @@ distribution to TestPyPI and PyPI.
 
    1. Verifies `pyproject.toml`'s version matches the tag.
    2. Builds `sdist` + `wheel` via `python -m build`.
-   3. Uploads to **TestPyPI** under the `testpypi` GitHub environment
-      (no approval gate) via PyPI Trusted Publishing (OIDC; no API
-      token in the repo).
-   4. Uploads to **PyPI** under the `pypi` GitHub environment
+   3. Uploads to **PyPI** under the `pypi` GitHub environment
       (required-reviewer protection — a maintainer must approve the
-      deploy in the GitHub UI before the upload runs).
+      deploy in the GitHub UI before the upload runs) via PyPI
+      Trusted Publishing (OIDC; no API token in the repo).
 
    The distribution uploaded is `ml-datarefinery`; once approved,
    `pip install ml-datarefinery==X.Y.Z` works from any clean venv.
@@ -87,9 +85,9 @@ distribution to TestPyPI and PyPI.
    - The body contains the CHANGELOG section verbatim.
    - The "Source code" archives (`zip`, `tar.gz`) are attached
      (GitHub generates these automatically).
-   - The Publish workflow's PyPI job shows green (or, if you have not
-     yet approved the `pypi` environment, it shows "Waiting for
-     review").
+   - The Publish workflow's `publish-pypi` job shows green (or, if you
+     have not yet approved the `pypi` environment, it shows "Waiting
+     for review").
 
 8. **Verify the PyPI distribution.** In a fresh venv:
 
@@ -147,7 +145,7 @@ manually delete the published Release first.
 
 Before the first publish (and again for any new project name), the
 trusted-publisher binding must be registered on PyPI **and** the
-matching GitHub Actions environments must exist. This is a manual,
+matching GitHub Actions environment must exist. This is a manual,
 one-time step; the workflow cannot bootstrap itself.
 
 1. **PyPI — pending publisher.** Log in to https://pypi.org → Account
@@ -160,18 +158,12 @@ one-time step; the workflow cannot bootstrap itself.
    - **Workflow filename:** `publish.yml`
    - **Environment name:** `pypi`
 
-2. **TestPyPI — pending publisher.** Repeat on
-   https://test.pypi.org with environment name `testpypi`.
-
-3. **GitHub — Actions environments.** Repo → Settings →
-   Environments → "New environment":
-
-   - Create `pypi`. Under "Deployment protection rules", add
-     "Required reviewers" and select the maintainer team. This is the
-     human gate that blocks the production-PyPI upload until someone
-     clicks "Approve and deploy" on each release.
-   - Create `testpypi`. No protection rules — TestPyPI uploads run
-     automatically on every tag.
+2. **GitHub — `pypi` Actions environment.** Repo → Settings →
+   Environments → "New environment" → name `pypi`. Under "Deployment
+   protection rules", add "Required reviewers" and select the
+   maintainer team. This is the human gate that blocks the
+   production-PyPI upload until someone clicks "Approve and deploy"
+   on each release.
 
 After the first successful PyPI upload, the "pending publisher" on
 PyPI becomes a regular trusted publisher and stops appearing in the
