@@ -711,7 +711,7 @@ Minor bump (v0.13.0). Cache-invalidating: introduces the `imagecorruptions_apply
 
 - Same as H.m's umbrella out-of-scope: FR-VIZ-3 / FR-VIZ-4 corruption visualizations; pre-generated corruption-dataset source types.
 
-### Story H.n: v0.14.0 `stats_from_instance` on `normalize` + FR-ARCH-1 loose-coupling decision documented [Planned]
+### Story H.n: `stats_from_instance` on `normalize` + FR-ARCH-1 loose-coupling decision documented (umbrella) [Planned]
 
 A new parameter on `Transformations` operations that have a `fit` phase (today: `normalize`; extensible to future fit-phase ops). When set, the operation imports its fitted statistics from a sibling materialized DataRefinery instance rather than fitting locally. Parameter shape:
 
@@ -727,29 +727,82 @@ Train/inference normalization parity is a correctness invariant: evaluation data
 
 **FR-ARCH-1 decision (documented here, not implemented as a separate change):** **loose coupling**. The sibling is referenced by recipe path/name; no `recipe_hash` is recorded as a component of this recipe's cache identity. Re-materializing the upstream recipe does not automatically invalidate downstream caches — the user is responsible for re-materializing downstream when upstream changes. Loose-coupling failure modes are detectable in small-scale single-author workflows, which is the workflow this sub-bundle enables. Tight coupling (sibling `recipe_hash` participates in cache identity, so upstream changes auto-invalidate downstream) is deferred to Future as a follow-up upgrade — needed for multi-team or longitudinal workflows where the loose-coupling failure mode is harder to catch by inspection.
 
-Minor bump (v0.14.0). Cache-invalidating (new field on `normalize`).
+Cache-invalidating (new field on `normalize`). Pre-prod invalidation acceptable per `project-essentials.md` § "Cache identity is the reproducibility contract" pre-production rules.
 
-**Tasks:**
+**Child stories.** This work is split for incremental review:
 
-- [ ] Add `StatsFromInstanceSpec` pydantic model in `src/datarefinery/recipe/models.py`: `recipe: str` (path-or-name), `op_id: str`. Frozen.
-- [ ] Update `normalize` op schema: add `stats_from_instance: StatsFromInstanceSpec | None = None`, mutually exclusive with `fit_source`. Validate at recipe-validation time that exactly one of `fit_source` / `stats_from_instance` is set.
-- [ ] Implement sibling-instance resolver in `src/datarefinery/cache/loader.py` (or equivalent): resolve `recipe` path-or-name against the cache root, locate the most-recent matching instance, read `fitted_statistics/<op_id>/`. Explicit failures with clear messages for: sibling-not-found, op_id-not-in-sibling, statistics-format-incompatible.
-- [ ] Add an explicit comment in the resolver: "intentional loose coupling — sibling `recipe_hash` is NOT mixed into this recipe's cache identity. Re-materializing upstream does NOT auto-invalidate downstream. Tight-coupling upgrade tracked in Future."
-- [ ] Modify `normalize` apply path: when `stats_from_instance` is set, skip the fit phase and use imported statistics directly. No change to apply-phase behavior beyond statistics source.
-- [ ] Tests in `tests/transformations/test_normalize_stats_from_instance.py`: end-to-end with two sibling recipes (train recipe normalizes locally; eval recipe imports from train recipe's instance); byte-identical eval output across repeated runs (loose coupling does not affect within-run determinism); clear errors on all three failure modes; cross-recipe parity test that confirms the apply-phase output matches what an in-recipe `fit_source: train` would have produced.
-- [ ] `docs/specs/features.md` § FR-10 (Transformations) Behavior: document the new `stats_from_instance` parameter as a mutually exclusive alternative to `fit_source`; summarize the four-scenario motivation (distribution-shift / A-B / cross-team / longitudinal evaluation). § FR-10 Edge Cases: add bullets for the three failure modes (sibling-not-found, op_id-not-in-sibling, statistics-format-incompatible). § FR-4 (Semantic Cache Identity) Edge Cases: add a bullet documenting the FR-ARCH-1 loose-coupling decision — sibling-instance references do NOT participate in cache identity in v1; downstream re-materialization on upstream change is user-managed; tight coupling is a documented Future upgrade. § FR-6 (Fitted Statistics Persistence) Behavior: add a sub-point that the instance's library API exposes fitted statistics for use by *other* recipes via `stats_from_instance`.
-- [ ] `docs/specs/tech-spec.md` § Key Component Design: add a sub-heading near `pipeline.fitted_stats` (or `cache.layout`, whichever owns the resolver) declaring the sibling-instance resolver function with signature, lookup rules (recipe-path-or-name → cache root → most-recent matching instance → read `fitted_statistics/<op_id>/`), and the three exception types for failure modes. § Cross-Cutting Concerns > Caching: append a paragraph stating that sibling-instance references are intentionally loose-coupled in v1 — sibling `recipe_hash` is NOT a component of this recipe's cache identity; tight coupling is a planned schema-version-bumped upgrade. § Data Models > Recipe model section table: extend the `TransformationOp` row to reference the new `StatsFromInstanceSpec` model and note the mutual exclusion with `fit_source`. § Schema versioning: add a sentence acknowledging that tight coupling (Future) will be a `schema_version` bump.
-- [ ] `docs/specs/project-essentials.md`: append a new `###` subsection under § "Cache identity is the reproducibility contract — invalidations are ceremonious" titled along the lines of "Sibling-instance dependencies are loose-coupled in v1" — capture the bare fact, the user-managed-recompute consequence, and the deferred-tight-coupling pointer. (`plan_phase`'s Step 8 will revisit and refine; this task captures the bare fact in the right file.)
-- [ ] `README.md`: no edit required for this story. The Recipe-anatomy example does not use `stats_from_instance`; sibling-recipe authoring is covered by the recipe-authoring guide, not the README. Plugin model section unchanged.
-- [ ] `CHANGELOG.md`: `## [0.14.0]` "Added" section. Call out the loose-coupling semantics prominently — users must re-materialize downstream after upstream changes.
-- [ ] Bump to `0.14.0`.
-- [ ] Verify: tests, lint, mypy, canonical-hash pin.
+- **H.n.1 — Sibling-instance fitted-stats resolver.** Standalone utility module that takes `(cache_root, recipe_path, op_id)` and returns the parsed fitted statistics, with three explicit failure modes. Unit-tested against a hand-built cache directory; no recipe-model changes; no `normalize` integration. Unversioned (phase-bundled).
+- **H.n.2 — `StatsFromInstanceSpec` + `normalize` apply-path integration.** `StatsFromInstanceSpec` pydantic model, mutual-exclusion validator check, `normalize` apply branch that calls the resolver. Cross-recipe integration tests via `PipelineRunner`. Unversioned (phase-bundled).
+- **H.n.3 — v0.14.0 docs + project-essentials + release.** `features.md` / `tech-spec.md` / `project-essentials.md` updates, `CHANGELOG`, version bump. Ships v0.14.0.
 
-**Out of Scope**
+**Out of Scope** *(applies across H.n.1 / H.n.2 / H.n.3)*
 
 - Tight coupling (sibling `recipe_hash` participating in cache identity). Deferred to Future per the FR-ARCH-1 decision.
 - Extending `stats_from_instance` to other fit-phase ops beyond `normalize`. The parameter is designed to be reusable, but no other fit-phase op exists today; extending happens when a second fit-phase op lands.
 - Tooling to detect or warn about stale downstream caches when upstream changes. The loose-coupling decision accepts this as user-managed; a "detect-stale" linter is a Future enhancement, not a v0.14.0 requirement.
+
+### Story H.n.1: Sibling-instance fitted-stats resolver [Done]
+
+First of three H.n child stories. Stands alone as a utility module that knows how to walk the cache layout, find the most-recent matching instance for a given recipe, and read its `fitted_statistics/<op_id>/`. No recipe-model changes, no `normalize` integration yet (that's H.n.2).
+
+Unversioned (phase-bundled; H.n.3 carries the v0.14.0 release).
+
+**Tasks:**
+
+- [x] Create `src/datarefinery/cache/sibling_stats.py` with Apache-2.0 header. Public function `resolve_sibling_stats(cache_root: Path, recipe_path: Path, op_id: str, *, required_vectors: tuple[str, ...] = (), required_scalars: tuple[str, ...] = ()) -> FittedStatistics`. *(Returns a `FittedStatistics` handle pointed at the sibling's `fitted_statistics/` rather than an eagerly-loaded dict — matches the existing in-process API for fitted statistics access, lets the caller read named vectors/scalars via the standard `get_vector(op_id, name)` / `get_scalar(op_id, name)` interface, and lets the resolver pre-validate that any caller-declared required statistics are present at resolve time.)* Resolution path: read & parse the recipe at `recipe_path` via `recipe.loader.load`; compute its canonical SHA-256 hash via `recipe.canonical.to_canonical_bytes`; look up promoted instances under `<cache_root>/instances/<recipe16>/`; among candidates whose `manifest.json` is readable, pick the most-recent by `Manifest.created_at` (path-lexicographic tiebreak); read `fitted_statistics/<op_id>/` and verify the op directory exists.
+- [x] Three explicit failure modes via dedicated exception types (`SiblingInstanceNotFoundError`, `SiblingOpNotFoundError`, `SiblingStatsIncompatibleError`) extending `MaterializeError`. Each carries a clear message naming the lookup path / op_id / file that failed.
+- [x] Prominent module-docstring comment captures the intentional-loose-coupling decision (sibling `recipe_hash` does NOT enter the consumer's cache identity; tight coupling tracked in Future).
+- [x] Unit tests in `tests/unit/test_sibling_stats.py` *(placed under `tests/unit/` rather than the task's suggested `tests/cache/` to match the established convention for cache-layer tests in this repo — see `test_cache_identity.py`, `test_cache_layout.py`)*: hand-build a synthetic cache-layout directory tree with a known recipe + a `fitted_statistics/norm/{mean.parquet,std.parquet}` pair via real `FittedStatistics.put_vector` calls. 10 tests: happy path (returns the handle, vectors read correctly); most-recent-by-`created_at` selection across two instances sharing a recipe; `SiblingInstanceNotFoundError` when the shard directory is missing; `SiblingInstanceNotFoundError` when the shard exists but contains no valid manifest; `SiblingOpNotFoundError` when no `op_id` directory; `SiblingOpNotFoundError` when only a different `op_id` is present; `SiblingStatsIncompatibleError` for missing required vector / missing required scalar / corrupt parquet that pyarrow can't read; loose-coupling invariant test confirming the resolver locates instances by recipe_hash only (input_hash and seed irrelevant to lookup).
+- [x] No recipe-model changes. No `normalize` op modification. No `Recipe` validator changes.
+- [x] No version bump (phase-bundled with H.n.3).
+- [x] Verify: tests green for the new file (10 tests), full suite still green (827 vs. 817 before H.n.1), ruff + ruff format + mypy clean.
+
+**Out of Scope (H.n.1 specifically)**
+
+- Pydantic model / `normalize` schema / mutual-exclusion validator — H.n.2.
+- End-to-end cross-recipe materialization tests — H.n.2.
+- Documentation updates (features.md / tech-spec.md / project-essentials.md / CHANGELOG) — H.n.3.
+
+### Story H.n.2: `StatsFromInstanceSpec` + `normalize` apply-path integration [Planned]
+
+Second of three H.n child stories. Builds the recipe-surface and apply-path integration on top of H.n.1's resolver. Unversioned (phase-bundled).
+
+**Tasks:**
+
+- [ ] Add `StatsFromInstanceSpec` pydantic model in `src/datarefinery/recipe/models.py`: `recipe: str` (path-or-name; v1 accepts a filesystem path string), `op_id: str`. Frozen.
+- [ ] Validator check (new or extension of an existing one): a `normalize` op's `params["stats_from_instance"]` and the op's `fit_source` field are mutually exclusive; exactly one must be set when the op is `normalize`. Adding a new numbered check (22) following the existing v1 enumeration; update the `features.md` enumerated list count to 22 as part of H.n.3.
+- [ ] Modify `NormalizeOp` apply path in `src/datarefinery/plugins/image_classification/operations/transformations.py`: when `params["stats_from_instance"]` is present, instead of fitting locally, call `cache.sibling_stats.resolve_sibling_stats(...)` to load mean/std from the sibling instance, and run apply with those imported statistics.
+- [ ] Tests in `tests/plugins/image_classification/test_normalize_stats_from_instance.py`:
+  - End-to-end with two sibling recipes through `PipelineRunner`: train recipe normalizes locally (writes `fitted_statistics/norm/`); eval recipe imports via `stats_from_instance` pointing at the train recipe path. Eval output is byte-identical across repeated runs.
+  - Cross-recipe parity: imported-stats apply output equals what an in-recipe `fit_source: train` would have produced when given the same train data.
+  - All three resolver failure modes surface through the apply path with clear messages.
+  - Mutual-exclusion validator rejects a recipe declaring both `fit_source` and `stats_from_instance`.
+- [ ] No version bump (phase-bundled with H.n.3).
+- [ ] Verify: tests, lint, mypy.
+
+**Out of Scope (H.n.2 specifically)**
+
+- Documentation updates beyond the validator's new check number — H.n.3.
+
+### Story H.n.3: v0.14.0 `stats_from_instance` docs + project-essentials + release [Planned]
+
+Third and final H.n child story. Ships v0.14.0 and documents the loose-coupling decision in three doc files.
+
+Minor bump (v0.14.0). Cache-invalidating (the new `stats_from_instance` field changes the canonical bytes of any `normalize` op recipe). Pre-prod invalidation acceptable per `project-essentials.md` § "Cache identity is the reproducibility contract" pre-production rules.
+
+**Tasks:**
+
+- [ ] `docs/specs/features.md` § FR-10 (Transformations) Behavior: document the new `stats_from_instance` parameter as a mutually exclusive alternative to `fit_source`; summarize the four-scenario motivation (distribution-shift / A-B / cross-team / longitudinal evaluation). § FR-10 Edge Cases: add bullets for the three failure modes (sibling-not-found, op_id-not-in-sibling, statistics-format-incompatible). § FR-2 enumerated checks: increment the count and add check 22 (mutual exclusion). § FR-4 (Semantic Cache Identity) Edge Cases: add a bullet documenting the FR-ARCH-1 loose-coupling decision — sibling-instance references do NOT participate in cache identity in v1; downstream re-materialization on upstream change is user-managed; tight coupling is a documented Future upgrade. § FR-6 (Fitted Statistics Persistence) Behavior: add a sub-point that the instance's library API exposes fitted statistics for use by *other* recipes via `stats_from_instance`.
+- [ ] `docs/specs/tech-spec.md` § Key Component Design: add a sub-heading for `cache.sibling_stats` declaring the resolver function signature, lookup rules (recipe path → canonical hash → cache root lookup → most-recent matching instance → read `fitted_statistics/<op_id>/`), and the three exception types for failure modes. § Cross-Cutting Concerns > Caching: append a paragraph stating that sibling-instance references are intentionally loose-coupled in v1 — sibling `recipe_hash` is NOT a component of this recipe's cache identity; tight coupling is a planned schema-version-bumped upgrade. § Data Models > Recipe model section table: extend the `TransformationOp` row to reference the new `StatsFromInstanceSpec` model and note the mutual exclusion with `fit_source`. § Schema versioning: add a sentence acknowledging that tight coupling (Future) will be a `schema_version` bump.
+- [ ] `docs/specs/project-essentials.md`: append a new `###` subsection under § "Cache identity is the reproducibility contract — invalidations are ceremonious" titled along the lines of "Sibling-instance dependencies are loose-coupled in v1" — capture the bare fact, the user-managed-recompute consequence, and the deferred-tight-coupling pointer.
+- [ ] `README.md`: no edit required.
+- [ ] `CHANGELOG.md`: `## [0.14.0]` "Added" section. Call out the loose-coupling semantics prominently — users must re-materialize downstream after upstream changes.
+- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.14.0`.
+- [ ] Verify: tests, lint, mypy, canonical-hash pin.
+
+**Out of Scope (H.n.3 specifically)**
+
+- Same as H.n's umbrella out-of-scope: tight coupling, extending `stats_from_instance` to other fit-phase ops, stale-downstream linter.
 
 ---
 
