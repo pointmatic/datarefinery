@@ -18,6 +18,8 @@ EXPECTED_OPERATIONS = frozenset(
     {
         "filter_by_label",
         "random_sample",
+        "sample_per_class",
+        "sample_per_class_fractional",
         "duplicate_minority_class",
         "resize",
         "normalize",

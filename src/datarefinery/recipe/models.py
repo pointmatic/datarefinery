@@ -138,6 +138,44 @@ class FilterOp(_Frozen):
     seed: int | None = None
 
 
+class SamplePerClassParams(_Frozen):
+    """FR-FILTER-1 params for `sample_per_class` (Story H.j).
+
+    `n_per_class` is required and must be positive. `label` tags surviving
+    records via the plugin's `sample_per_class_tags` field;
+    `exclude_already_labeled` removes records already carrying any of the
+    named tags from the candidate pool, enabling disjoint-pool selection.
+    """
+
+    n_per_class: int = Field(gt=0)
+    label: str | None = None
+    exclude_already_labeled: list[str] | None = None
+
+
+class SamplePerClassFractionalParams(_Frozen):
+    """FR-FILTER-2 params for `sample_per_class_fractional` (Story H.k).
+
+    Per-class surviving count = `floor(n_per_class_base * fractions.get(label, 1.0))`.
+    Missing labels default to 1.0 (full base count). Each fraction must be
+    in `[0.0, 1.0]`. Inherits `label` / `exclude_already_labeled` semantics
+    from `SamplePerClassParams`.
+    """
+
+    n_per_class_base: int = Field(gt=0)
+    fractions: dict[str, float] = Field(default_factory=dict)
+    label: str | None = None
+    exclude_already_labeled: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _validate_fractions(self) -> SamplePerClassFractionalParams:
+        for k, v in self.fractions.items():
+            if not 0.0 <= v <= 1.0:
+                raise ValueError(
+                    f"sample_per_class_fractional: fractions[{k!r}]={v} must be in [0.0, 1.0]"
+                )
+        return self
+
+
 class GenerationOp(_Frozen):
     name: str
     inputs: list[str]

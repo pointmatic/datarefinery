@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-05-22
+
+### Added
+
+- **Story H.k — `sample_per_class_fractional` filter op
+  (FR-FILTER-2).** New `Filters` operation in the
+  `image_classification` plugin: per-class subsampling at independent
+  rates. Per-class surviving count = `floor(n_per_class_base *
+  fractions.get(label, 1.0))`. Missing labels default to 1.0 (full base
+  count); `fractions[label] = 0.0` drops that class entirely.
+
+  - Parameters: `n_per_class_base: int > 0`, `fractions: dict[str,
+    float]` (each in `[0.0, 1.0]`), `seed: int`, plus inherited `label`
+    and `exclude_already_labeled` from FR-FILTER-1. New frozen pydantic
+    model `recipe.models.SamplePerClassFractionalParams`.
+  - Same disjoint-pool tagging mechanism as `sample_per_class`: a
+    `sample_per_class_fractional` op can chain with a
+    `sample_per_class` (or another fractional) via
+    `exclude_already_labeled` to construct controlled-imbalance datasets
+    disjoint from a balanced training pool.
+
+### Changed
+
+- **Shared stratified-sampling helper.** Extracted the per-record-seeded
+  ranking + label-tagging logic from `sample_per_class` (H.j) into
+  `plugins/image_classification/filters_stratified_sampling.py`
+  (`stratified_seeded_sample`). Both H.j and H.k ops now call into the
+  helper with their respective per-class target derivations. Behavior of
+  `sample_per_class` is unchanged; the canonical-hash pin (the fixture
+  recipe does not use either op) is unchanged.
+
+### Notes
+
+- **Cache invalidation (pre-prod).** Introducing the new op kind
+  perturbs the canonical-form vocabulary the plugin advertises.
+  Pre-production invalidation is acceptable per
+  `project-essentials.md` § "Cache identity is the reproducibility
+  contract" pre-production rules.
+
+## [0.10.0] - 2026-05-21
+
+### Added
+
+- **Story H.j — `sample_per_class` filter op with disjoint-pool labeling
+  (FR-FILTER-1).** New `Filters` operation in the `image_classification`
+  plugin: stratified-by-label deterministic subsampling (`n_per_class`
+  records per label, seeded via the existing per-record-seeding scheme
+  in `pipeline.workers.per_record_seed`). The selection is invariant to
+  input ordering and worker count.
+
+  - **Two modes.** When `label` is omitted the op is destructive — only
+    the chosen records pass through. When `label` is supplied the op is
+    non-destructive marking: the full record set passes through and the
+    chosen records are tagged in `sample_per_class_tags`. The
+    destructive cut happens in a follow-up op (another
+    `sample_per_class` with `exclude_already_labeled`, or `drop_by_label`
+    in H.l).
+  - **Disjoint-pool pattern.** Chaining two `sample_per_class` ops with
+    the second referencing the first's `label` in
+    `exclude_already_labeled` selects two non-overlapping balanced sets
+    from one labeled source in a single recipe.
+  - New pydantic model `recipe.models.SamplePerClassParams` (frozen):
+    `n_per_class: int > 0`, `label: str | None`, `exclude_already_labeled:
+    list[str] | None`. Validated inside the op via `model_validate`;
+    recipe-level validation still routes through the plugin's
+    `OperationSpec` (check 18).
+
+### Changed
+
+- **Cache invalidation (pre-prod).** Introducing a new op kind perturbs
+  the canonical-form vocabulary the plugin advertises. Pre-production
+  invalidation is acceptable per `project-essentials.md` § "Cache
+  identity is the reproducibility contract" pre-production rules. The
+  pinned canonical-hash fixture in
+  `tests/unit/test_canonical_hash_pin.py` does not use the new op and is
+  unchanged.
+
 ## [0.9.4] - 2026-05-12
 
 ### Documentation

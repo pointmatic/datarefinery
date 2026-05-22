@@ -506,7 +506,7 @@ Alternatives considered and not recommended:
 - Implementing the `imagecorruptions_apply` op itself. That's H.m.
 - Performance benchmarking of the corruption calls. The determinism check is enough for a spike; latency is a non-blocking concern that surfaces only if H.m's integration tests are slow enough to warrant attention.
 
-### Story H.j: v0.10.0 `sample_per_class` filter op with disjoint-pool labeling [Planned]
+### Story H.j: v0.10.0 `sample_per_class` filter op with disjoint-pool labeling [Done]
 
 A new `Filters` operation `sample_per_class` that produces a balanced subsample of `n_per_class` records per label, drawn deterministically from incoming records (stratified by label, seeded from the recipe's master seed). Optional `label` param tags surviving records with a partition marker readable by downstream filters; optional `exclude_already_labeled` param removes records already carrying any of the listed tags from the candidate pool, enabling disjoint-pool selection in a single recipe. See FR-FILTER-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
@@ -518,17 +518,17 @@ Minor bump (v0.10.0) — new feature. Cache-invalidating: introduces a new op ki
 
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/filters_sample_per_class.py` with the standard Apache-2.0 header (`# Copyright (c) 2026 Pointmatic` / `# SPDX-License-Identifier: Apache-2.0`).
-- [ ] Add `SamplePerClassParams` pydantic model in `src/datarefinery/recipe/models.py`: `n_per_class: int` (positive), `label: str | None = None`, `exclude_already_labeled: list[str] | None = None`. Frozen.
-- [ ] Implement op: stratified-by-label deterministic sampling using per-record seeding (`sha256(global_seed.to_bytes(8, 'big') + record_id_bytes).digest()[:8]`), with optional label tagging on surviving records and optional candidate-pool exclusion via `exclude_already_labeled`.
-- [ ] Register op in `src/datarefinery/plugins/image_classification/__init__.py`.
-- [ ] Tests in `tests/plugins/image_classification/test_filters_sample_per_class.py`: balanced subsample without tagging; with `label` tag emitted on surviving records; disjoint-pool case (two `sample_per_class` ops chained, second uses `exclude_already_labeled` to skip the first's selection); deterministic across `workers=1/2/4` byte-identical.
-- [ ] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `sample_per_class` as a new plugin-contributed op; document the `n_per_class`, `label`, and `exclude_already_labeled` params; describe the disjoint-pool pattern (chained `sample_per_class` ops with `exclude_already_labeled` referencing the prior `label`) as a worked use case. Add an edge-case bullet covering tagging-without-existing-label (records without the prior tag are not excluded).
-- [ ] `docs/specs/tech-spec.md` § Package Structure: add `filters_sample_per_class.py` under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend the `FilterOp` row to reference the new `SamplePerClassParams` model (params validated via the plugin's `OperationSpec`, check 18). § Cross-Cutting Concerns > Determinism: confirm the new op uses the existing per-record seeding scheme; no new seeding code needed.
-- [ ] `README.md`: no edit required for this story. The Plugin model section's existing "etc." covers the new op; CLI verb table check-count is unchanged unless this story adds a new validator check (it does not).
-- [ ] `CHANGELOG.md`: new `## [0.10.0]` "Added" section noting the new op and pre-prod cache invalidation.
-- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.10.0`.
-- [ ] Verify: tests green, ruff + ruff format + mypy clean, canonical-hash pin unchanged (the pinned fixture recipe must not use the new op).
+- [x] Create `src/datarefinery/plugins/image_classification/filters_sample_per_class.py` with the standard Apache-2.0 header (`# Copyright (c) 2026 Pointmatic` / `# SPDX-License-Identifier: Apache-2.0`).
+- [x] Add `SamplePerClassParams` pydantic model in `src/datarefinery/recipe/models.py`: `n_per_class: int` (positive), `label: str | None = None`, `exclude_already_labeled: list[str] | None = None`. Frozen.
+- [x] Implement op: stratified-by-label deterministic sampling using per-record seeding (`sha256(global_seed.to_bytes(8, 'big') + record_id_bytes).digest()[:8]`), with optional label tagging on surviving records and optional candidate-pool exclusion via `exclude_already_labeled`. **Semantic clarification recorded:** when `label` is set the op is non-destructive (full pass-through with chosen records tagged), enabling the disjoint-pool pattern to work in chained filters; without `label` the op is the destructive balanced subsample. Documented in features.md FR-8.
+- [x] Register op in `src/datarefinery/plugins/image_classification/__init__.py`. *(Registered in `plugin.py` — `__init__.py` re-exports `PLUGIN`, which is what consumers and entry points see.)*
+- [x] Tests in `tests/plugins/image_classification/test_filters_sample_per_class.py`: balanced subsample without tagging; with `label` tag emitted on surviving records; disjoint-pool case (two `sample_per_class` ops chained, second uses `exclude_already_labeled` to skip the first's selection); deterministic across `workers=1/2/4` byte-identical. Plus selection-invariant-to-input-order, n-per-class-cap, validation paths, and `pydantic ValidationError` on `n_per_class <= 0`.
+- [x] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `sample_per_class` as a new plugin-contributed op; document the `n_per_class`, `label`, and `exclude_already_labeled` params; describe the disjoint-pool pattern (chained `sample_per_class` ops with `exclude_already_labeled` referencing the prior `label`) as a worked use case. Add an edge-case bullet covering tagging-without-existing-label (records without the prior tag are not excluded).
+- [x] `docs/specs/tech-spec.md` § Package Structure: add `filters_sample_per_class.py` under `plugins/image_classification/` *(directly under the plugin dir, matching the H.k/H.l/H.m per-op-file pattern — the in-line "under operations/" in this task line was an authoring inconsistency; the actual file path matches the explicit `Create` task above).* § Data Models > Recipe model section table: extend the `FilterOp` row to reference the new `SamplePerClassParams` model (params validated via the plugin's `OperationSpec`, check 18). § Cross-Cutting Concerns > Determinism: confirm the new op uses the existing per-record seeding scheme; no new seeding code needed.
+- [x] `README.md`: no edit required for this story. The Plugin model section's existing "etc." covers the new op; CLI verb table check-count is unchanged unless this story adds a new validator check (it does not).
+- [x] `CHANGELOG.md`: new `## [0.10.0]` "Added" section noting the new op and pre-prod cache invalidation.
+- [x] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.10.0`.
+- [x] Verify: tests green, ruff + ruff format + mypy clean, canonical-hash pin unchanged (the pinned fixture recipe must not use the new op).
 
 **Out of Scope**
 
@@ -536,7 +536,7 @@ Minor bump (v0.10.0) — new feature. Cache-invalidating: introduces a new op ki
 - `sample_per_class_fractional` — separate story (H.k).
 - `drop_by_label` — separate story (H.l).
 
-### Story H.k: v0.11.0 `sample_per_class_fractional` filter op [Planned]
+### Story H.k: v0.11.0 `sample_per_class_fractional` filter op [Done]
 
 A new `Filters` operation that produces a per-class subsample where each class is sampled at a different rate. Parameters: `n_per_class_base` (integer reference scale) and `fractions` (dict mapping each label to a float in [0.0, 1.0]; missing labels default to 1.0). Surviving records per class = `floor(n_per_class_base × fractions[label])`. Inherits FR-FILTER-1's `label` and `exclude_already_labeled` tagging params. See FR-FILTER-2 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
@@ -546,18 +546,18 @@ Minor bump (v0.11.0). Cache-invalidating.
 
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/filters_sample_per_class_fractional.py` with Apache-2.0 header.
-- [ ] Add `SamplePerClassFractionalParams` pydantic model: `n_per_class_base: int` (positive), `fractions: dict[str, float]` (each value in [0.0, 1.0]), plus inherited `label`/`exclude_already_labeled` params. Frozen.
-- [ ] Factor out the shared stratified-by-label seeded sampling and tagging logic into a private helper module shared with H.j's `sample_per_class` (DRY without over-abstracting; one helper, two op call sites).
-- [ ] Implement op: per-class surviving count = `floor(n_per_class_base × fractions.get(label, 1.0))`.
-- [ ] Register op.
-- [ ] Tests in `tests/plugins/image_classification/test_filters_sample_per_class_fractional.py`: per-class counts match the floor formula; missing-class defaults to 1.0; fractions=0.0 drops that class entirely; label tagging consistent with H.j; disjoint pool with `sample_per_class` chained via `exclude_already_labeled`; workers=1/2/4 byte-identical.
-- [ ] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `sample_per_class_fractional`; document `n_per_class_base`, `fractions`, and inherited `label`/`exclude_already_labeled` params; state the per-class surviving-count formula. Note the op shares the disjoint-pool tagging mechanism with `sample_per_class`.
-- [ ] `docs/specs/tech-spec.md` § Package Structure: add `filters_sample_per_class_fractional.py` plus the shared sampling-helper module (named per implementation, e.g., `filters_stratified_sampling.py`) under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend the `FilterOp` row to reference `SamplePerClassFractionalParams`.
-- [ ] `README.md`: no edit required.
-- [ ] `CHANGELOG.md`: `## [0.11.0]` "Added" section.
-- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.11.0`.
-- [ ] Verify: tests, lint, mypy, canonical-hash pin.
+- [x] Create `src/datarefinery/plugins/image_classification/filters_sample_per_class_fractional.py` with Apache-2.0 header.
+- [x] Add `SamplePerClassFractionalParams` pydantic model: `n_per_class_base: int` (positive), `fractions: dict[str, float]` (each value in [0.0, 1.0]), plus inherited `label`/`exclude_already_labeled` params. Frozen. *(Range validation via `model_validator`; `n_per_class_base` via `Field(gt=0)`.)*
+- [x] Factor out the shared stratified-by-label seeded sampling and tagging logic into a private helper module shared with H.j's `sample_per_class` (DRY without over-abstracting; one helper, two op call sites). *(Helper: `filters_stratified_sampling.stratified_seeded_sample`; accepts a `n_for_class: Callable[[label], int]` so H.j passes a constant lambda and H.k passes the floor formula. `TAG_FIELD` now lives in the helper module and is re-exported from `filters_sample_per_class` for the existing import path.)*
+- [x] Implement op: per-class surviving count = `floor(n_per_class_base × fractions.get(label, 1.0))`.
+- [x] Register op.
+- [x] Tests in `tests/plugins/image_classification/test_filters_sample_per_class_fractional.py`: per-class counts match the floor formula; missing-class defaults to 1.0; fractions=0.0 drops that class entirely; label tagging consistent with H.j; disjoint pool with `sample_per_class` chained via `exclude_already_labeled`; workers=1/2/4 byte-identical. Plus floor-truncation for non-integer products, range/positive validation, missing-seed and missing-label-field PluginError paths.
+- [x] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `sample_per_class_fractional`; document `n_per_class_base`, `fractions`, and inherited `label`/`exclude_already_labeled` params; state the per-class surviving-count formula. Note the op shares the disjoint-pool tagging mechanism with `sample_per_class`.
+- [x] `docs/specs/tech-spec.md` § Package Structure: add `filters_sample_per_class_fractional.py` plus the shared sampling-helper module *(`filters_stratified_sampling.py`, placed directly under `plugins/image_classification/` to match the actual H.j/H.k file pattern — same "operations/" path inconsistency in this task line as in H.j)*. § Data Models > Recipe model section table: extend the `FilterOp` row to reference `SamplePerClassFractionalParams`.
+- [x] `README.md`: no edit required.
+- [x] `CHANGELOG.md`: `## [0.11.0]` "Added" section.
+- [x] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.11.0`.
+- [x] Verify: tests, lint, mypy, canonical-hash pin.
 
 **Out of Scope**
 

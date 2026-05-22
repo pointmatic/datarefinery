@@ -343,9 +343,18 @@ Reduce the raw set by sampling or by inclusion/exclusion rules.
 2. Filters apply before splitting unless explicitly declared on a post-split stage.
 3. Filters that remove data for class-balance reasons are declared in `Filters` and noted as such.
 
+**Plugin-contributed ops (image_classification, FR-FILTER-1):**
+
+`sample_per_class` produces a balanced subsample of `n_per_class` records per label, drawn deterministically via per-record seeding (`pipeline.workers.per_record_seed`) so the selection is invariant to input ordering and worker count. Parameters: `n_per_class` (positive integer, required), `seed` (integer, required), `label` (optional string), `exclude_already_labeled` (optional list of strings). When `label` is omitted the op is destructive — only the chosen records pass through. When `label` is set the op is **non-destructive marking**: the full record set passes through with the chosen records tagged in `sample_per_class_tags`; a later op (another `sample_per_class` with `exclude_already_labeled`, or `drop_by_label`) performs the actual subset. `exclude_already_labeled` removes records carrying any of the named tags from the candidate pool before stratified selection.
+
+**Disjoint-pool pattern.** Chaining two `sample_per_class` ops with the second referencing the first's `label` in `exclude_already_labeled` selects two non-overlapping balanced sets from one labeled source — useful when a canonical train/test split is unavailable, when evaluating fairness on a balanced holdout drawn from the same pool as training, or when constructing any pair of independent balanced sets in a single recipe.
+
+`sample_per_class_fractional` extends `sample_per_class` to per-class rates. Parameters: `n_per_class_base` (positive integer, required), `fractions` (`dict[str, float]`, each value in `[0.0, 1.0]`; missing labels default to 1.0), `seed` (integer, required), plus inherited `label` and `exclude_already_labeled` semantics from `sample_per_class`. Per-class surviving count = `floor(n_per_class_base × fractions.get(label, 1.0))`; `fractions[label] = 0.0` drops that class entirely. The op shares the disjoint-pool tagging mechanism with `sample_per_class` — a `sample_per_class_fractional` op can chain with a `sample_per_class` op (or another `sample_per_class_fractional`) via `exclude_already_labeled` to construct controlled-imbalance datasets that are disjoint from a balanced training pool.
+
 **Edge Cases:**
 - Filter that empties a class entirely -> warning during materialization.
 - Sampling filter without seed -> caught by `validate` as a determinism violation.
+- `sample_per_class` with `exclude_already_labeled` referencing a tag that no record carries -> the exclusion is a no-op; all records remain candidates.
 
 ### FR-9: Generation
 

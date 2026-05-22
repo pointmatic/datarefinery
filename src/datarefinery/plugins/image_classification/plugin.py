@@ -15,6 +15,12 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
+from datarefinery.plugins.image_classification.filters_sample_per_class import (
+    sample_per_class,
+)
+from datarefinery.plugins.image_classification.filters_sample_per_class_fractional import (
+    sample_per_class_fractional,
+)
 from datarefinery.plugins.image_classification.operations.featurizations import (
     ImageSizeStatsOp,
     LabelFromPathOp,
@@ -40,6 +46,8 @@ from datarefinery.plugins.image_classification.operations.visualizations import 
 _FILTER_OPS: dict[str, Operation] = {
     "filter_by_label": filter_by_label,
     "random_sample": random_sample,
+    "sample_per_class": sample_per_class,
+    "sample_per_class_fractional": sample_per_class_fractional,
 }
 
 _GENERATION_OPS: dict[str, Operation] = {
@@ -97,6 +105,25 @@ def _supported_operations() -> dict[str, OperationSpec]:
                 "fraction": ParameterSpec(type="float", required=False),
                 "n": ParameterSpec(type="int", required=False),
                 "seed": ParameterSpec(type="int", required=True),
+            },
+            applicable_sections=frozenset({"Filters"}),
+        ),
+        "sample_per_class": OperationSpec(
+            parameters={
+                "n_per_class": ParameterSpec(type="int", required=True),
+                "seed": ParameterSpec(type="int", required=True),
+                "label": ParameterSpec(type="str", required=False),
+                "exclude_already_labeled": ParameterSpec(type="list[str]", required=False),
+            },
+            applicable_sections=frozenset({"Filters"}),
+        ),
+        "sample_per_class_fractional": OperationSpec(
+            parameters={
+                "n_per_class_base": ParameterSpec(type="int", required=True),
+                "fractions": ParameterSpec(type="dict[str, float]", required=False),
+                "seed": ParameterSpec(type="int", required=True),
+                "label": ParameterSpec(type="str", required=False),
+                "exclude_already_labeled": ParameterSpec(type="list[str]", required=False),
             },
             applicable_sections=frozenset({"Filters"}),
         ),

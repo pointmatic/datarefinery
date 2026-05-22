@@ -141,6 +141,9 @@ src/datarefinery/
       __init__.py
       plugin.py              # full v1 implementation
       operations/            # resize, normalize, augment, etc.
+      filters_sample_per_class.py   # FR-FILTER-1 (Story H.j)
+      filters_sample_per_class_fractional.py  # FR-FILTER-2 (Story H.k)
+      filters_stratified_sampling.py  # shared helper for the two stratified-sampling ops
     tabular/
       __init__.py
       plugin.py              # stub: section list + operation outline only
@@ -486,7 +489,7 @@ Per-section models (sketch; full field definitions land alongside the FR-1 imple
 | `LabelsSection` | `field: str`, `source: LabelSource` (direct or derived; FR-22) |
 | `SampleDataSection` | `selector: SampleSelector` (declarative subset of `Input`) |
 | `Contract` / `Expectation` | `field: str | None`, `assertion: AssertionExpr`, `severity: Severity` |
-| `FilterOp` | `name`, `predicate`, `stages`, `splits`, `seed` (sampling only) |
+| `FilterOp` | `name`, `predicate`, `stages`, `splits`, `seed` (sampling only). Plugin-contributed sampling ops declare their own pydantic param model alongside the `OperationSpec` schema — `SamplePerClassParams` (`n_per_class: int > 0`, `label: str | None`, `exclude_already_labeled: list[str] | None`) and `SamplePerClassFractionalParams` (`n_per_class_base: int > 0`, `fractions: dict[str, float]` each in `[0.0, 1.0]`, plus inherited `label` / `exclude_already_labeled`) are validated inside the op via `model_validate(predicate)`; recipe-level validation still goes through the plugin's `OperationSpec` (check 18). |
 | `GenerationOp` | `name`, `inputs`, `output_schema`, `seed`, `applies_at` |
 | `SplitsSection` | `ratios: dict[str, float]` or `key_assignment: KeyAssignment`, `stratify_by: str | None`, `seed: int | None`, `class_balance: ClassBalanceStrategy | None`, `applies_to: str | None`. When `applies_to` is set, it names a single source-declared partition to sub-partition via `ratios`; sibling partitions are preserved verbatim. |
 | `TransformationOp` | `name`, `op`, `params`, `fit_source: str | None`, `splits` |
