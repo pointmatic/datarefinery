@@ -428,7 +428,7 @@ No code or tests touched. Patch bump (v0.9.4) since no behavior changed.
 - The `pyve run pip install -e /path/to/datarefinery` placeholders in README's "From source (development)" section. The developer authored those intentionally to make it explicit how to install the locally-cloned package from another codebase; not a defect.
 - Promoting any other operational concern (release workflow, CI matrix, codecov) to a features.md requirement. PyPI installability is user-visible and warrants the seat; the others are internal-quality concerns and already live in tech-spec.md.
 
-### Story H.i: Integration spike — `imagecorruptions` extras viability [Planned]
+### Story H.i: Integration spike — `imagecorruptions` extras viability [Done]
 
 Time-boxed integration spike to validate the new third-party dependency boundary introduced by FR-GEN-1 ([phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md)). The spike's deliverable is documented findings (install behavior, vocabulary, determinism, pin guidance) that H.m will consume — not shipping code.
 
@@ -442,13 +442,64 @@ No version bump (spike-only; no shipping code). Phase-bundling option applies �
 
 **Tasks:**
 
-- [ ] In a scratch worktree (or scratch branch), add a temporary `[corruptions]` extras spec to `pyproject.toml` listing `imagecorruptions`, `opencv-python-headless`, `scikit-image`. Install into the testenv (`pyve testenv run pip install -e '.[corruptions]'`) and record resolver behavior.
-- [ ] Enumerate the corruption vocabulary: `from imagecorruptions import get_corruption_names; get_corruption_names()`. Record the full list.
-- [ ] Determinism check: apply `gaussian_noise` at severity 3 to a fixed test image twice with the same RNG seed; confirm byte-identical output. Repeat for one weather-family corruption (e.g., `fog`).
-- [ ] Verify `opencv-python-headless` is what gets installed (not the GUI variant pulled transitively). If the GUI variant sneaks in via a transitive constraint, document the resolution.
-- [ ] Record findings in this story body before flipping to [x]: install procedure, vocabulary list, determinism result, recommended version pins, any caveats (e.g., platform-specific install gotchas on macOS arm64).
-- [ ] Decision: is the extras-group approach viable, or are there blocking issues that require an alternative (vendoring, fork, different package)? Record the decision and rationale.
-- [ ] Tear down the scratch install. Do **not** commit `pyproject.toml` or `requirements-dev.txt` changes in this story — H.m will land those with the production-grade tasks.
+- [x] In a scratch worktree (or scratch branch), add a temporary `[corruptions]` extras spec to `pyproject.toml` listing `imagecorruptions`, `opencv-python-headless`, `scikit-image`. Install into the testenv (`pyve testenv run pip install -e '.[corruptions]'`) and record resolver behavior.
+- [x] Enumerate the corruption vocabulary: `from imagecorruptions import get_corruption_names; get_corruption_names()`. Record the full list.
+- [x] Determinism check: apply `gaussian_noise` at severity 3 to a fixed test image twice with the same RNG seed; confirm byte-identical output. Repeat for one weather-family corruption (e.g., `fog`).
+- [x] Verify `opencv-python-headless` is what gets installed (not the GUI variant pulled transitively). If the GUI variant sneaks in via a transitive constraint, document the resolution.
+- [x] Record findings in this story body before flipping to [x]: install procedure, vocabulary list, determinism result, recommended version pins, any caveats (e.g., platform-specific install gotchas on macOS arm64).
+- [x] Decision: is the extras-group approach viable, or are there blocking issues that require an alternative (vendoring, fork, different package)? Record the decision and rationale.
+- [x] Tear down the scratch install. Do **not** commit `pyproject.toml` or `requirements-dev.txt` changes in this story — H.m will land those with the production-grade tasks.
+
+**Findings (recorded 2026-05-21 on macOS arm64, Python 3.12.13, NumPy 2.4.4, scikit-image 0.26.0)**
+
+*Install behavior.* `pyve testenv run pip install -e '.[corruptions]'` resolved without version-resolver conflicts against the project's current `requirements-dev.txt`. Pulled wheels: `imagecorruptions-1.1.2`, `opencv-python-headless-4.13.0.92`, `scikit-image-0.26.0`, plus transitive `opencv-python-4.13.0.92`, `imageio-2.37.3`, `lazy-loader-0.5`, `networkx-3.6.1`, `tifffile-2026.5.15`. Three blocking install-time caveats surfaced:
+
+1. **Transitive `opencv-python` (GUI variant)** is pulled by `imagecorruptions`'s `opencv-python>=3.4.5` requirement. Both `opencv-python` and `opencv-python-headless` install into the same `site-packages/cv2/` directory at the same version; the second installer wins by overwrite. The headless-only goal is defeated unless H.m installs `imagecorruptions --no-deps` and re-supplies its other deps explicitly, or runs `pip uninstall -y opencv-python` post-install.
+2. **`pkg_resources` ModuleNotFoundError.** `imagecorruptions/corruptions.py:17` imports `pkg_resources` (legacy setuptools API). `setuptools>=81` no longer ships it. Adding `setuptools<81` to the extras restores the import — but the upstream setuptools README warns the API is slated for removal "as early as 2025-11-30" (already past today's date 2026-05-21), so this pin is a fragile floor that may break on next setuptools release.
+3. **No `imagecorruptions` source patch will avoid both #1 and #2** without vendoring the package.
+
+*Vocabulary (enumerable as required).* `get_corruption_names('all')` returns 19 names, partitioned `common` (15) / `validation` (4):
+- common: `gaussian_noise`, `shot_noise`, `impulse_noise`, `defocus_blur`, `glass_blur`, `motion_blur`, `zoom_blur`, `snow`, `frost`, `fog`, `brightness`, `contrast`, `elastic_transform`, `pixelate`, `jpeg_compression`
+- validation: `speckle_noise`, `gaussian_blur`, `spatter`, `saturate`
+
+Recipe-time validation in H.m can be fail-fast via `from imagecorruptions import get_corruption_names; set(get_corruption_names('all'))`.
+
+*Determinism check (severity=3, 64×64 RGB uint8 fixed-seed image, `np.random.seed(0)` + `random.seed(0)` before each call).*
+- **15 / 19 byte-identical across repeated invocations:** `gaussian_noise`, `shot_noise`, `defocus_blur`, `motion_blur`, `zoom_blur`, `snow`, `frost`, `brightness`, `contrast`, `elastic_transform`, `pixelate`, `jpeg_compression`, `speckle_noise`, `spatter`, `saturate`.
+- **3 fail outright on NumPy 2.x / scikit-image 0.21+:**
+  - `fog` — `AttributeError: np.float_ was removed in the NumPy 2.0 release` (`imagecorruptions/corruptions.py:46`, `plasma_fractal`).
+  - `glass_blur`, `gaussian_blur` — `TypeError: gaussian() got an unexpected keyword argument 'multichannel'` (scikit-image removed the `multichannel=` kwarg in 0.21; current API is `channel_axis=`).
+- **1 non-deterministic:** `impulse_noise` calls `skimage.util.random_noise(..., mode='s&p', ...)` without passing `rng=`. Since skimage 0.21, `random_noise` uses an internal default PCG64 generator independent of `np.random.seed()`. Three calls under identical legacy seeding produced three different hashes. Fixable only by patching `imagecorruptions.corruptions.impulse_noise` to thread `rng=` through.
+
+*Recommended pins (if extras-group is pursued anyway, with caveats accepted):*
+```
+[project.optional-dependencies]
+corruptions = [
+    "imagecorruptions==1.1.2",
+    "opencv-python-headless",
+    "scikit-image",
+    "setuptools<81",  # required for pkg_resources import inside imagecorruptions
+]
+```
+…plus a post-install `pip uninstall -y opencv-python` step (or an `--no-deps`-based install recipe documented in H.m).
+
+**Decision (rationale):** the extras-group approach in its current `imagecorruptions==1.1.2` shape is **NOT VIABLE** for FR-GEN-1 / H.m. The upstream package was last released in 2019 and is incompatible with three of the project's current dependency-floor commitments:
+- NumPy 2.x (the project ships `numpy` unpinned and resolves to 2.4.4) — breaks `fog`.
+- scikit-image 0.21+ (resolves to 0.26.0) — breaks `glass_blur`, `gaussian_blur`.
+- setuptools 81+ (default in current Python tooling) — breaks the import of `imagecorruptions` itself.
+Additionally, the `opencv-python` transitive constraint defeats the headless-only deployment story.
+
+**Recommended path for H.m (suggest at approval gate):** **Option A — vendored subset.** Vendor `imagecorruptions/corruptions.py` into `src/datarefinery/plugins/image_classification/_corruptions.py` (the upstream package is Apache-2.0 — verify NOTICE attribution requirements at vendor time). Apply four mechanical patches:
+1. `np.float_` → `np.float64` (fixes `fog`).
+2. `skimage.filters.gaussian(..., multichannel=True)` → `gaussian(..., channel_axis=-1)` (fixes `glass_blur`, `gaussian_blur`).
+3. Thread an explicit `rng` through `impulse_noise` → `random_noise(..., rng=rng)` (fixes determinism).
+4. Replace `pkg_resources.resource_filename` (loads frost JPEGs) with `importlib.resources` (removes setuptools dep).
+
+Net result: all 19 corruptions work and are deterministic; runtime deps reduce to `opencv-python-headless` + `scikit-image` + `numpy` + `pillow` (no `imagecorruptions`, no `setuptools<81`). The vendored copy lives under the plugin and is covered by the project's existing license header convention. Estimated effort: 1–2 days plus tests.
+
+Alternatives considered and not recommended:
+- **Option B (different library — `albumentations` / `kornia`):** active maintenance and NumPy 2.x compatible, but their corruption vocabularies do not align 1:1 with the canonical Hendrycks-Dietterich 19-name set, requiring a translation layer that loses semantic equivalence with the literature.
+- **Option C (pin the project floor backward):** `numpy<2`, `scikit-image<0.21`, `setuptools<81`. Drags the entire project's runtime floor back ~2 years for one optional op. Refuse.
 
 **Out of Scope**
 
