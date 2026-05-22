@@ -65,11 +65,6 @@ def _supported_operations() -> dict[str, OperationSpec]:
         ),
         # ----- Generation (FR-9) -----
         "duplicate_minority_class": OperationSpec(
-            parameters={
-                "label_field": ParameterSpec(type="str", required=True),
-                "target_count": ParameterSpec(type="int", required=True),
-                "seed": ParameterSpec(type="int", required=True),
-            },
             applicable_sections=frozenset({"Generation"}),
         ),
         # ----- Transformations (FR-10) -----

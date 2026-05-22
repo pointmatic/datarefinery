@@ -24,6 +24,9 @@ from datarefinery.plugins.image_classification.filters_sample_per_class import (
 from datarefinery.plugins.image_classification.filters_sample_per_class_fractional import (
     sample_per_class_fractional,
 )
+from datarefinery.plugins.image_classification.generation_imagecorruptions import (
+    imagecorruptions_apply,
+)
 from datarefinery.plugins.image_classification.operations.featurizations import (
     ImageSizeStatsOp,
     LabelFromPathOp,
@@ -56,6 +59,7 @@ _FILTER_OPS: dict[str, Operation] = {
 
 _GENERATION_OPS: dict[str, Operation] = {
     "duplicate_minority_class": duplicate_minority_class,
+    "imagecorruptions_apply": imagecorruptions_apply,
 }
 
 _TRANSFORMATION_OPS: dict[str, Operation] = {
@@ -139,10 +143,14 @@ def _supported_operations() -> dict[str, OperationSpec]:
         ),
         # ----- Generation (FR-9) -----
         "duplicate_minority_class": OperationSpec(
+            applicable_sections=frozenset({"Generation"}),
+        ),
+        "imagecorruptions_apply": OperationSpec(
             parameters={
-                "label_field": ParameterSpec(type="str", required=True),
-                "target_count": ParameterSpec(type="int", required=True),
-                "seed": ParameterSpec(type="int", required=True),
+                "corruption_types": ParameterSpec(type="list[str]", required=True),
+                "severities": ParameterSpec(type="list[int]", required=True),
+                "preserve_original": ParameterSpec(type="bool", required=False, default=False),
+                "tag_fields": ParameterSpec(type="list[str]", required=False),
             },
             applicable_sections=frozenset({"Generation"}),
         ),

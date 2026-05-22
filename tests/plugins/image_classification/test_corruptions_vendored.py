@@ -48,6 +48,23 @@ def test_get_corruption_names_unknown_subset_raises() -> None:
         _corruptions.get_corruption_names("nonexistent")
 
 
+def test_static_names_module_matches_backend() -> None:
+    """The dependency-free `_corruption_names` module must stay in sync
+    with the backend's `get_corruption_names('all')`. Drift between the
+    two would cause recipe-time validation to accept names the backend
+    cannot apply, or reject names the backend supports.
+    """
+    from datarefinery.plugins.image_classification._corruption_names import (
+        CORRUPTION_NAMES_ALL,
+        CORRUPTION_NAMES_COMMON,
+        CORRUPTION_NAMES_VALIDATION,
+    )
+
+    assert list(CORRUPTION_NAMES_COMMON) == _corruptions.get_corruption_names("common")
+    assert list(CORRUPTION_NAMES_VALIDATION) == _corruptions.get_corruption_names("validation")
+    assert list(CORRUPTION_NAMES_ALL) == _corruptions.get_corruption_names("all")
+
+
 # ---------------------------------------------------------------------------
 # Determinism — all 19 corruptions at severity 3
 # ---------------------------------------------------------------------------

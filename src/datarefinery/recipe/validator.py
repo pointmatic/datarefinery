@@ -609,6 +609,9 @@ def check_18_plugin_operation_params_validate(recipe: Recipe, plugin: Plugin) ->
         _validate("Featurizations", feat.name, feat.op, feat.params)
     for viz in recipe.Visualizations:
         _validate("Visualizations", viz.name, viz.op, viz.params)
+    for gen in recipe.Generation:
+        # Generation uses `name` as the op-name (no separate `op` field).
+        _validate("Generation", gen.name, gen.name, gen.params)
 
     if not issues:
         return _passed(18, descriptor)

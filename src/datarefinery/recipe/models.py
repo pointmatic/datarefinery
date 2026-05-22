@@ -187,12 +187,61 @@ class DropByLabelParams(_Frozen):
     labels: list[str] = Field(min_length=1)
 
 
+class ImageCorruptionsApplyParams(_Frozen):
+    """FR-GEN-1 params for `imagecorruptions_apply` (Story H.m.2).
+
+    `corruption_types` lists the H-D corruption names to apply (must be
+    non-empty; vocabulary checked against the in-tree
+    `_corruption_names.CORRUPTION_NAMES_ALL`). `severities` lists severity
+    levels in 1..5 (non-empty). `preserve_original` controls whether the
+    op also emits an untouched copy of each input with `corruption="none"`
+    and `severity=0`. `tag_fields` names the metadata fields written onto
+    each output record.
+    """
+
+    corruption_types: list[str] = Field(min_length=1)
+    severities: list[int] = Field(min_length=1)
+    preserve_original: bool = False
+    tag_fields: list[str] = Field(default_factory=lambda: ["corruption", "severity", "source_path"])
+
+    @model_validator(mode="after")
+    def _validate(self) -> ImageCorruptionsApplyParams:
+        # Local import avoids a top-level dependency on the plugin from the
+        # recipe-models layer; the names module is dependency-free.
+        from datarefinery.plugins.image_classification._corruption_names import (
+            CORRUPTION_NAMES_ALL,
+        )
+
+        unknown = [c for c in self.corruption_types if c not in CORRUPTION_NAMES_ALL]
+        if unknown:
+            raise ValueError(
+                f"imagecorruptions_apply: unknown corruption_types {unknown!r}; "
+                f"canonical names are {list(CORRUPTION_NAMES_ALL)!r}"
+            )
+        if len(set(self.corruption_types)) != len(self.corruption_types):
+            raise ValueError(
+                f"imagecorruptions_apply: corruption_types contains duplicates "
+                f"({self.corruption_types!r})"
+            )
+        for sev in self.severities:
+            if sev not in (1, 2, 3, 4, 5):
+                raise ValueError(
+                    f"imagecorruptions_apply: severities must each be in [1, 5] (got {sev})"
+                )
+        if len(set(self.severities)) != len(self.severities):
+            raise ValueError(
+                f"imagecorruptions_apply: severities contains duplicates ({self.severities!r})"
+            )
+        return self
+
+
 class GenerationOp(_Frozen):
     name: str
     inputs: list[str]
     output_schema: dict[str, FieldSpec]
     seed: int
     applies_at: list[str] = Field(default_factory=lambda: ["train"])
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class KeyAssignment(_Frozen):

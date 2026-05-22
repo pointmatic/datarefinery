@@ -22,6 +22,7 @@ EXPECTED_OPERATIONS = frozenset(
         "sample_per_class_fractional",
         "drop_by_label",
         "duplicate_minority_class",
+        "imagecorruptions_apply",
         "resize",
         "normalize",
         "mean_subtract",

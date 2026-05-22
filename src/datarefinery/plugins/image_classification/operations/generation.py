@@ -25,6 +25,7 @@ def duplicate_minority_class(
     seed: int,
     inputs: list[str],
     output_schema: Mapping[str, FieldSpec],
+    params: Mapping[str, Any],
     label_field: str | None,
 ) -> list[Record]:
     """Sample-with-replacement from minority classes to match the majority.
@@ -37,7 +38,7 @@ def duplicate_minority_class(
     user-tunable target). Class iteration is stably ordered so output is
     seed-deterministic across hash-randomization variants.
     """
-    del inputs, output_schema  # consumed via Output schema validation in stage
+    del inputs, output_schema, params  # consumed via Output schema validation in stage
     if label_field is None:
         raise PluginError("duplicate_minority_class requires Labels.field to be declared")
     by_class: dict[Any, list[Record]] = {}

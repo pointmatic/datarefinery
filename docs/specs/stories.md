@@ -655,32 +655,35 @@ Unversioned (phase-bundled per the Version Cadence rule; H.m.3 carries the v0.13
 - `docs/specs/features.md` updates — wait for the user-visible op to land in H.m.2/H.m.3.
 - `README.md` updates — wait for H.m.3.
 
-### Story H.m.2: `imagecorruptions_apply` Generation op + recipe-validation hook [Planned]
+### Story H.m.2: `imagecorruptions_apply` Generation op + recipe-validation hook [Done]
 
 Second of three H.m child stories. Builds the Generation op on top of H.m.1's vendored module. Unversioned (phase-bundled).
 
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/generation_imagecorruptions.py` with Apache-2.0 header. Lazy-import `scikit-image` and `cv2` at module load via a guarded helper that raises a clear `ImportError` ("install with `pip install 'ml-datarefinery[corruptions]'`") when either is missing.
-- [ ] Add `ImageCorruptionsApplyParams` pydantic model in `recipe/models.py`: `corruption_types: list[str]` (non-empty), `severities: list[int]` (each in 1..5, non-empty), `preserve_original: bool = False`, `tag_fields: list[str] = ["corruption", "severity", "source_path"]`. Frozen, with validators rejecting empty lists, out-of-range severities, and duplicate names.
-- [ ] Recipe-validation hook: validate `corruption_types` against `_corruptions.get_corruption_names("all")` at validate-time and reject unknown names. (The vocabulary is always available because `_corruptions.py` is in-tree; the extras only affect runtime corruption execution, not name validation.) If `scikit-image` or `cv2` cannot be imported, defer the vocabulary check is unnecessary — but materialization fails with the same clear extras-install pointer wired in the lazy import.
-- [ ] Per-record seeding: derive each input record's corruption seed from `(global_seed, record_id)` via `pipeline.workers.per_record_seed`; convert to a `numpy.random.default_rng(prs)` and pass to `_corruptions.corrupt(..., rng=...)`.
-- [ ] Output emission: one output record per `(input × corruption_type × severity)` in deterministic order (sorted by `(record_id, corruption_type, severity)`); emit the original (untouched) record additionally when `preserve_original=True` with `corruption="none"`, `severity=0`. Assign each output record a fresh `record_id` derived from `(input.record_id, corruption_type, severity)` via a stable hash to preserve uniqueness for downstream stages.
-- [ ] Tag-field writes: write the configured tag fields onto each output record. `source_path` carries the input record's path field (or `record_id` when no path field is set).
-- [ ] Register op in `plugin.py` under `_GENERATION_OPS` and declare its `OperationSpec` with `applicable_sections=frozenset({"Generation"})`.
-- [ ] Update `tests/plugin_contract/test_image_classification.py`'s `EXPECTED_OPERATIONS` to include `imagecorruptions_apply`.
-- [ ] Tests in `tests/plugins/image_classification/test_generation_imagecorruptions.py`:
+- [x] Create `src/datarefinery/plugins/image_classification/generation_imagecorruptions.py` with Apache-2.0 header. Lazy-import the `_corruptions` backend (which transitively imports `scikit-image` and `cv2`) at op-call time, via a `_load_backend()` helper that catches `ImportError` and re-raises with a friendly `pip install 'ml-datarefinery[corruptions]'` pointer.
+- [x] Add `ImageCorruptionsApplyParams` pydantic model in `recipe/models.py`: `corruption_types: list[str]` (non-empty), `severities: list[int]` (each in 1..5, non-empty), `preserve_original: bool = False`, `tag_fields: list[str] = ["corruption", "severity", "source_path"]`. Frozen, with `model_validator` rejecting empty lists, out-of-range severities, duplicate names, and unknown corruption names. *(Vocabulary check reads from the new dependency-free `_corruption_names.CORRUPTION_NAMES_ALL` so it works without the extras installed.)*
+- [x] **Foundational schema change (out-of-band addition).** Generation ops in this codebase previously had no `params` surface — `GenerationOp` exposed only `name` / `inputs` / `output_schema` / `seed` / `applies_at`. Building `imagecorruptions_apply` requires user-supplied params. Added `params: dict[str, Any] = Field(default_factory=dict)` to `GenerationOp`; threaded through `pipeline/stages/generation.py:_invoke_one`; existing `duplicate_minority_class` op signature extended to accept-and-discard `params`. The op's `OperationSpec.parameters` was simultaneously truthified — the old declaration listed `label_field` / `target_count` / `seed` as required params but those values come from `op.seed` / `Labels.field` / hard-coded majority count, not from a `params` dict. Set to empty parameters in all three plugins (image_classification, tabular, text). Extended `recipe.validator.check_18` to validate Generation params as well (consistent with other op kinds). Inline `_DropFieldPlugin` test plugin in `test_generation_stage.py` updated to accept the new param.
+- [x] Created dependency-free `_corruption_names.py` module with `CORRUPTION_NAMES_COMMON` / `CORRUPTION_NAMES_VALIDATION` / `CORRUPTION_NAMES_ALL` tuples. Cross-check test in `test_corruptions_vendored.py` asserts the static names match `_corruptions.get_corruption_names(...)` so drift is caught.
+- [x] Recipe-validation hook: validate `corruption_types` against `CORRUPTION_NAMES_ALL` at `ImageCorruptionsApplyParams` validate-time (always works without extras — the names module is dependency-free). Materialization-time lazy import surfaces the friendly extras-install pointer if cv2/scikit-image are missing.
+- [x] Per-record seeding: derive each input record's corruption seed from `(global_seed, record_id)` via `pipeline.workers.per_record_seed`; convert to a `numpy.random.default_rng(prs)` and pass to `_corruptions.corrupt(..., rng=...)`. One `rng` per input record, advanced across the per-corruption-name × per-severity sweep.
+- [x] Output emission: one output record per `(input × corruption_type × severity)`; when `preserve_original=True` an untouched copy is emitted first per input with `corruption="none"`, `severity=0`. Each output `record_id` derived from `sha256(input_record_id|corruption_name|severity)[:8]` to preserve uniqueness.
+- [x] Tag-field writes: `corruption`, `severity`, `source_path` written onto each output when listed in `tag_fields`. `source_path` falls back to `record_id` when the record has no `path` field.
+- [x] Register op in `plugin.py` under `_GENERATION_OPS` and declare its `OperationSpec` with `applicable_sections=frozenset({"Generation"})`.
+- [x] Update `tests/plugin_contract/test_image_classification.py`'s `EXPECTED_OPERATIONS` to include `imagecorruptions_apply`.
+- [x] Tests in `tests/plugins/image_classification/test_generation_imagecorruptions.py` (19 tests):
   - Determinism: same input + seed → byte-identical output across two invocations.
-  - Workers=1/2/4 byte-identical (the `@pytest.mark.slow` integration check threading through `run_parallel`).
+  - Workers byte-identical at 1/2/4 via `run_parallel` (the `@pytest.mark.slow` integration check).
   - Output count formula: `len(out) == len(inputs) * len(corruption_types) * len(severities)` (plus `len(inputs)` extra when `preserve_original=True`).
   - `preserve_original=True` emits the untouched record with `corruption="none"`, `severity=0`.
-  - Tag-field writes: each output record carries the named `corruption`, `severity`, `source_path` fields with correct values.
-  - Recipe-validation rejects unknown corruption names (e.g., `"made_up_corruption"`) at `ImageCorruptionsApplyParams.model_validate(...)` time.
-  - Severities outside 1..5 are rejected.
-  - Empty `corruption_types` or empty `severities` rejected.
-  - Clear extras-install ImportError surfaces when `scikit-image` or `cv2` are not importable (mock-based — testenv always has them after H.m.1).
-- [ ] No version bump (phase-bundled with H.m.3).
-- [ ] Verify: tests green, ruff + ruff format + mypy clean.
+  - Tag-field writes: each output record carries the named `corruption`, `severity`, `source_path` fields with correct values. Subset `tag_fields=["corruption"]` only writes `corruption`.
+  - Output record IDs are unique across the cross-product sweep.
+  - End-to-end: `apply_generation` concatenates corrupted records onto the input split (counts_before=3 → counts_after=6 for 3 inputs × 1 type × 1 severity).
+  - Recipe-validation rejects unknown corruption names, duplicate corruption_types, severities outside 1..5, duplicate severities, empty lists.
+  - Op-call-time input validation: record missing `image` field → `MaterializeError`; non-uint8 `image` → `MaterializeError`.
+  - Friendly extras-install `ImportError` when `_corruptions` cannot be imported (mock-based; testenv has the extras after H.m.1).
+- [x] No version bump (phase-bundled with H.m.3).
+- [x] Verify: tests green (815 vs. 794 before H.m.2; +20 tests + 1 from the static-names cross-check in `test_corruptions_vendored.py`), ruff + ruff format + mypy clean.
 
 **Out of Scope (H.m.2 specifically)**
 

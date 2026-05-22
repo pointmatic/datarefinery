@@ -12,6 +12,7 @@ Operation signature (Generation section):
     def op(records: list[Record], *, seed: int,
            inputs: list[str],
            output_schema: Mapping[str, FieldSpec],
+           params: Mapping[str, Any],
            label_field: str | None) -> list[Record]
 
 Operations return only the *new* records to add; the stage concatenates
@@ -110,6 +111,7 @@ def _invoke_one(
         seed=op.seed,
         inputs=list(op.inputs),
         output_schema=op.output_schema,
+        params=dict(op.params),
         label_field=label_field,
     )
 
