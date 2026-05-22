@@ -563,7 +563,7 @@ Minor bump (v0.11.0). Cache-invalidating.
 
 - Rebasing H.j onto a "generic per-class sampler with optional fraction param" primitive that subsumes both ops. The two-op recipe surface reads more clearly than a single op with conditional parameters; the shared internal helper covers the DRY concern.
 
-### Story H.l: v0.12.0 `drop_by_label` filter op [Planned]
+### Story H.l: v0.12.0 `drop_by_label` filter op [Done]
 
 A new `Filters` operation that drops records carrying any of the named labels. Parameter: `labels: list[str]` (non-empty). The inverse companion to FR-FILTER-1's `label` tagging mechanism. See FR-FILTER-3 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
@@ -575,17 +575,17 @@ Minor bump (v0.12.0). Cache-invalidating.
 
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/filters_drop_by_label.py` with Apache-2.0 header.
-- [ ] Add `DropByLabelParams` pydantic model: `labels: list[str]` with non-empty validation. Frozen.
-- [ ] Implement op: read the record-tag field written by H.j/H.k, drop any record whose tag is in `labels`.
-- [ ] Register op.
-- [ ] Tests in `tests/plugins/image_classification/test_filters_drop_by_label.py`: drop with single label; drop with multiple labels; drop on tagged records but pass through untagged; empty `labels` rejected at validation; cross-recipe bit-identity test (two recipes chain through H.j and H.l with different `labels` values and produce non-overlapping, byte-identical sub-instances).
-- [ ] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `drop_by_label`, its `labels: list[str]` parameter, and the canonical two-sibling-recipes use case (same chain, different `drop_by_label.labels`, byte-identical sub-instances). Add an edge-case bullet for non-existent label values (skipped as a no-op rather than raising).
-- [ ] `docs/specs/tech-spec.md` § Package Structure: add `filters_drop_by_label.py` under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend the `FilterOp` row to reference `DropByLabelParams`.
-- [ ] `README.md`: no edit required.
-- [ ] `CHANGELOG.md`: `## [0.12.0]` "Added" section.
-- [ ] Bump to `0.12.0`.
-- [ ] Verify.
+- [x] Create `src/datarefinery/plugins/image_classification/filters_drop_by_label.py` with Apache-2.0 header.
+- [x] Add `DropByLabelParams` pydantic model: `labels: list[str]` with non-empty validation. Frozen. *(Validated via `Field(min_length=1)`.)*
+- [x] Implement op: read the record-tag field written by H.j/H.k, drop any record whose tag is in `labels`. *(Reads `TAG_FIELD` from `filters_stratified_sampling`; records without the tag field pass through unchanged.)*
+- [x] Register op.
+- [x] Tests in `tests/plugins/image_classification/test_filters_drop_by_label.py`: drop with single label; drop with multiple labels; drop on tagged records but pass through untagged; empty `labels` rejected at validation; cross-recipe bit-identity test (two recipes chain through H.j and H.l with different `labels` values and produce non-overlapping, byte-identical sub-instances). Plus the nonexistent-label no-op edge case and the no-prior-tagging-at-all pass-through.
+- [x] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `drop_by_label`, its `labels: list[str]` parameter, and the canonical two-sibling-recipes use case (same chain, different `drop_by_label.labels`, byte-identical sub-instances). Add an edge-case bullet for non-existent label values (skipped as a no-op rather than raising).
+- [x] `docs/specs/tech-spec.md` § Package Structure: add `filters_drop_by_label.py` *(placed directly under `plugins/image_classification/` to match the actual H.j/H.k file pattern — same "operations/" path inconsistency in this task line as in H.j/H.k)*. § Data Models > Recipe model section table: extend the `FilterOp` row to reference `DropByLabelParams`.
+- [x] `README.md`: no edit required.
+- [x] `CHANGELOG.md`: `## [0.12.0]` "Added" section.
+- [x] Bump to `0.12.0`.
+- [x] Verify.
 
 **Out of Scope**
 

@@ -15,6 +15,9 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
+from datarefinery.plugins.image_classification.filters_drop_by_label import (
+    drop_by_label,
+)
 from datarefinery.plugins.image_classification.filters_sample_per_class import (
     sample_per_class,
 )
@@ -48,6 +51,7 @@ _FILTER_OPS: dict[str, Operation] = {
     "random_sample": random_sample,
     "sample_per_class": sample_per_class,
     "sample_per_class_fractional": sample_per_class_fractional,
+    "drop_by_label": drop_by_label,
 }
 
 _GENERATION_OPS: dict[str, Operation] = {
@@ -124,6 +128,12 @@ def _supported_operations() -> dict[str, OperationSpec]:
                 "seed": ParameterSpec(type="int", required=True),
                 "label": ParameterSpec(type="str", required=False),
                 "exclude_already_labeled": ParameterSpec(type="list[str]", required=False),
+            },
+            applicable_sections=frozenset({"Filters"}),
+        ),
+        "drop_by_label": OperationSpec(
+            parameters={
+                "labels": ParameterSpec(type="list[str]", required=True),
             },
             applicable_sections=frozenset({"Filters"}),
         ),

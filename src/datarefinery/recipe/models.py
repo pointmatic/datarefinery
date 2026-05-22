@@ -176,6 +176,17 @@ class SamplePerClassFractionalParams(_Frozen):
         return self
 
 
+class DropByLabelParams(_Frozen):
+    """FR-FILTER-3 params for `drop_by_label` (Story H.l).
+
+    `labels` must be non-empty. Records carrying any of these tags in
+    `sample_per_class_tags` are dropped; records without the tag field or
+    carrying only non-matching tags pass through unchanged.
+    """
+
+    labels: list[str] = Field(min_length=1)
+
+
 class GenerationOp(_Frozen):
     name: str
     inputs: list[str]

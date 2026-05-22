@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-05-22
+
+### Added
+
+- **Story H.l — `drop_by_label` filter op (FR-FILTER-3).** New `Filters`
+  operation in the `image_classification` plugin: the destructive
+  companion to FR-FILTER-1 / FR-FILTER-2 tagging. Reads
+  `sample_per_class_tags` written by `sample_per_class` /
+  `sample_per_class_fractional` and drops any record whose tag set
+  intersects the `labels` parameter.
+
+  - Parameter: `labels: list[str]` (non-empty, validated by frozen
+    pydantic model `recipe.models.DropByLabelParams`).
+  - Records without the tag field and records carrying only
+    non-matching tags pass through unchanged. A `labels` entry that no
+    record carries is a no-op rather than an error.
+  - **Sibling-recipe split pattern.** Two recipes can replicate the
+    same `sample_per_class` (or fractional) chain — same ops, same
+    parameters, same seed — and then call `drop_by_label` with
+    disjoint `labels` lists, peeling off byte-identical, non-
+    overlapping sub-instances from a common labeled source.
+
+### Notes
+
+- **Cache invalidation (pre-prod).** Introducing the new op kind
+  perturbs the canonical-form vocabulary the plugin advertises.
+  Pre-production invalidation is acceptable per
+  `project-essentials.md` § "Cache identity is the reproducibility
+  contract" pre-production rules.
+
 ## [0.11.0] - 2026-05-22
 
 ### Added

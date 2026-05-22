@@ -351,10 +351,13 @@ Reduce the raw set by sampling or by inclusion/exclusion rules.
 
 `sample_per_class_fractional` extends `sample_per_class` to per-class rates. Parameters: `n_per_class_base` (positive integer, required), `fractions` (`dict[str, float]`, each value in `[0.0, 1.0]`; missing labels default to 1.0), `seed` (integer, required), plus inherited `label` and `exclude_already_labeled` semantics from `sample_per_class`. Per-class surviving count = `floor(n_per_class_base × fractions.get(label, 1.0))`; `fractions[label] = 0.0` drops that class entirely. The op shares the disjoint-pool tagging mechanism with `sample_per_class` — a `sample_per_class_fractional` op can chain with a `sample_per_class` op (or another `sample_per_class_fractional`) via `exclude_already_labeled` to construct controlled-imbalance datasets that are disjoint from a balanced training pool.
 
+`drop_by_label` is the destructive companion to `sample_per_class` / `sample_per_class_fractional`. Parameter: `labels: list[str]` (non-empty). Records carrying any of the named tags in `sample_per_class_tags` are removed; records without the tag field or carrying only non-matching tags pass through unchanged. **Canonical use case (sibling-recipe split):** two recipes replicate the same `sample_per_class` (or `sample_per_class_fractional`) chain with identical ops, parameters, and seeds — producing the same tagged record set — then each calls `drop_by_label` with a disjoint `labels` list, peeling off byte-identical, non-overlapping sub-instances. Without `drop_by_label` the recipes would either re-pick non-deterministically (breaking cross-recipe bit-identity) or carry unused records through the rest of the pipeline (wasting materialization time and disk space).
+
 **Edge Cases:**
 - Filter that empties a class entirely -> warning during materialization.
 - Sampling filter without seed -> caught by `validate` as a determinism violation.
 - `sample_per_class` with `exclude_already_labeled` referencing a tag that no record carries -> the exclusion is a no-op; all records remain candidates.
+- `drop_by_label` referencing a label that no record carries -> no-op pass-through; not an error.
 
 ### FR-9: Generation
 

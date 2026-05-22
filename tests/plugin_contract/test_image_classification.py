@@ -20,6 +20,7 @@ EXPECTED_OPERATIONS = frozenset(
         "random_sample",
         "sample_per_class",
         "sample_per_class_fractional",
+        "drop_by_label",
         "duplicate_minority_class",
         "resize",
         "normalize",
