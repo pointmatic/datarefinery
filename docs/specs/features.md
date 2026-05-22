@@ -41,7 +41,7 @@ DataRefinery compiles a single YAML **recipe** — declaring data category, raw 
 ### Quality Requirements
 
 - **Reproducibility guarantee.** A successful run is byte-identical when re-executed against unchanged inputs and seed. Any deviation is a defect.
-- **Minimal runtime dependencies.** v1 depends on the standard scientific Python stack (NumPy, Pandas, SciPy, Scikit-learn), `rich`, `pyyaml`, and `pyarrow`. The Image plugin adds image-handling dependencies (Pillow at minimum). `lmentry` is an optional extra.
+- **Minimal runtime dependencies.** v1 depends on the standard scientific Python stack (NumPy, Pandas, SciPy, Scikit-learn), `rich`, `pyyaml`, and `pyarrow`. The Image plugin adds image-handling dependencies (Pillow at minimum). Optional extras: `[llm]` (`lmentry`) for the `init` scaffolder's LLM-enhancement layer; `[corruptions]` (`scikit-image`, `opencv-python-headless`) for the `imagecorruptions_apply` robustness-evaluation Generation op (the corruption *vocabulary* is in-tree so recipe validation works without the extras; only execution requires them).
 - **Cross-platform.** Prior to production release, macOS is the only first-class platform; Linux is best-effort. After production release, Linux and macOS are both first-class. Native Windows is best-effort in any release (CI smoke only); Windows users are not left behind because WSL2 (Microsoft-supported Linux on Windows) provides the full Linux path on the same hardware, and the project documents WSL2 as the recommended Windows experience.
 - **Hardware acceleration.** GPU acceleration is a bonus, not a requirement, in any release; pipelines must function correctly on CPU. Metal (Apple Silicon) compatibility is top-priority where acceleration is exercised; CUDA is supported as available. `check` reports acceleration availability without requiring it.
 - **Type discipline.** `mypy --strict` clean across the package and plugin sources.
@@ -248,6 +248,7 @@ Verify a recipe's correctness without running the pipeline. Covers schema correc
 - Plugin not installed -> hard error pointing at the plugin name and discovery path.
 - Multiple failures -> all are reported; `validate` does not short-circuit on the first failure.
 - Unknown operation under a known plugin -> reported as a plugin-specific operation-schema failure (check 18).
+- Optional-extras-gated op referenced in a recipe but extras not installed -> recipe-time checks that depend only on the in-tree vocabulary still fire (e.g., `imagecorruptions_apply` corruption-name validation in check 18); execution-time errors are deferred to materialization, with a clear extras-install pointer.
 
 ### FR-3: End-to-End Materialization (`materialize`)
 
@@ -368,9 +369,14 @@ Produce new records added to the dataset (e.g., SMOTE, oversampling, externally 
 2. Generation changes record count; this is recorded in the manifest.
 3. Generation runs at a recipe-declared point in the pipeline (typically post-split, train-only, but configurable).
 
+**Plugin-contributed ops (image_classification, FR-GEN-1):**
+
+`imagecorruptions_apply` applies Hendrycks-Dietterich (ICLR 2019, "Benchmarking Neural Network Robustness to Common Corruptions and Perturbations") image corruptions to each input record. For each input the op emits one output record per `(corruption_type, severity)` pair, optionally including an untouched copy tagged `corruption="none"`. Parameters: `corruption_types: list[str]` (non-empty; names drawn from the canonical 19-corruption vocabulary), `severities: list[int]` (each in `[1, 5]`, non-empty), `preserve_original: bool = False`, `tag_fields: list[str] = ["corruption", "severity", "source_path"]`. Output count per input record = `len(corruption_types) × len(severities)`, plus 1 untouched copy when `preserve_original=True`. Per-record corruption seeds are derived from the recipe master seed via the `pipeline.workers.per_record_seed` contract, so output bytes are reproducible across runs and worker counts. The implementation is vendored from upstream `imagecorruptions==1.1.2` (Apache-2.0; full attribution preserved) and patched for NumPy 2.x, scikit-image 0.21+, and deterministic seeding compatibility; the canonical corruption vocabulary is enumerable at recipe-validate time without the extras installed.
+
 **Edge Cases:**
 - Generated records that fail `OutputExpectations` -> hard error during materialization.
 - Generation declared on validation or test splits -> not blocked by default (atypical but legitimate); flagged in the report.
+- `imagecorruptions_apply` referenced in a recipe but the `[corruptions]` extras (`scikit-image`, `opencv-python-headless`) are not installed -> recipe-time validation still verifies the corruption names against the in-tree vocabulary; materialization fails at the corruption call site with a clear `ImportError` pointing at `pip install 'ml-datarefinery[corruptions]'`.
 
 ### FR-10: Transformations
 

@@ -148,6 +148,8 @@ src/datarefinery/
       filters_drop_by_label.py      # FR-FILTER-3 (Story H.l)
       _corruptions.py               # FR-GEN-1: vendored Hendrycks-Dietterich corruptions (Story H.m.1)
       _corruption_data/             # vendored frost textures + upstream attribution NOTICE
+      _corruption_names.py          # FR-GEN-1: dependency-free corruption vocabulary (Story H.m.2)
+      generation_imagecorruptions.py # FR-GEN-1: `imagecorruptions_apply` Generation op (Story H.m.2)
     tabular/
       __init__.py
       plugin.py              # stub: section list + operation outline only
@@ -494,7 +496,7 @@ Per-section models (sketch; full field definitions land alongside the FR-1 imple
 | `SampleDataSection` | `selector: SampleSelector` (declarative subset of `Input`) |
 | `Contract` / `Expectation` | `field: str | None`, `assertion: AssertionExpr`, `severity: Severity` |
 | `FilterOp` | `name`, `predicate`, `stages`, `splits`, `seed` (sampling only). Plugin-contributed sampling ops declare their own pydantic param model alongside the `OperationSpec` schema — `SamplePerClassParams` (`n_per_class: int > 0`, `label: str | None`, `exclude_already_labeled: list[str] | None`), `SamplePerClassFractionalParams` (`n_per_class_base: int > 0`, `fractions: dict[str, float]` each in `[0.0, 1.0]`, plus inherited `label` / `exclude_already_labeled`), and `DropByLabelParams` (`labels: list[str]`, non-empty) are validated inside the op via `model_validate(predicate)`; recipe-level validation still goes through the plugin's `OperationSpec` (check 18). |
-| `GenerationOp` | `name`, `inputs`, `output_schema`, `seed`, `applies_at` |
+| `GenerationOp` | `name`, `inputs`, `output_schema`, `seed`, `applies_at`, `params: dict[str, Any] = {}`. Plugin-contributed parameterized ops declare a pydantic param model — e.g., `ImageCorruptionsApplyParams` (`corruption_types: list[str]` non-empty, `severities: list[int]` each in `[1,5]`, `preserve_original: bool = False`, `tag_fields: list[str]`) — validated inside the op via `model_validate(params)`. Recipe-level validation runs through the plugin's `OperationSpec` (check 18 covers Generation as well as Filters / Transformations / etc). |
 | `SplitsSection` | `ratios: dict[str, float]` or `key_assignment: KeyAssignment`, `stratify_by: str | None`, `seed: int | None`, `class_balance: ClassBalanceStrategy | None`, `applies_to: str | None`. When `applies_to` is set, it names a single source-declared partition to sub-partition via `ratios`; sibling partitions are preserved verbatim. |
 | `TransformationOp` | `name`, `op`, `params`, `fit_source: str | None`, `splits` |
 | `AugmentationOp` | `name`, `op`, `params`, `splits` (validator rejects non-train), `seed` |
@@ -871,6 +873,7 @@ The wheel ships only Python source plus `py.typed`. Scaffolder templates (if int
 |---|---|
 | End user (production) | `pip install ml-datarefinery` |
 | End user with LLM enhancement | `pip install 'ml-datarefinery[llm]'` |
+| End user with corruption-robustness extras | `pip install 'ml-datarefinery[corruptions]'` |
 | Developer (runtime venv via pyve) | `pyve run pip install -e .` |
 | Developer (testenv editable, required for CLI tests) | `pyve testenv run pip install -e .` |
 | Developer (dev tools) | `pyve testenv install -r requirements-dev.txt` |

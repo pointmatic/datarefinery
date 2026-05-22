@@ -591,7 +591,7 @@ Minor bump (v0.12.0). Cache-invalidating.
 
 - A `keep_by_label` companion op. Symmetrically pleasing, but the same effect can be achieved by inverting the `drop_by_label` list; deferred until a real recipe needs it.
 
-### Story H.m: `imagecorruptions_apply` Generation op + `[corruptions]` extras (umbrella) [Planned]
+### Story H.m: `imagecorruptions_apply` Generation op + `[corruptions]` extras (umbrella) [Done]
 
 A new `Generation` operation that applies Hendrycks-Dietterich image corruptions (ICLR 2019) to incoming records. Parameters: `corruption_types` (list of H-D vocabulary names), `severities` (list of ints in 1–5), `preserve_original` (boolean), `tag_fields` (metadata fields written per output record). Output record count = `input × len(corruption_types) × len(severities)`, ×2 when `preserve_original=True`. Determinism via the per-record seeding contract in `pipeline.workers`. See FR-GEN-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
@@ -690,7 +690,7 @@ Second of three H.m child stories. Builds the Generation op on top of H.m.1's ve
 - End-to-end materialization integration test (full pipeline through manifest + report). That's H.m.3.
 - `docs/specs/features.md` / `tech-spec.md` (beyond Package Structure already added in H.m.1) / `README.md` updates. H.m.3.
 
-### Story H.m.3: v0.13.0 `imagecorruptions_apply` integration test + docs + release [Planned]
+### Story H.m.3: v0.13.0 `imagecorruptions_apply` integration test + docs + release [Done]
 
 Third of three H.m child stories. End-to-end verification + user-visible documentation + the version bump that ships FR-GEN-1.
 
@@ -698,13 +698,14 @@ Minor bump (v0.13.0). Cache-invalidating: introduces the `imagecorruptions_apply
 
 **Tasks:**
 
-- [ ] Integration test in `tests/integration/test_imagecorruptions_apply.py`: small fixture image (or set of 2–4 images) → recipe declaring a 2×2 (`corruption_types` × `severities`) `imagecorruptions_apply` op → run through full materialization → assert (a) output instance's directory layout contains the expected per-record files, (b) `manifest.json` records the correct `record_counts`, (c) `report.md` enumerates the corruption sweep.
-- [ ] `docs/specs/features.md` § FR-9 (Generation): append a paragraph declaring `imagecorruptions_apply`, its parameters (`corruption_types`, `severities`, `preserve_original`, `tag_fields`), the output-count formula, the determinism contract, and the Hendrycks-Dietterich provenance. § Quality Requirements > Minimal runtime dependencies: add a sentence noting the optional `[corruptions]` extras group (`scikit-image`, `opencv-python-headless`) for robustness-evaluation pipelines; explain that the corruption *vocabulary* is in-tree (vendored from upstream) so recipe-time validation works without the extras. § FR-2 Edge Cases: add a bullet documenting the deferred-error case — when a recipe references `imagecorruptions_apply` but the `[corruptions]` extras are not installed, validation can still verify the corruption names but materialization fails at lazy-import time with a clear extras-install pointer.
-- [ ] `docs/specs/tech-spec.md` § Dependencies > Optional extras table: add `[corruptions]` purpose row (or extend H.m.1's row to reference `generation_imagecorruptions.py` as the consumer). § Package Structure: add `generation_imagecorruptions.py` under `plugins/image_classification/`. § Data Models > Recipe model section table: extend `GenerationOp` row to reference `ImageCorruptionsApplyParams`. § Packaging > pyproject.toml `[project.optional-dependencies]`: add the `corruptions` extras spec. § Installation methods table: add row "End user with corruption robustness extras" → `pip install 'ml-datarefinery[corruptions]'`.
-- [ ] `README.md` § Installation: after the `[llm]` extras snippet, add a parallel `[corruptions]` snippet — `pip install 'ml-datarefinery[corruptions]'` with a one-line description ("for the robustness-evaluation `imagecorruptions_apply` Generation op, which applies Hendrycks-Dietterich (ICLR 2019) image corruptions"). Plugin model bullet for `image_classification`: no edit required.
-- [ ] `CHANGELOG.md`: `## [0.13.0]` "Added" section noting the new op, the `[corruptions]` extras group, the vendored Hendrycks-Dietterich corruption module with upstream attribution, and the pre-prod cache invalidation.
-- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.13.0`.
-- [ ] Verify: tests (incl. extras-installed run), lint, mypy, canonical-hash pin (the pinned fixture recipe must not use the new op).
+- [x] Integration test in `tests/integration/test_imagecorruptions_apply.py`: 12-input record set (32×32 images) → recipe with a 2×2 (`corruption_types=[gaussian_noise, fog]` × `severities=[1, 3]`) `imagecorruptions_apply` op → full materialization through `PipelineRunner` → asserts instance directory layout (manifest, train/val/test JSONL shards, report.md), per-split record counts (train = `n_train_pre_generation × 5` from the 2×2 sweep + originals), and per-record tag-field writes in train.jsonl (`corruption`, `severity`, `source_path`). Plus a second test asserting cross-run cache-key determinism (same recipe + same input hashes + same seed → same `recipe_hash` / `input_hash` / `record_counts`).
+- [x] `docs/specs/features.md` § FR-9 (Generation): new paragraph documenting the op, parameters, output-count formula, determinism contract, and Hendrycks-Dietterich provenance + vendored-module note. § Quality Requirements > Minimal runtime deps: updated to list both `[llm]` and `[corruptions]` extras with the in-tree vocabulary note. § FR-2 Edge Cases: new bullet on the deferred-validation case for optional-extras-gated ops.
+- [x] `docs/specs/tech-spec.md` § Optional extras table: extends H.m.1's `[corruptions]` row description to mention the runtime-only execution boundary. § Package Structure: added `_corruption_names.py` + `generation_imagecorruptions.py`. § Data Models > Recipe model table: `GenerationOp` row extended with the new `params` field and `ImageCorruptionsApplyParams`. § Installation methods table: new "End user with corruption-robustness extras" row.
+- [x] `README.md` § Installation: parallel `[corruptions]` snippet added after the `[llm]` one, with a Hendrycks-Dietterich reference.
+- [x] `CHANGELOG.md`: `## [0.13.0] - 2026-05-22` block with Added (op + vendored module + extras group), Changed (the `GenerationOp.params` schema field carried over from H.m.2 + the `duplicate_minority_class` OperationSpec truthification), and a Notes section on pre-prod cache invalidation.
+- [x] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.13.0`.
+- [x] Verify: tests (incl. extras-installed run), lint, mypy, canonical-hash pin (the pinned fixture recipe does not use the new op and is unchanged).
+- [x] **Wheel-pack verification** (out-of-band defensive check): built a wheel via `python -m build --wheel` and confirmed the vendored frost JPEGs + `NOTICE.md` + `_corruption_data/` directory all ship in the wheel. Hatchling's default `packages = ["src/datarefinery"]` config handled the non-Python assets without needing `force-include`.
 
 **Out of Scope (H.m.3 specifically)**
 

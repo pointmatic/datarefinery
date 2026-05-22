@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-05-22
+
+### Added
+
+- **Story H.m — `imagecorruptions_apply` Generation op + `[corruptions]`
+  extras (FR-GEN-1).** New `Generation` operation in the
+  `image_classification` plugin: applies Hendrycks-Dietterich (ICLR 2019,
+  "Benchmarking Neural Network Robustness to Common Corruptions and
+  Perturbations") image corruptions to each input record, emitting one
+  output per `(corruption_type, severity)` pair with optional
+  preserved-original copies. Per-record corruption seeds derived from
+  the recipe master seed via `pipeline.workers.per_record_seed`, so
+  output bytes are reproducible across runs and worker counts.
+
+  - **`ImageCorruptionsApplyParams` pydantic model:** `corruption_types`
+    (non-empty subset of the 19 canonical names), `severities` (each in
+    `[1, 5]`, non-empty), `preserve_original: bool = False`, `tag_fields`
+    (default `["corruption", "severity", "source_path"]`). Unknown
+    names, duplicates, and out-of-range severities are rejected at
+    `model_validate(...)` time.
+  - **Vendored corruption module** at
+    `src/datarefinery/plugins/image_classification/_corruptions.py`
+    (Story H.m.1). Derived from upstream `imagecorruptions==1.1.2`
+    (Apache-2.0, Claudio Michaelis; full attribution preserved in
+    `_corruption_data/NOTICE.md`) and patched for current dependencies:
+    `np.float_` → `np.float64` (NumPy 2.x); `multichannel=` →
+    `channel_axis=` (scikit-image 0.21+); explicit `rng` threading for
+    deterministic seeding under scikit-image's PCG64 default;
+    `pkg_resources.resource_filename` → `importlib.resources` for the
+    vendored frost JPEG textures (removes `setuptools<81` dependency);
+    `scipy.ndimage.interpolation` → `scipy.ndimage` (deprecation). The
+    upstream `imagecorruptions` package is **not** depended on; all 19
+    corruptions execute on the project's existing NumPy 2.x /
+    scikit-image 0.26 floor.
+  - **`[corruptions]` extras group:** `scikit-image` +
+    `opencv-python-headless`. Install with
+    `pip install 'ml-datarefinery[corruptions]'`. The corruption
+    *vocabulary* is in-tree (dependency-free `_corruption_names.py`) so
+    recipe-time validation works without the extras; only execution
+    requires them.
+
+### Changed
+
+- **`GenerationOp.params` field added.** Generation ops previously had
+  no user-supplied params surface — only `seed` / `inputs` /
+  `output_schema` / `applies_at`. Added `params: dict[str, Any] = {}`
+  to `GenerationOp`; threaded through `pipeline/stages/generation.py`
+  and the in-tree `duplicate_minority_class` op signature. Existing
+  recipes that use Generation continue to validate (default-empty
+  params); the canonical bytes of every such recipe now include an
+  empty `"params": {}` entry. Per `project-essentials.md`'s "Cache
+  identity is the reproducibility contract" pre-production rules,
+  pre-prod invalidation is acceptable; the pinned canonical-hash
+  fixture does not use Generation and is unchanged.
+- **`duplicate_minority_class` OperationSpec parameters truthified.**
+  The op never actually consumed `label_field` / `target_count` /
+  `seed` as user-supplied params (those values come from `op.seed`,
+  `Labels.field`, and a hard-coded majority count). OperationSpec now
+  declares zero parameters across all three plugins (image_classification,
+  tabular, text). Extends validator check 18 to cover Generation params,
+  consistent with Filters / Transformations / Augmentations /
+  Featurizations / Visualizations.
+
+### Notes
+
+- **Cache invalidation (pre-prod).** Introducing the new op kind and
+  the `GenerationOp.params` field both perturb the canonical-form
+  vocabulary. Pre-production invalidation is acceptable.
+
 ## [0.12.0] - 2026-05-22
 
 ### Added

@@ -63,6 +63,14 @@ For the optional LLM-enhancement layer (FR-17), install with the
 pip install 'ml-datarefinery[llm]'
 ```
 
+For the robustness-evaluation `imagecorruptions_apply` Generation op
+(FR-GEN-1), which applies Hendrycks-Dietterich (ICLR 2019) image
+corruptions, install with the `[corruptions]` extra:
+
+```bash
+pip install 'ml-datarefinery[corruptions]'
+```
+
 ### From source (development)
 
 DataRefinery uses [`pyve`](https://pointmatic.github.io/pyve/) to
