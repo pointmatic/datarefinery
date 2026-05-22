@@ -28,7 +28,7 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ## Phase H: Feature Refinements and Fixes
 
-Small, contained refinements to the v1 feature surface and post-release fixes. Each story is scoped to one user-visible capability or one focused fix so versions can ship independently.
+Refinements to the v1 feature surface, post-release fixes, and image-classification capability extensions that build on v1's input/featurization/filter/generation primitives. Each story is scoped to one user-visible capability or one focused fix so versions can ship independently.
 
 ### Story H.a: v0.7.0 InputSource sidecar labels + flat-image layout for image_classification [Done]
 
@@ -428,6 +428,196 @@ No code or tests touched. Patch bump (v0.9.4) since no behavior changed.
 - The `pyve run pip install -e /path/to/datarefinery` placeholders in README's "From source (development)" section. The developer authored those intentionally to make it explicit how to install the locally-cloned package from another codebase; not a defect.
 - Promoting any other operational concern (release workflow, CI matrix, codecov) to a features.md requirement. PyPI installability is user-visible and warrants the seat; the others are internal-quality concerns and already live in tech-spec.md.
 
+### Story H.i: Integration spike — `imagecorruptions` extras viability [Planned]
+
+Time-boxed integration spike to validate the new third-party dependency boundary introduced by FR-GEN-1 ([phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md)). The spike's deliverable is documented findings (install behavior, vocabulary, determinism, pin guidance) that H.m will consume — not shipping code.
+
+Three uncertainties to resolve before H.m commits to the extras-group approach:
+
+1. Do `imagecorruptions`, `opencv-python-headless`, and `scikit-image` install cleanly into the testenv alongside current `requirements-dev.txt` pins, with no resolver conflicts?
+2. Is the H-D corruption vocabulary enumerable at the Python level (so recipe-time validation in H.m can be fail-fast when the extras are installed)?
+3. Does a seeded corruption call on a fixed input produce byte-identical output across repeated invocations, as required by the determinism contract in `pipeline.workers`?
+
+No version bump (spike-only; no shipping code). Phase-bundling option applies — this story carries no version in its title per the Version Cadence rules.
+
+**Tasks:**
+
+- [ ] In a scratch worktree (or scratch branch), add a temporary `[corruptions]` extras spec to `pyproject.toml` listing `imagecorruptions`, `opencv-python-headless`, `scikit-image`. Install into the testenv (`pyve testenv run pip install -e '.[corruptions]'`) and record resolver behavior.
+- [ ] Enumerate the corruption vocabulary: `from imagecorruptions import get_corruption_names; get_corruption_names()`. Record the full list.
+- [ ] Determinism check: apply `gaussian_noise` at severity 3 to a fixed test image twice with the same RNG seed; confirm byte-identical output. Repeat for one weather-family corruption (e.g., `fog`).
+- [ ] Verify `opencv-python-headless` is what gets installed (not the GUI variant pulled transitively). If the GUI variant sneaks in via a transitive constraint, document the resolution.
+- [ ] Record findings in this story body before flipping to [x]: install procedure, vocabulary list, determinism result, recommended version pins, any caveats (e.g., platform-specific install gotchas on macOS arm64).
+- [ ] Decision: is the extras-group approach viable, or are there blocking issues that require an alternative (vendoring, fork, different package)? Record the decision and rationale.
+- [ ] Tear down the scratch install. Do **not** commit `pyproject.toml` or `requirements-dev.txt` changes in this story — H.m will land those with the production-grade tasks.
+
+**Out of Scope**
+
+- Implementing the `imagecorruptions_apply` op itself. That's H.m.
+- Performance benchmarking of the corruption calls. The determinism check is enough for a spike; latency is a non-blocking concern that surfaces only if H.m's integration tests are slow enough to warrant attention.
+
+### Story H.j: v0.10.0 `sample_per_class` filter op with disjoint-pool labeling [Planned]
+
+A new `Filters` operation `sample_per_class` that produces a balanced subsample of `n_per_class` records per label, drawn deterministically from incoming records (stratified by label, seeded from the recipe's master seed). Optional `label` param tags surviving records with a partition marker readable by downstream filters; optional `exclude_already_labeled` param removes records already carrying any of the listed tags from the candidate pool, enabling disjoint-pool selection in a single recipe. See FR-FILTER-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Disjoint-pool selection is the less obvious use case but matters whenever two non-overlapping balanced sets must be drawn from one labeled source — building a train/test split from a source without a canonical one, evaluating fairness on a balanced holdout drawn from the same pool as training, or constructing any pair of independent balanced sets when canonical splits are unavailable or unusable.
+
+Design decision (from the phase plan): bespoke `label` + `exclude_already_labeled` params on this op rather than a generic record-tagging primitive that multiple filter ops would share. The generic primitive is deferred to Future.
+
+Minor bump (v0.10.0) — new feature. Cache-invalidating: introduces a new op kind. Pre-prod invalidation acceptable per `project-essentials.md` § "Cache identity is the reproducibility contract" pre-production rules; mention in release notes.
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/filters_sample_per_class.py` with the standard Apache-2.0 header (`# Copyright (c) 2026 Pointmatic` / `# SPDX-License-Identifier: Apache-2.0`).
+- [ ] Add `SamplePerClassParams` pydantic model in `src/datarefinery/recipe/models.py`: `n_per_class: int` (positive), `label: str | None = None`, `exclude_already_labeled: list[str] | None = None`. Frozen.
+- [ ] Implement op: stratified-by-label deterministic sampling using per-record seeding (`sha256(global_seed.to_bytes(8, 'big') + record_id_bytes).digest()[:8]`), with optional label tagging on surviving records and optional candidate-pool exclusion via `exclude_already_labeled`.
+- [ ] Register op in `src/datarefinery/plugins/image_classification/__init__.py`.
+- [ ] Tests in `tests/plugins/image_classification/test_filters_sample_per_class.py`: balanced subsample without tagging; with `label` tag emitted on surviving records; disjoint-pool case (two `sample_per_class` ops chained, second uses `exclude_already_labeled` to skip the first's selection); deterministic across `workers=1/2/4` byte-identical.
+- [ ] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `sample_per_class` as a new plugin-contributed op; document the `n_per_class`, `label`, and `exclude_already_labeled` params; describe the disjoint-pool pattern (chained `sample_per_class` ops with `exclude_already_labeled` referencing the prior `label`) as a worked use case. Add an edge-case bullet covering tagging-without-existing-label (records without the prior tag are not excluded).
+- [ ] `docs/specs/tech-spec.md` § Package Structure: add `filters_sample_per_class.py` under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend the `FilterOp` row to reference the new `SamplePerClassParams` model (params validated via the plugin's `OperationSpec`, check 18). § Cross-Cutting Concerns > Determinism: confirm the new op uses the existing per-record seeding scheme; no new seeding code needed.
+- [ ] `README.md`: no edit required for this story. The Plugin model section's existing "etc." covers the new op; CLI verb table check-count is unchanged unless this story adds a new validator check (it does not).
+- [ ] `CHANGELOG.md`: new `## [0.10.0]` "Added" section noting the new op and pre-prod cache invalidation.
+- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.10.0`.
+- [ ] Verify: tests green, ruff + ruff format + mypy clean, canonical-hash pin unchanged (the pinned fixture recipe must not use the new op).
+
+**Out of Scope**
+
+- Generic record-tagging primitive that other filter ops could share. Deferred to Future.
+- `sample_per_class_fractional` — separate story (H.k).
+- `drop_by_label` — separate story (H.l).
+
+### Story H.k: v0.11.0 `sample_per_class_fractional` filter op [Planned]
+
+A new `Filters` operation that produces a per-class subsample where each class is sampled at a different rate. Parameters: `n_per_class_base` (integer reference scale) and `fractions` (dict mapping each label to a float in [0.0, 1.0]; missing labels default to 1.0). Surviving records per class = `floor(n_per_class_base × fractions[label])`. Inherits FR-FILTER-1's `label` and `exclude_already_labeled` tagging params. See FR-FILTER-2 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Controlled-imbalance dataset construction is the recurring need this addresses: studying how class imbalance affects model behavior, comparing mitigation strategies (oversampling, class-weighted loss, focal loss, minority-class augmentation), or stress-testing a mitigation against a known imbalance ratio. The fractional form reads cleanly and matches how imbalance is typically discussed in the literature — as a per-class multiplier on a base rate — rather than as a chain of per-class filters with different absolute counts.
+
+Minor bump (v0.11.0). Cache-invalidating.
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/filters_sample_per_class_fractional.py` with Apache-2.0 header.
+- [ ] Add `SamplePerClassFractionalParams` pydantic model: `n_per_class_base: int` (positive), `fractions: dict[str, float]` (each value in [0.0, 1.0]), plus inherited `label`/`exclude_already_labeled` params. Frozen.
+- [ ] Factor out the shared stratified-by-label seeded sampling and tagging logic into a private helper module shared with H.j's `sample_per_class` (DRY without over-abstracting; one helper, two op call sites).
+- [ ] Implement op: per-class surviving count = `floor(n_per_class_base × fractions.get(label, 1.0))`.
+- [ ] Register op.
+- [ ] Tests in `tests/plugins/image_classification/test_filters_sample_per_class_fractional.py`: per-class counts match the floor formula; missing-class defaults to 1.0; fractions=0.0 drops that class entirely; label tagging consistent with H.j; disjoint pool with `sample_per_class` chained via `exclude_already_labeled`; workers=1/2/4 byte-identical.
+- [ ] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `sample_per_class_fractional`; document `n_per_class_base`, `fractions`, and inherited `label`/`exclude_already_labeled` params; state the per-class surviving-count formula. Note the op shares the disjoint-pool tagging mechanism with `sample_per_class`.
+- [ ] `docs/specs/tech-spec.md` § Package Structure: add `filters_sample_per_class_fractional.py` plus the shared sampling-helper module (named per implementation, e.g., `filters_stratified_sampling.py`) under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend the `FilterOp` row to reference `SamplePerClassFractionalParams`.
+- [ ] `README.md`: no edit required.
+- [ ] `CHANGELOG.md`: `## [0.11.0]` "Added" section.
+- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.11.0`.
+- [ ] Verify: tests, lint, mypy, canonical-hash pin.
+
+**Out of Scope**
+
+- Rebasing H.j onto a "generic per-class sampler with optional fraction param" primitive that subsumes both ops. The two-op recipe surface reads more clearly than a single op with conditional parameters; the shared internal helper covers the DRY concern.
+
+### Story H.l: v0.12.0 `drop_by_label` filter op [Planned]
+
+A new `Filters` operation that drops records carrying any of the named labels. Parameter: `labels: list[str]` (non-empty). The inverse companion to FR-FILTER-1's `label` tagging mechanism. See FR-FILTER-3 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Canonical use case: two sibling recipes need to select the same subset from a common labeled source, so both replicate an identical filter chain (same ops, same parameters, same seed) — but each recipe then drops the labels not relevant to its purpose, keeping only its share. Without `drop_by_label`, recipes either use a non-deterministic selection mechanism (breaking cross-recipe bit-identity guarantees) or carry unused records through the rest of the pipeline (wasting materialization time and disk space).
+
+Design decision (from the phase plan): distinct `drop_by_label` op rather than a parameter on existing filter primitives. Distinct reads cleaner in the recipe surface.
+
+Minor bump (v0.12.0). Cache-invalidating.
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/filters_drop_by_label.py` with Apache-2.0 header.
+- [ ] Add `DropByLabelParams` pydantic model: `labels: list[str]` with non-empty validation. Frozen.
+- [ ] Implement op: read the record-tag field written by H.j/H.k, drop any record whose tag is in `labels`.
+- [ ] Register op.
+- [ ] Tests in `tests/plugins/image_classification/test_filters_drop_by_label.py`: drop with single label; drop with multiple labels; drop on tagged records but pass through untagged; empty `labels` rejected at validation; cross-recipe bit-identity test (two recipes chain through H.j and H.l with different `labels` values and produce non-overlapping, byte-identical sub-instances).
+- [ ] `docs/specs/features.md` § FR-8 (Filters): append a paragraph declaring `drop_by_label`, its `labels: list[str]` parameter, and the canonical two-sibling-recipes use case (same chain, different `drop_by_label.labels`, byte-identical sub-instances). Add an edge-case bullet for non-existent label values (skipped as a no-op rather than raising).
+- [ ] `docs/specs/tech-spec.md` § Package Structure: add `filters_drop_by_label.py` under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend the `FilterOp` row to reference `DropByLabelParams`.
+- [ ] `README.md`: no edit required.
+- [ ] `CHANGELOG.md`: `## [0.12.0]` "Added" section.
+- [ ] Bump to `0.12.0`.
+- [ ] Verify.
+
+**Out of Scope**
+
+- A `keep_by_label` companion op. Symmetrically pleasing, but the same effect can be achieved by inverting the `drop_by_label` list; deferred until a real recipe needs it.
+
+### Story H.m: v0.13.0 `imagecorruptions_apply` Generation op + `[corruptions]` extras [Planned]
+
+A new `Generation` operation that applies image corruptions from the `imagecorruptions` PyPI package (Hendrycks-Dietterich ICLR 2019 reference) to incoming records. Parameters: `corruption_types` (list of names from the H-D vocabulary), `severities` (list of ints in 1–5), `preserve_original` (boolean), `tag_fields` (which metadata fields to write per output record). Output record count = input × len(corruption_types) × len(severities), × 2 when `preserve_original=True`. Determinism: per-record corruption seeds derived from the recipe master seed via the per-record seeding contract in `pipeline.workers`. See FR-GEN-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Robustness evaluation under known image corruptions is a standard benchmarking practice originating with Hendrycks & Dietterich's "Benchmarking Neural Network Robustness to Common Corruptions and Perturbations" (ICLR 2019). The corruption taxonomy covers noise, blur, weather, and digital artifacts at five severity levels; the canonical reference implementation ships as the `imagecorruptions` PyPI package. Wrapping it as a DataRefinery Generation operation keeps the corruption layer seeded, cache-keyed, report-visible, and reproducible — versus the alternative of consuming pre-generated published corruption datasets (per-dataset fetch logic, separate `.npy` source handling, tens of GB of downloads for what is functionally a wrapper around this package).
+
+Design decisions (informed by H.i spike):
+- **Dependency placement:** `image_classification[corruptions]` extras group, not base requirements. Keeps the base plugin lean.
+- **Validation:** fail-fast at recipe validation time when extras are installed (enumerate vocabulary via `imagecorruptions.get_corruption_names()`); deferred-with-clear-error at materialization time when extras are absent, pointing the user at the install command.
+
+Depends on H.i's findings (resolver behavior, vocabulary, pin recommendations).
+
+Minor bump (v0.13.0). Cache-invalidating.
+
+**Tasks:**
+
+- [ ] Add `[project.optional-dependencies] corruptions = ["imagecorruptions", "opencv-python-headless", "scikit-image"]` to `pyproject.toml` with version pins from the H.i spike findings.
+- [ ] Create `src/datarefinery/plugins/image_classification/generation_imagecorruptions.py` with Apache-2.0 header. Module-level guard that raises `ImportError` with a clear "install with `pip install 'ml-datarefinery[corruptions]'`" message when the deps are missing.
+- [ ] Add `ImageCorruptionsApplyParams` pydantic model: `corruption_types: list[str]` (non-empty), `severities: list[int]` (each in 1..5, non-empty), `preserve_original: bool = False`, `tag_fields: list[str] = ["corruption", "severity", "source_path"]`. Frozen.
+- [ ] Recipe-validation hook: when `imagecorruptions` importable, validate `corruption_types` against `get_corruption_names()` at validate-time and reject unknown names; when not importable, defer with a clear "extras not installed" error keyed to install instructions.
+- [ ] Per-record seeding: derive each input record's corruption seed from `(global_seed, record_id)` per the determinism contract; pass into the `imagecorruptions.corrupt(image, corruption_name=..., severity=..., seed=...)` call.
+- [ ] Output emission: one output record per `(input × corruption_type × severity)`; emit the original (untouched) record additionally when `preserve_original=True` with `corruption="none"`, `severity=0`.
+- [ ] Tag-field writes: write the named tag fields onto each output record; `source_path` carries the input record's path for provenance.
+- [ ] Register op.
+- [ ] Tests in `tests/plugins/image_classification/test_generation_imagecorruptions.py`: determinism (same seed → byte-identical); workers=1/2/4 reorder-by-record-id preserves byte-identical output; output count formula holds; `preserve_original` doubles count and tags correctly; recipe-validation rejects unknown corruption names when extras installed; clear `ImportError` message when extras absent. Mark tests `skipif` when extras aren't installed in the testenv.
+- [ ] Integration test wired to a small fixture image: run a 2×2 (corruption_types × severities) sweep end-to-end through materialization and verify the output instance's directory layout, manifest, and report all contain the expected records.
+- [ ] `docs/specs/features.md` § FR-9 (Generation): append a paragraph declaring `imagecorruptions_apply`, its parameters (`corruption_types`, `severities`, `preserve_original`, `tag_fields`), the output-count formula, and the determinism contract. § Quality Requirements > Minimal runtime dependencies: add a sentence noting the optional `[corruptions]` extras group (`imagecorruptions`, `opencv-python-headless`, `scikit-image`) for robustness-evaluation pipelines. § FR-2 Edge Cases: add a bullet documenting the deferred-validation case — when a recipe references `imagecorruptions_apply` but the `[corruptions]` extras are not installed, validation defers the vocabulary check and materialization fails with a clear extras-install pointer.
+- [ ] `docs/specs/tech-spec.md` § Dependencies > Optional extras (table): add a `[corruptions]` row pulling `imagecorruptions`, `opencv-python-headless`, `scikit-image`, purpose "Hendrycks-Dietterich image corruptions for robustness evaluation; lazy-imported in `plugins.image_classification.generation_imagecorruptions`." § Package Structure: add `generation_imagecorruptions.py` under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend `GenerationOp` row to reference `ImageCorruptionsApplyParams`. § Packaging > pyproject.toml `[project.optional-dependencies]`: add `corruptions = ["imagecorruptions", "opencv-python-headless", "scikit-image"]` with pins from H.i. § Installation methods table: add a row "End user with corruption robustness extras" → `pip install 'ml-datarefinery[corruptions]'`.
+- [ ] `README.md` § Installation: after the `[llm]` extras snippet, add a parallel `[corruptions]` snippet — `pip install 'ml-datarefinery[corruptions]'` with a one-line description ("for the robustness-evaluation `imagecorruptions_apply` Generation op, which wraps the Hendrycks-Dietterich `imagecorruptions` package"). § Plugin model bullet for `image_classification`: no edit required (existing "etc." covers the new op).
+- [ ] `CHANGELOG.md`: `## [0.13.0]` "Added" section noting the new op, the extras group, and pre-prod cache invalidation.
+- [ ] Bump to `0.13.0`.
+- [ ] Verify: tests (incl. extras-installed run), lint, mypy, canonical-hash pin.
+
+**Out of Scope**
+
+- FR-VIZ-3 / FR-VIZ-4 corruption visualizations. Deferred to Future.
+- Pre-generated corruption-dataset source types (e.g., `.npy` distributions of CIFAR-10-C). Out of bundle scope.
+
+### Story H.n: v0.14.0 `stats_from_instance` on `normalize` + FR-ARCH-1 loose-coupling decision documented [Planned]
+
+A new parameter on `Transformations` operations that have a `fit` phase (today: `normalize`; extensible to future fit-phase ops). When set, the operation imports its fitted statistics from a sibling materialized DataRefinery instance rather than fitting locally. Parameter shape:
+
+```yaml
+stats_from_instance:
+  recipe: <path-or-name>
+  op_id: <name-of-the-op-in-the-sibling-recipe>
+```
+
+The op resolves the sibling instance from the cache, reads `fitted_statistics/<op_id>/`, and uses those statistics for the apply phase. No local fit is performed. Three failure modes must produce clear errors at validation or materialization time: sibling instance not found in cache, named `op_id` not present in sibling, sibling's statistics format incompatible with this op. See FR-TRANS-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Train/inference normalization parity is a correctness invariant: evaluation data must be normalized with the same statistics the model was trained against. When training and evaluation data are materialized in the same recipe, `fit_source: train` already handles this; the gap appears when they live in separate recipes (distribution-shift evaluation, A/B evaluation, cross-team workflows, longitudinal evaluation). In all of these, re-fitting statistics on the evaluation data is a correctness bug, not an optimization. `stats_from_instance` makes the correct behavior expressible at the recipe surface.
+
+**FR-ARCH-1 decision (documented here, not implemented as a separate change):** **loose coupling**. The sibling is referenced by recipe path/name; no `recipe_hash` is recorded as a component of this recipe's cache identity. Re-materializing the upstream recipe does not automatically invalidate downstream caches — the user is responsible for re-materializing downstream when upstream changes. Loose-coupling failure modes are detectable in small-scale single-author workflows, which is the workflow this sub-bundle enables. Tight coupling (sibling `recipe_hash` participates in cache identity, so upstream changes auto-invalidate downstream) is deferred to Future as a follow-up upgrade — needed for multi-team or longitudinal workflows where the loose-coupling failure mode is harder to catch by inspection.
+
+Minor bump (v0.14.0). Cache-invalidating (new field on `normalize`).
+
+**Tasks:**
+
+- [ ] Add `StatsFromInstanceSpec` pydantic model in `src/datarefinery/recipe/models.py`: `recipe: str` (path-or-name), `op_id: str`. Frozen.
+- [ ] Update `normalize` op schema: add `stats_from_instance: StatsFromInstanceSpec | None = None`, mutually exclusive with `fit_source`. Validate at recipe-validation time that exactly one of `fit_source` / `stats_from_instance` is set.
+- [ ] Implement sibling-instance resolver in `src/datarefinery/cache/loader.py` (or equivalent): resolve `recipe` path-or-name against the cache root, locate the most-recent matching instance, read `fitted_statistics/<op_id>/`. Explicit failures with clear messages for: sibling-not-found, op_id-not-in-sibling, statistics-format-incompatible.
+- [ ] Add an explicit comment in the resolver: "intentional loose coupling — sibling `recipe_hash` is NOT mixed into this recipe's cache identity. Re-materializing upstream does NOT auto-invalidate downstream. Tight-coupling upgrade tracked in Future."
+- [ ] Modify `normalize` apply path: when `stats_from_instance` is set, skip the fit phase and use imported statistics directly. No change to apply-phase behavior beyond statistics source.
+- [ ] Tests in `tests/transformations/test_normalize_stats_from_instance.py`: end-to-end with two sibling recipes (train recipe normalizes locally; eval recipe imports from train recipe's instance); byte-identical eval output across repeated runs (loose coupling does not affect within-run determinism); clear errors on all three failure modes; cross-recipe parity test that confirms the apply-phase output matches what an in-recipe `fit_source: train` would have produced.
+- [ ] `docs/specs/features.md` § FR-10 (Transformations) Behavior: document the new `stats_from_instance` parameter as a mutually exclusive alternative to `fit_source`; summarize the four-scenario motivation (distribution-shift / A-B / cross-team / longitudinal evaluation). § FR-10 Edge Cases: add bullets for the three failure modes (sibling-not-found, op_id-not-in-sibling, statistics-format-incompatible). § FR-4 (Semantic Cache Identity) Edge Cases: add a bullet documenting the FR-ARCH-1 loose-coupling decision — sibling-instance references do NOT participate in cache identity in v1; downstream re-materialization on upstream change is user-managed; tight coupling is a documented Future upgrade. § FR-6 (Fitted Statistics Persistence) Behavior: add a sub-point that the instance's library API exposes fitted statistics for use by *other* recipes via `stats_from_instance`.
+- [ ] `docs/specs/tech-spec.md` § Key Component Design: add a sub-heading near `pipeline.fitted_stats` (or `cache.layout`, whichever owns the resolver) declaring the sibling-instance resolver function with signature, lookup rules (recipe-path-or-name → cache root → most-recent matching instance → read `fitted_statistics/<op_id>/`), and the three exception types for failure modes. § Cross-Cutting Concerns > Caching: append a paragraph stating that sibling-instance references are intentionally loose-coupled in v1 — sibling `recipe_hash` is NOT a component of this recipe's cache identity; tight coupling is a planned schema-version-bumped upgrade. § Data Models > Recipe model section table: extend the `TransformationOp` row to reference the new `StatsFromInstanceSpec` model and note the mutual exclusion with `fit_source`. § Schema versioning: add a sentence acknowledging that tight coupling (Future) will be a `schema_version` bump.
+- [ ] `docs/specs/project-essentials.md`: append a new `###` subsection under § "Cache identity is the reproducibility contract — invalidations are ceremonious" titled along the lines of "Sibling-instance dependencies are loose-coupled in v1" — capture the bare fact, the user-managed-recompute consequence, and the deferred-tight-coupling pointer. (`plan_phase`'s Step 8 will revisit and refine; this task captures the bare fact in the right file.)
+- [ ] `README.md`: no edit required for this story. The Recipe-anatomy example does not use `stats_from_instance`; sibling-recipe authoring is covered by the recipe-authoring guide, not the README. Plugin model section unchanged.
+- [ ] `CHANGELOG.md`: `## [0.14.0]` "Added" section. Call out the loose-coupling semantics prominently — users must re-materialize downstream after upstream changes.
+- [ ] Bump to `0.14.0`.
+- [ ] Verify: tests, lint, mypy, canonical-hash pin.
+
+**Out of Scope**
+
+- Tight coupling (sibling `recipe_hash` participating in cache identity). Deferred to Future per the FR-ARCH-1 decision.
+- Extending `stats_from_instance` to other fit-phase ops beyond `normalize`. The parameter is designed to be reusable, but no other fit-phase op exists today; extending happens when a second fit-phase op lands.
+- Tooling to detect or warn about stale downstream caches when upstream changes. The loose-coupling decision accepts this as user-managed; a "detect-stale" linter is a Future enhancement, not a v0.14.0 requirement.
+
 ---
 
 ## Future
@@ -451,3 +641,8 @@ The `archive_stories` mode preserves this section verbatim when archiving storie
 - **Hard performance targets and benchmarking suite** — v1 is reactive; stories set targets when representative workloads expose problems.
 - **Native Windows first-class support** — WSL2 is the recommended Windows path in v1.
 - **Plugin sandboxing** — plugins run in-process, unsandboxed in v1; sandboxing is a post-v1 trust-boundary upgrade.
+- **Image-classification plugin: additional capabilities deferred from Phase H sub-bundle** — see [`phase-h-datarefinery-feature-recommendation.md`](phase-h-datarefinery-feature-recommendation.md) for full specifications:
+  - FR-AUG-1..4 augmentation policies (`random_crop`, `horizontal_flip`, `color_jitter`, `random_erasing`) — non-materialized policies forwarded to ModelFoundry's framework adapter.
+  - FR-VIZ-1..4 reporting visualizations (`pixel_distribution`, `augmented_sample_grid`, `corruption_severity_grid`, `severity_ladder`).
+  - FR-ARCH-1 tight coupling — sibling `recipe_hash` participating in the current recipe's cache identity, so re-materializing upstream auto-invalidates downstream. The Phase H sub-bundle shipped FR-TRANS-1 with loose coupling; tight coupling is the follow-up needed for multi-team or longitudinal workflows.
+  - Generic record-tagging primitive — factor FR-FILTER-1's bespoke `label` / `exclude_already_labeled` params into a shared mechanism multiple filter ops can use.
