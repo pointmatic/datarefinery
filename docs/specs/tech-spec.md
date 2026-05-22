@@ -53,6 +53,7 @@ pyve testenv run mypy src tests
 | Extra | Pulls In | Purpose |
 |---|---|---|
 | `[llm]` | `lmentry` | Optional LLM-enhancement layer in the `init` scaffolder (FR-17). DataRefinery never imports `lmentry` from the deterministic path. |
+| `[corruptions]` | `scikit-image`, `opencv-python-headless` | Runtime backends for the vendored Hendrycks-Dietterich corruption module (`plugins.image_classification._corruptions`), consumed by the `imagecorruptions_apply` Generation op (FR-GEN-1). The corruption *vocabulary* is in-tree so recipe-time validation works without the extras; only execution requires them. |
 
 ### Development (`requirements-dev.txt`)
 
@@ -145,6 +146,8 @@ src/datarefinery/
       filters_sample_per_class_fractional.py  # FR-FILTER-2 (Story H.k)
       filters_stratified_sampling.py  # shared helper for the two stratified-sampling ops
       filters_drop_by_label.py      # FR-FILTER-3 (Story H.l)
+      _corruptions.py               # FR-GEN-1: vendored Hendrycks-Dietterich corruptions (Story H.m.1)
+      _corruption_data/             # vendored frost textures + upstream attribution NOTICE
     tabular/
       __init__.py
       plugin.py              # stub: section list + operation outline only

@@ -37,6 +37,7 @@ dependencies = [
 
 [project.optional-dependencies]
 llm = ["lmentry"]
+corruptions = ["scikit-image", "opencv-python-headless"]
 
 [project.urls]
 Homepage = "https://github.com/pointmatic/datarefinery"

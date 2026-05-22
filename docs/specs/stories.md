@@ -591,43 +591,121 @@ Minor bump (v0.12.0). Cache-invalidating.
 
 - A `keep_by_label` companion op. Symmetrically pleasing, but the same effect can be achieved by inverting the `drop_by_label` list; deferred until a real recipe needs it.
 
-### Story H.m: v0.13.0 `imagecorruptions_apply` Generation op + `[corruptions]` extras [Planned]
+### Story H.m: `imagecorruptions_apply` Generation op + `[corruptions]` extras (umbrella) [Planned]
 
-A new `Generation` operation that applies image corruptions from the `imagecorruptions` PyPI package (Hendrycks-Dietterich ICLR 2019 reference) to incoming records. Parameters: `corruption_types` (list of names from the H-D vocabulary), `severities` (list of ints in 1–5), `preserve_original` (boolean), `tag_fields` (which metadata fields to write per output record). Output record count = input × len(corruption_types) × len(severities), × 2 when `preserve_original=True`. Determinism: per-record corruption seeds derived from the recipe master seed via the per-record seeding contract in `pipeline.workers`. See FR-GEN-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+A new `Generation` operation that applies Hendrycks-Dietterich image corruptions (ICLR 2019) to incoming records. Parameters: `corruption_types` (list of H-D vocabulary names), `severities` (list of ints in 1–5), `preserve_original` (boolean), `tag_fields` (metadata fields written per output record). Output record count = `input × len(corruption_types) × len(severities)`, ×2 when `preserve_original=True`. Determinism via the per-record seeding contract in `pipeline.workers`. See FR-GEN-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
-Robustness evaluation under known image corruptions is a standard benchmarking practice originating with Hendrycks & Dietterich's "Benchmarking Neural Network Robustness to Common Corruptions and Perturbations" (ICLR 2019). The corruption taxonomy covers noise, blur, weather, and digital artifacts at five severity levels; the canonical reference implementation ships as the `imagecorruptions` PyPI package. Wrapping it as a DataRefinery Generation operation keeps the corruption layer seeded, cache-keyed, report-visible, and reproducible — versus the alternative of consuming pre-generated published corruption datasets (per-dataset fetch logic, separate `.npy` source handling, tens of GB of downloads for what is functionally a wrapper around this package).
+Robustness evaluation under known image corruptions is a standard benchmarking practice originating with Hendrycks & Dietterich's "Benchmarking Neural Network Robustness to Common Corruptions and Perturbations" (ICLR 2019). The corruption taxonomy covers noise, blur, weather, and digital artifacts at five severity levels. Wrapping it as a DataRefinery Generation operation keeps the corruption layer seeded, cache-keyed, report-visible, and reproducible — versus the alternative of consuming pre-generated published corruption datasets (per-dataset fetch logic, separate `.npy` source handling, tens of GB of downloads for what is functionally a wrapper around this package).
 
-Design decisions (informed by H.i spike):
-- **Dependency placement:** `image_classification[corruptions]` extras group, not base requirements. Keeps the base plugin lean.
-- **Validation:** fail-fast at recipe validation time when extras are installed (enumerate vocabulary via `imagecorruptions.get_corruption_names()`); deferred-with-clear-error at materialization time when extras are absent, pointing the user at the install command.
+**Implementation path (binding decision from the H.i spike).** The H.i integration spike established that depending on `imagecorruptions==1.1.2` directly from PyPI is **not viable** on the project's current dependency floor:
 
-Depends on H.i's findings (resolver behavior, vocabulary, pin recommendations).
+- `imagecorruptions==1.1.2` (last released 2019) uses `np.float_` (removed in NumPy 2.0) → `fog` corruption fails outright.
+- Calls `skimage.filters.gaussian(multichannel=True)` (removed in scikit-image 0.21+) → `glass_blur` and `gaussian_blur` fail outright.
+- Calls `skimage.util.random_noise` without `rng=` (skimage 0.21+ uses an internal PCG64 not bound to legacy `np.random.seed()`) → `impulse_noise` is non-deterministic.
+- Imports `pkg_resources` (removed from `setuptools>=81`) → entire package fails to import on a current testenv unless `setuptools<81` is pinned.
+- Transitive `opencv-python>=3.4.5` defeats the `opencv-python-headless` isolation goal.
 
-Minor bump (v0.13.0). Cache-invalidating.
+Therefore H.m's work follows the spike's **Option A — vendored subset**: vendor `imagecorruptions/corruptions.py` into the plugin (Apache-2.0, attribution preserved) with four mechanical patches (`np.float_`→`np.float64`; `multichannel=`→`channel_axis=`; thread `rng` through `impulse_noise`'s `random_noise` call; replace `pkg_resources.resource_filename` with `importlib.resources`). The `[corruptions]` extras group ships only `scikit-image` + `opencv-python-headless` (no `imagecorruptions`, no `setuptools<81` pin).
 
-**Tasks:**
+**Child stories.** This work is split for incremental review:
 
-- [ ] Add `[project.optional-dependencies] corruptions = ["imagecorruptions", "opencv-python-headless", "scikit-image"]` to `pyproject.toml` with version pins from the H.i spike findings.
-- [ ] Create `src/datarefinery/plugins/image_classification/generation_imagecorruptions.py` with Apache-2.0 header. Module-level guard that raises `ImportError` with a clear "install with `pip install 'ml-datarefinery[corruptions]'`" message when the deps are missing.
-- [ ] Add `ImageCorruptionsApplyParams` pydantic model: `corruption_types: list[str]` (non-empty), `severities: list[int]` (each in 1..5, non-empty), `preserve_original: bool = False`, `tag_fields: list[str] = ["corruption", "severity", "source_path"]`. Frozen.
-- [ ] Recipe-validation hook: when `imagecorruptions` importable, validate `corruption_types` against `get_corruption_names()` at validate-time and reject unknown names; when not importable, defer with a clear "extras not installed" error keyed to install instructions.
-- [ ] Per-record seeding: derive each input record's corruption seed from `(global_seed, record_id)` per the determinism contract; pass into the `imagecorruptions.corrupt(image, corruption_name=..., severity=..., seed=...)` call.
-- [ ] Output emission: one output record per `(input × corruption_type × severity)`; emit the original (untouched) record additionally when `preserve_original=True` with `corruption="none"`, `severity=0`.
-- [ ] Tag-field writes: write the named tag fields onto each output record; `source_path` carries the input record's path for provenance.
-- [ ] Register op.
-- [ ] Tests in `tests/plugins/image_classification/test_generation_imagecorruptions.py`: determinism (same seed → byte-identical); workers=1/2/4 reorder-by-record-id preserves byte-identical output; output count formula holds; `preserve_original` doubles count and tags correctly; recipe-validation rejects unknown corruption names when extras installed; clear `ImportError` message when extras absent. Mark tests `skipif` when extras aren't installed in the testenv.
-- [ ] Integration test wired to a small fixture image: run a 2×2 (corruption_types × severities) sweep end-to-end through materialization and verify the output instance's directory layout, manifest, and report all contain the expected records.
-- [ ] `docs/specs/features.md` § FR-9 (Generation): append a paragraph declaring `imagecorruptions_apply`, its parameters (`corruption_types`, `severities`, `preserve_original`, `tag_fields`), the output-count formula, and the determinism contract. § Quality Requirements > Minimal runtime dependencies: add a sentence noting the optional `[corruptions]` extras group (`imagecorruptions`, `opencv-python-headless`, `scikit-image`) for robustness-evaluation pipelines. § FR-2 Edge Cases: add a bullet documenting the deferred-validation case — when a recipe references `imagecorruptions_apply` but the `[corruptions]` extras are not installed, validation defers the vocabulary check and materialization fails with a clear extras-install pointer.
-- [ ] `docs/specs/tech-spec.md` § Dependencies > Optional extras (table): add a `[corruptions]` row pulling `imagecorruptions`, `opencv-python-headless`, `scikit-image`, purpose "Hendrycks-Dietterich image corruptions for robustness evaluation; lazy-imported in `plugins.image_classification.generation_imagecorruptions`." § Package Structure: add `generation_imagecorruptions.py` under `plugins/image_classification/operations/`. § Data Models > Recipe model section table: extend `GenerationOp` row to reference `ImageCorruptionsApplyParams`. § Packaging > pyproject.toml `[project.optional-dependencies]`: add `corruptions = ["imagecorruptions", "opencv-python-headless", "scikit-image"]` with pins from H.i. § Installation methods table: add a row "End user with corruption robustness extras" → `pip install 'ml-datarefinery[corruptions]'`.
-- [ ] `README.md` § Installation: after the `[llm]` extras snippet, add a parallel `[corruptions]` snippet — `pip install 'ml-datarefinery[corruptions]'` with a one-line description ("for the robustness-evaluation `imagecorruptions_apply` Generation op, which wraps the Hendrycks-Dietterich `imagecorruptions` package"). § Plugin model bullet for `image_classification`: no edit required (existing "etc." covers the new op).
-- [ ] `CHANGELOG.md`: `## [0.13.0]` "Added" section noting the new op, the extras group, and pre-prod cache invalidation.
-- [ ] Bump to `0.13.0`.
-- [ ] Verify: tests (incl. extras-installed run), lint, mypy, canonical-hash pin.
+- **H.m.1 — Vendor `imagecorruptions/corruptions.py` with NumPy 2.x / scikit-image / RNG patches.** Extras group + vendored `_corruptions.py` + frost texture data + tests for vocabulary and determinism. Unversioned (phase-bundled).
+- **H.m.2 — `imagecorruptions_apply` Generation op + recipe-validation hook.** Op module + pydantic params + per-record seeding + output emission + plugin registration + op-level unit tests. Unversioned (phase-bundled).
+- **H.m.3 — v0.13.0 `imagecorruptions_apply` integration test + docs + release.** End-to-end materialization test + features.md/tech-spec.md/README.md updates + CHANGELOG + version bump. Ships the v0.13.0 release.
 
-**Out of Scope**
+Cache-invalidating (new op kind). Pre-prod invalidation acceptable per `project-essentials.md` § "Cache identity is the reproducibility contract" pre-production rules.
+
+**Out of Scope** *(applies across H.m.1 / H.m.2 / H.m.3)*
 
 - FR-VIZ-3 / FR-VIZ-4 corruption visualizations. Deferred to Future.
 - Pre-generated corruption-dataset source types (e.g., `.npy` distributions of CIFAR-10-C). Out of bundle scope.
+
+### Story H.m.1: Vendor `imagecorruptions/corruptions.py` with NumPy 2.x / scikit-image / RNG patches [Done]
+
+First of three H.m child stories. Establishes the `[corruptions]` extras group and vendors the corruption implementation as `src/datarefinery/plugins/image_classification/_corruptions.py` with the four patches identified in the H.i spike. No shipping op yet — that's H.m.2.
+
+Unversioned (phase-bundled per the Version Cadence rule; H.m.3 carries the v0.13.0 release bump).
+
+**Tasks:**
+
+- [x] Add `[project.optional-dependencies] corruptions = ["scikit-image", "opencv-python-headless"]` to `pyproject.toml`. Do **not** include `imagecorruptions` or `setuptools<81` — the vendored module replaces both.
+- [x] Install the extras in the testenv: `pyve testenv run pip install -e '.[corruptions]'`.
+- [x] Vendor the corruption implementation into `src/datarefinery/plugins/image_classification/_corruptions.py`. Apache-2.0 file header carrying both Pointmatic copyright and the upstream attribution ("Originally derived from `imagecorruptions` v1.1.2 by Claudio Michaelis, Apache-2.0; modifications by Pointmatic 2026"). Apply the four mechanical patches *(plus a fifth defensive one for the scipy.ndimage.interpolation deprecation; documented in the file header)*:
+  1. `np.float_` → `np.float64` (fixes `fog`'s `plasma_fractal`).
+  2. `skimage.filters.gaussian(..., multichannel=True)` → `gaussian(..., channel_axis=-1)`; `multichannel=False` → `channel_axis=None` (fixes `glass_blur` and `gaussian_blur`).
+  3. Thread an explicit `rng: numpy.random.Generator` parameter through `impulse_noise` → `skimage.util.random_noise(..., rng=rng)` *(extended scope: ALL randomness in the vendored module is now threaded through `rng`, not just `impulse_noise`. Upstream used global `np.random.X` calls throughout — gaussian_noise, shot_noise, speckle_noise, glass_blur swap deltas, motion_blur angle, snow noise/angle, frost texture-idx + crop, fog plasma_fractal, spatter liquid_layer, elastic_transform displacement. Determinism for the op now means a single `rng` passed to `corrupt(...)`; the upstream call surface is otherwise preserved.)*
+  4. Replace `pkg_resources.resource_filename` (used by `frost` to locate the frost JPEG textures) with `importlib.resources.files(...).joinpath(...)` (removes the `pkg_resources` / `setuptools<81` dependency).
+- [x] Vendor the frost JPEG textures into `src/datarefinery/plugins/image_classification/_corruption_data/frost/` (copy `frost1.png`...`frost6.jpg` from the upstream `imagecorruptions/frost/`). Loaded via `importlib.resources.as_file` in the patched `frost()`. Upstream Apache-2.0 license text preserved in `_corruption_data/NOTICE.md` along with author attribution.
+- [x] Define the public API: `get_corruption_names(subset: str = "all") -> list[str]` returning the same 19 / 15 / 4 partitions as upstream (plus the four `noise`/`blur`/`weather`/`digital` category subsets); `corrupt(image, *, corruption_name: str, severity: int, rng: numpy.random.Generator) -> numpy.ndarray` matching upstream's call surface but accepting an explicit `rng` parameter rather than relying on global `np.random` state. Validation paths (non-ndarray, non-uint8, dims, severity range, unknown name) preserved.
+- [x] Tear down any installed `imagecorruptions` from the testenv. *(Temporarily re-installed `imagecorruptions==1.1.2` + `setuptools<81` while extracting the upstream source for vendoring; both uninstalled afterward. The testenv state matches what a fresh consumer would see.)*
+- [x] Tests in `tests/plugins/image_classification/test_corruptions_vendored.py`:
+  - `get_corruption_names("all")` returns 19 names; `"common"` returns 15; `"validation"` returns 4; union of `common` + `validation` equals `all` with no overlap.
+  - For each of the 19 corruption names at severity 3, `corrupt(image, corruption_name=name, severity=3, rng=np.random.default_rng(0))` returns a `(H, W, 3)` `uint8` array; two calls with the same seed produce byte-identical output. *(Parametrized — 19 tests confirm determinism per corruption.)*
+  - Patch-specific regression tests named explicitly: `fog` no longer raises `AttributeError`; `glass_blur` and `gaussian_blur` no longer raise `TypeError`; `impulse_noise` is byte-identical across two seeded calls.
+  - `frost` successfully loads a vendored texture file via `importlib.resources` (smoke test that the data path works).
+  - Validation surface (non-ndarray, non-uint8, small-image, unknown name, out-of-range severity) covered.
+- [x] `docs/specs/tech-spec.md` § Package Structure: add `_corruptions.py` and `_corruption_data/` under `plugins/image_classification/`. § Dependencies > Optional extras table: add a `[corruptions]` row pulling `scikit-image`, `opencv-python-headless`.
+- [x] `CHANGELOG.md` Unreleased / phase-bundled — no entry yet; H.m.3 writes the consolidated 0.13.0 entry.
+- [x] No version bump (phase-bundled with H.m.3).
+- [x] Verify: tests green for the new file (34 tests, including 19 parametrized determinism cases), ruff + ruff format + mypy clean (vendored module carries a file-level `# mypy: ignore-errors` directive — standard for vendored scientific code; the Pointmatic-authored `corrupt` / `get_corruption_names` surface is small and type-checks fine; only the upstream-derived numerical body is exempted), full suite still green (794 vs. 760 before H.m.1).
+
+**Out of Scope (H.m.1 specifically)**
+
+- Recipe-level integration — no `imagecorruptions_apply` op, no `ImageCorruptionsApplyParams`, no plugin registration. That's H.m.2.
+- `docs/specs/features.md` updates — wait for the user-visible op to land in H.m.2/H.m.3.
+- `README.md` updates — wait for H.m.3.
+
+### Story H.m.2: `imagecorruptions_apply` Generation op + recipe-validation hook [Planned]
+
+Second of three H.m child stories. Builds the Generation op on top of H.m.1's vendored module. Unversioned (phase-bundled).
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/generation_imagecorruptions.py` with Apache-2.0 header. Lazy-import `scikit-image` and `cv2` at module load via a guarded helper that raises a clear `ImportError` ("install with `pip install 'ml-datarefinery[corruptions]'`") when either is missing.
+- [ ] Add `ImageCorruptionsApplyParams` pydantic model in `recipe/models.py`: `corruption_types: list[str]` (non-empty), `severities: list[int]` (each in 1..5, non-empty), `preserve_original: bool = False`, `tag_fields: list[str] = ["corruption", "severity", "source_path"]`. Frozen, with validators rejecting empty lists, out-of-range severities, and duplicate names.
+- [ ] Recipe-validation hook: validate `corruption_types` against `_corruptions.get_corruption_names("all")` at validate-time and reject unknown names. (The vocabulary is always available because `_corruptions.py` is in-tree; the extras only affect runtime corruption execution, not name validation.) If `scikit-image` or `cv2` cannot be imported, defer the vocabulary check is unnecessary — but materialization fails with the same clear extras-install pointer wired in the lazy import.
+- [ ] Per-record seeding: derive each input record's corruption seed from `(global_seed, record_id)` via `pipeline.workers.per_record_seed`; convert to a `numpy.random.default_rng(prs)` and pass to `_corruptions.corrupt(..., rng=...)`.
+- [ ] Output emission: one output record per `(input × corruption_type × severity)` in deterministic order (sorted by `(record_id, corruption_type, severity)`); emit the original (untouched) record additionally when `preserve_original=True` with `corruption="none"`, `severity=0`. Assign each output record a fresh `record_id` derived from `(input.record_id, corruption_type, severity)` via a stable hash to preserve uniqueness for downstream stages.
+- [ ] Tag-field writes: write the configured tag fields onto each output record. `source_path` carries the input record's path field (or `record_id` when no path field is set).
+- [ ] Register op in `plugin.py` under `_GENERATION_OPS` and declare its `OperationSpec` with `applicable_sections=frozenset({"Generation"})`.
+- [ ] Update `tests/plugin_contract/test_image_classification.py`'s `EXPECTED_OPERATIONS` to include `imagecorruptions_apply`.
+- [ ] Tests in `tests/plugins/image_classification/test_generation_imagecorruptions.py`:
+  - Determinism: same input + seed → byte-identical output across two invocations.
+  - Workers=1/2/4 byte-identical (the `@pytest.mark.slow` integration check threading through `run_parallel`).
+  - Output count formula: `len(out) == len(inputs) * len(corruption_types) * len(severities)` (plus `len(inputs)` extra when `preserve_original=True`).
+  - `preserve_original=True` emits the untouched record with `corruption="none"`, `severity=0`.
+  - Tag-field writes: each output record carries the named `corruption`, `severity`, `source_path` fields with correct values.
+  - Recipe-validation rejects unknown corruption names (e.g., `"made_up_corruption"`) at `ImageCorruptionsApplyParams.model_validate(...)` time.
+  - Severities outside 1..5 are rejected.
+  - Empty `corruption_types` or empty `severities` rejected.
+  - Clear extras-install ImportError surfaces when `scikit-image` or `cv2` are not importable (mock-based — testenv always has them after H.m.1).
+- [ ] No version bump (phase-bundled with H.m.3).
+- [ ] Verify: tests green, ruff + ruff format + mypy clean.
+
+**Out of Scope (H.m.2 specifically)**
+
+- End-to-end materialization integration test (full pipeline through manifest + report). That's H.m.3.
+- `docs/specs/features.md` / `tech-spec.md` (beyond Package Structure already added in H.m.1) / `README.md` updates. H.m.3.
+
+### Story H.m.3: v0.13.0 `imagecorruptions_apply` integration test + docs + release [Planned]
+
+Third of three H.m child stories. End-to-end verification + user-visible documentation + the version bump that ships FR-GEN-1.
+
+Minor bump (v0.13.0). Cache-invalidating: introduces the `imagecorruptions_apply` op kind. Pre-prod invalidation acceptable per `project-essentials.md` § "Cache identity is the reproducibility contract" pre-production rules.
+
+**Tasks:**
+
+- [ ] Integration test in `tests/integration/test_imagecorruptions_apply.py`: small fixture image (or set of 2–4 images) → recipe declaring a 2×2 (`corruption_types` × `severities`) `imagecorruptions_apply` op → run through full materialization → assert (a) output instance's directory layout contains the expected per-record files, (b) `manifest.json` records the correct `record_counts`, (c) `report.md` enumerates the corruption sweep.
+- [ ] `docs/specs/features.md` § FR-9 (Generation): append a paragraph declaring `imagecorruptions_apply`, its parameters (`corruption_types`, `severities`, `preserve_original`, `tag_fields`), the output-count formula, the determinism contract, and the Hendrycks-Dietterich provenance. § Quality Requirements > Minimal runtime dependencies: add a sentence noting the optional `[corruptions]` extras group (`scikit-image`, `opencv-python-headless`) for robustness-evaluation pipelines; explain that the corruption *vocabulary* is in-tree (vendored from upstream) so recipe-time validation works without the extras. § FR-2 Edge Cases: add a bullet documenting the deferred-error case — when a recipe references `imagecorruptions_apply` but the `[corruptions]` extras are not installed, validation can still verify the corruption names but materialization fails at lazy-import time with a clear extras-install pointer.
+- [ ] `docs/specs/tech-spec.md` § Dependencies > Optional extras table: add `[corruptions]` purpose row (or extend H.m.1's row to reference `generation_imagecorruptions.py` as the consumer). § Package Structure: add `generation_imagecorruptions.py` under `plugins/image_classification/`. § Data Models > Recipe model section table: extend `GenerationOp` row to reference `ImageCorruptionsApplyParams`. § Packaging > pyproject.toml `[project.optional-dependencies]`: add the `corruptions` extras spec. § Installation methods table: add row "End user with corruption robustness extras" → `pip install 'ml-datarefinery[corruptions]'`.
+- [ ] `README.md` § Installation: after the `[llm]` extras snippet, add a parallel `[corruptions]` snippet — `pip install 'ml-datarefinery[corruptions]'` with a one-line description ("for the robustness-evaluation `imagecorruptions_apply` Generation op, which applies Hendrycks-Dietterich (ICLR 2019) image corruptions"). Plugin model bullet for `image_classification`: no edit required.
+- [ ] `CHANGELOG.md`: `## [0.13.0]` "Added" section noting the new op, the `[corruptions]` extras group, the vendored Hendrycks-Dietterich corruption module with upstream attribution, and the pre-prod cache invalidation.
+- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.13.0`.
+- [ ] Verify: tests (incl. extras-installed run), lint, mypy, canonical-hash pin (the pinned fixture recipe must not use the new op).
+
+**Out of Scope (H.m.3 specifically)**
+
+- Same as H.m's umbrella out-of-scope: FR-VIZ-3 / FR-VIZ-4 corruption visualizations; pre-generated corruption-dataset source types.
 
 ### Story H.n: v0.14.0 `stats_from_instance` on `normalize` + FR-ARCH-1 loose-coupling decision documented [Planned]
 
