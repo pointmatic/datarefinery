@@ -1268,23 +1268,30 @@ No version bump (bundled in H.x).
 
 - Multi-corruption ladders. Use `corruption_severity_grid` for that.
 
-### Story H.x: v0.16.0 VIZ release — cross-cutting docs sweep + release [Planned]
+### Story H.x: v0.16.0 VIZ release — cross-cutting docs sweep + release [Done]
 
 Release story for the VIZ bundle. Two deliverables: cross-cutting docs sweep + CHANGELOG section + version bump + Future-section cleanup.
 
 Minor bump (v0.16.0) — new features (four reporting-mode visualization ops). Cache-invalidating only for recipes that declare one of the four new viz ops; recipes that don't are unaffected. Pre-prod invalidation acceptable.
 
+**Design notes** (agreed at gate before implementation):
+
+1. **Minor bump** (`0.15.0 → 0.16.0`) per Version Cadence — four new features, no breaking changes, no v1.0 boundary crossed. The four FR-VIZ stories ran unversioned during the bundle; H.x is where the version moves.
+2. **CHANGELOG `⚠ Cache invalidation` note covers the `matplotlib` runtime add,** not the visualization ops themselves. Reporting-mode visualizations are never part of the cache identity; users upgrading just need `pip install --upgrade ml-datarefinery` to pull the new matplotlib base dep. The canonical-hash pin's fixture has no `Visualizations` section, so the pin doesn't change.
+3. **The "clean-venv `pip install` check" is a publish-time manual step,** not part of the H.x story's automatable verification. The story marks `[Done]` once the in-repo work is verified green; the developer is responsible for the post-publish smoke check after tagging + pushing v0.16.0 (a separate developer-initiated action that triggers `publish.yml`).
+
 **Tasks:**
 
-- [ ] Cross-cutting docs sweep:
-  - [ ] `docs/specs/features.md` § FR-13: verify all four new viz ops are documented; cross-reference the new files in tech-spec.md.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: verify the four new viz files plus `_render.py` and the submodule `__init__.py` appear. § Data Models > Recipe model section table: extend the `VisualizationOp` row to reference the four new param models.
-  - [ ] `README.md`: no edit needed (Plugin model "etc." covers the new ops; CLI verb table unchanged).
-- [ ] `CHANGELOG.md`: new `## [0.16.0]` "Added" section listing the four new viz ops; note `corruption_severity_grid` and `severity_ladder` require the `[corruptions]` extras shipped in H.m.
-- [ ] Remove the `FR-VIZ-1..4 reporting visualizations` sub-bullet from the `## Future` entry. Other sub-bullets remain.
-- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.16.0`.
-- [ ] Verify: tests green, ruff + ruff format + mypy clean. Canonical-hash pin unchanged (pinned fixture should not use the new viz ops).
-- [ ] Release-prep: verify `pip install ml-datarefinery==0.16.0` succeeds in a clean venv.
+- [x] Cross-cutting docs sweep:
+  - [x] `docs/specs/features.md` § FR-13: verify all four new viz ops are documented; cross-reference the new files in tech-spec.md. (Confirmed complete per-story; no edit needed in H.x.)
+  - [x] `docs/specs/tech-spec.md` § Package Structure: verify the four new viz files plus `_render.py` and the submodule `__init__.py` appear (confirmed complete per-story). § Data Models > Recipe model section table: extend the `VisualizationOp` row to reference the four new param models (edited in H.x).
+  - [x] `README.md`: no edit needed (Plugin model "etc." covers the new ops; CLI verb table unchanged).
+- [x] `CHANGELOG.md`: new `## [0.16.0]` "Added" section listing the four new viz ops + the matplotlib runtime-dep add + the multi-PNG / `recipe`-kwarg protocol extensions; note `corruption_severity_grid` and `severity_ladder` require the `[corruptions]` extras shipped in H.m.
+- [x] Remove the `FR-VIZ-1..4 reporting visualizations` sub-bullet from the `## Future` entry. Other sub-bullets remain.
+- [x] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.16.0`.
+- [x] Verify: tests green, ruff + ruff format + mypy clean. Canonical-hash pin unchanged (pinned fixture has no `Visualizations` section per audit).
+- [x] Local build smoke check: `pyve testenv run python -m build` produces clean sdist + wheel under the new 0.16.0 version (`build` is in `requirements-dev.txt`, so testenv is the right venv; prerequisite for `publish.yml` on tag push; not a publish).
+- [ ] **MANUAL (post-publish, developer action):** after tagging + pushing v0.16.0 and `publish.yml` succeeds, verify `pip install ml-datarefinery==0.16.0` in a clean venv resolves matplotlib + the `[corruptions]` extras cleanly.
 
 **Out of Scope**
 
@@ -1315,7 +1322,6 @@ The `archive_stories` mode preserves this section verbatim when archiving storie
 - **Native Windows first-class support** — WSL2 is the recommended Windows path in v1.
 - **Plugin sandboxing** — plugins run in-process, unsandboxed in v1; sandboxing is a post-v1 trust-boundary upgrade.
 - **Image-classification plugin: additional capabilities deferred from Phase H sub-bundle** — see [`phase-h-datarefinery-feature-recommendation.md`](phase-h-datarefinery-feature-recommendation.md) for full specifications:
-  - FR-VIZ-1..4 reporting visualizations (`pixel_distribution`, `augmented_sample_grid`, `corruption_severity_grid`, `severity_ladder`).
   - FR-ARCH-1 tight coupling — sibling `recipe_hash` participating in the current recipe's cache identity, so re-materializing upstream auto-invalidates downstream. The Phase H sub-bundle shipped FR-TRANS-1 with loose coupling; tight coupling is the follow-up needed for multi-team or longitudinal workflows.
   - Generic record-tagging primitive — factor FR-FILTER-1's bespoke `label` / `exclude_already_labeled` params into a shared mechanism multiple filter ops can use.
 - **Default-change discipline tooling for cache-identity stability** — expand the canonical-hash pinning test suite to cover multiple fixture recipes with different default-coverage profiles, so any change to a pydantic field default (anywhere in the recipe model graph) trips at least one pin and forces the developer to either revert or bump `schema_version`. Add an optional pre-commit / CI hook that diffs pydantic field defaults against `main` and requires a `schema_version` bump or an explicit "non-semantic default change" acknowledgement in the commit message. End-state invariant: cache invalidations are always deliberate (acknowledged at change time, announced in release notes); never silent. Plan as production-readiness work.

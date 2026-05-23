@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-05-23
+
+### Added
+
+- **FR-VIZ-1 `pixel_distribution` reporting visualization (Story H.t).**
+  Per-channel R/G/B pixel-value histograms across a named split,
+  rendered as a 1x3 matplotlib figure. Params:
+  `bins: int = 64`, `splits: list[str]` (required, non-empty). Returns
+  one PNG per requested split, persisted as
+  `report/visualizations/<op.name>_<split>.png`. Introduces the
+  `datarefinery.plugins.image_classification.visualizations/`
+  submodule with shared matplotlib helpers in `_render.py`
+  (pyplot-free, Agg-canvas, deterministic PNG metadata).
+- **`VisualizationOpHandle` protocol extended to multi-PNG return
+  (Story H.t).** A handle's `render(...)` may now return either
+  `bytes` (single PNG, persisted as `<op.name>.png`) or
+  `Mapping[str, bytes]` (one PNG per key, persisted as
+  `<op.name>_<key>.png`). `RenderedVisualization` grows `extras` and
+  `extra_paths` mappings so exploration-mode and `inspect` callers see
+  the full multi-PNG output in memory. Existing single-PNG ops are
+  unchanged.
+- **FR-VIZ-2 `augmented_sample_grid` reporting visualization
+  (Story H.u).** For each declared `AugmentationOp`, render an
+  `n_base x n_variants` grid showing the policy applied to a
+  deterministic train-split sample. Mode-aware: aggressive ops group
+  the materialized train split by `source_record_id` +
+  `variant_index`; lazy ops realize variants inline via the plugin's
+  realizer registry. Params: `n_base: int` (>0, required),
+  `n_variants: int` (>0, required), `seed: int | None = None`. One PNG
+  per declared augmentation op, persisted as
+  `<op.name>_<aug.name>.png`. Empty mapping (no PNGs written) when
+  the recipe declares no augmentations.
+- **`VisualizationOpHandle` protocol extended with optional `recipe`
+  context (Story H.u).** `render(...)` accepts an optional
+  `recipe: Recipe | None = None` kwarg threaded by the pipeline-stage
+  runner, the exploration-mode renderer, the `report` CLI verb, and
+  `inspect`. Policy-aware viz ops (e.g. `augmented_sample_grid`
+  reading `recipe.Augmentations`; `corruption_severity_grid` and
+  `severity_ladder` reading `_corruption_names.CORRUPTION_NAMES_ALL`)
+  consume it; ops that don't need it ignore the argument.
+- **FR-VIZ-3 `corruption_severity_grid` reporting visualization
+  (Story H.v).** Single `K-corruption x L-severity` figure: each
+  subplot tiles the same `n_images` train-split records side-by-side
+  under that `(corruption_type, severity)` combination. Self-contained
+  params (not derived from `recipe.Generation`). Params:
+  `n_images: int` (>0, required), `corruption_types: list[str]`
+  (non-empty, vocabulary-checked, no duplicates, required),
+  `severities: list[int]` (non-empty, each in `1..5`, required).
+  Single PNG persisted as `<op.name>.png`. Requires the
+  `[corruptions]` extras at materialize time; the plugin remains
+  importable without them (deferred-import guard inside `render(...)`
+  surfaces a friendly `ImportError` with the install pointer when
+  missing). Recipe-time vocabulary validation works without the
+  extras via the in-tree `_corruption_names` module.
+- **FR-VIZ-4 `severity_ladder` reporting visualization (Story H.w).**
+  Single-corruption complement to `corruption_severity_grid`: renders
+  `n_examples` train-split records across all five severities of one
+  `corruption_type` as `n_examples x 5`. Params: `n_examples: int`
+  (>0, required), `corruption_type: str` (non-empty,
+  vocabulary-checked, required). Single PNG persisted as
+  `<op.name>.png`. Same `[corruptions]`-extras-required and
+  deferred-extras-guard model as `corruption_severity_grid`.
+- **`matplotlib` added to base runtime dependencies (Story H.t).**
+  All four FR-VIZ ops render via matplotlib; gating behind an extra
+  would surprise users whose recipes declare a visualization
+  (reporting-mode runs at materialize time, not as an opt-in tool).
+  Pinned tested version: matplotlib 3.10+.
+
+### ⚠ Cache invalidation (pre-production)
+
+Declaring any of the four new visualization ops is **not**
+cache-invalidating on its own — FR-13 visualizations are reporting-only
+and never enter the cache identity. However, **users upgrading from
+0.15.0 must run `pip install --upgrade ml-datarefinery` (or
+`pip install ml-datarefinery==0.16.0`) to pick up the new `matplotlib`
+runtime dependency** before any recipe that declares a visualization
+op will materialize. Environments that don't declare a `Visualizations:`
+section continue to materialize without matplotlib being exercised.
+The canonical-hash pin in `tests/unit/test_canonical_hash_pin.py` is
+unchanged — the pinned fixture has no `Visualizations` section.
+
 ## [0.15.0] - 2026-05-23
 
 ### Added
