@@ -63,6 +63,9 @@ from datarefinery.plugins.image_classification.operations.visualizations import 
     MeanImagePerClassOp,
     SampleGridOp,
 )
+from datarefinery.plugins.image_classification.visualizations.pixel_distribution import (
+    PixelDistributionOp,
+)
 
 _FILTER_OPS: dict[str, Operation] = {
     "filter_by_label": filter_by_label,
@@ -92,6 +95,7 @@ _VISUALIZATION_OPS: dict[str, Operation] = {
     "class_distribution_histogram": ClassDistributionHistogramOp(),
     "sample_grid": SampleGridOp(),
     "mean_image_per_class": MeanImagePerClassOp(),
+    "pixel_distribution": PixelDistributionOp(),
 }
 
 _AUGMENTATION_REALIZERS: dict[str, Realizer] = {
@@ -270,6 +274,13 @@ def _supported_operations() -> dict[str, OperationSpec]:
             applicable_sections=frozenset({"Visualizations"}),
         ),
         "mean_image_per_class": OperationSpec(
+            applicable_sections=frozenset({"Visualizations"}),
+        ),
+        "pixel_distribution": OperationSpec(
+            parameters={
+                "bins": ParameterSpec(type="int", required=False, default=64),
+                "splits": ParameterSpec(type="list[str]", required=True),
+            },
             applicable_sections=frozenset({"Visualizations"}),
         ),
     }

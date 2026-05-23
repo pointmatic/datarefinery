@@ -47,6 +47,7 @@ pyve testenv run mypy src tests
 | `rich` | User-facing CLI output: progress bars, tables, color. |
 | `typer` | CLI framework (built on click; migration path to raw click stays open). |
 | `pillow` | Image decoding/encoding for the image_classification plugin. Stays in core because v1 ships the image plugin in-tree. |
+| `matplotlib` | Renders the FR-VIZ visualizations (`pixel_distribution`, FR-VIZ-2/3/4). Stays in core because reporting-mode visualizations run at materialize time; gating behind an extra would surprise users whose recipes declare a visualization. |
 
 ### Optional extras
 
@@ -157,6 +158,10 @@ src/datarefinery/
         horizontal_flip.py          # FR-AUG-2 `horizontal_flip` op + HorizontalFlipParams (Story H.q)
         color_jitter.py             # FR-AUG-3 `color_jitter` op + ColorJitterParams (Story H.r)
         random_erasing.py           # FR-AUG-4 `random_erasing` op + RandomErasingParams (Story H.r)
+      visualizations/               # FR-VIZ matplotlib-backed visualizations (Story H.t)
+        __init__.py
+        _render.py                  # shared matplotlib helpers (deterministic DPI, PNG encoding)
+        pixel_distribution.py       # FR-VIZ-1 `pixel_distribution` op + PixelDistributionParams (Story H.t)
     tabular/
       __init__.py
       plugin.py              # stub: section list + operation outline only

@@ -475,10 +475,19 @@ Render standard or bespoke views over any pipeline stage.
 1. Each visualization declares its inputs, the stage it observes, an output mode (`exploration` or `reporting`), and any parameters.
 2. `exploration` visualizations are rendered on demand via the library API or `inspect`; not persisted.
 3. `reporting` visualizations are rendered during materialization and persisted to `report/visualizations/`.
+4. A visualization op handle may return either a single PNG (`bytes`) — persisted as `<op.name>.png` — or a `Mapping[str, bytes]` keyed by sub-name (e.g. split) — persisted as one `<op.name>_<key>.png` per entry. Multi-output ops also surface every PNG via `RenderedVisualization.extras` so callers (e.g. `inspect`) can consume all of them in memory.
+
+**Registered ops (image_classification plugin):**
+- `class_distribution_histogram` — bar chart of per-class record counts across all splits. No params.
+- `sample_grid` — tile the first N records' images into a square-ish grid. Params: `n: int = 16`, `per_class: bool = False`.
+- `mean_image_per_class` — per-class mean image, tiled in a row. No params.
+- `pixel_distribution` (FR-VIZ-1) — per-channel R/G/B pixel-value histograms for each requested split, rendered as a 1×3 matplotlib figure. Params: `bins: int = 64`, `splits: list[str]` (required, non-empty). Returns one PNG per requested split; persisted as `<op.name>_<split>.png`.
 
 **Edge Cases:**
 - Visualization without an output mode -> caught by `validate` (check 11).
 - `reporting` visualization that fails -> hard error during materialization (the report is not partial).
+- Multi-output op returning an empty mapping, a non-string key, or a non-bytes value -> hard error (reporting) / `TypeError` (exploration).
+- `pixel_distribution` requesting a split absent from the materialized splits -> hard error during materialization.
 
 ### FR-14: Variants
 
@@ -507,7 +516,7 @@ Emit a report describing the materialized instance and its preparation.
 - Reporting visualization fails to render -> materialization fails (FR-13).
 - Re-rendering a report against a stale fitted-statistics block -> hard error citing the inconsistency.
 
-**Cross-repo contract:** the report surface — `report.md` augmentation-policy summary, `drift.json` schema, and `report/visualizations/<name>.png` layout — is part of the documented cross-repo contract in [`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md). Schema changes follow the coordination rule in [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check."
+**Cross-repo contract:** the report surface — `report.md` augmentation-policy summary, `drift.json` schema, and the `report/visualizations/<name>.png` (or `<name>_<key>.png` for multi-output viz ops such as `pixel_distribution`) layout — is part of the documented cross-repo contract in [`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md). Schema changes follow the coordination rule in [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check."
 
 ### FR-16: Plugin Interface
 

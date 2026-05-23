@@ -1119,7 +1119,7 @@ Minor bump (v0.15.0) — new features (FR-11 framework + four augmentation ops).
 - ModelFoundry adoption coordination. Forward-declared; ModelFoundry adopts on its own schedule.
 - Promoting `dependency-spec.md` to an immutable stability contract. Pre-prod the spec may evolve as ModelFoundry adoption surfaces gaps; post-prod, it becomes a stability contract.
 
-### Story H.t: FR-VIZ-1 `pixel_distribution` [Planned]
+### Story H.t: FR-VIZ-1 `pixel_distribution` [Done]
 
 Per-channel pixel-value histograms across a named split, rendered as a PNG. Reporting-mode visualization persisted to `report/visualizations/`. See FR-VIZ-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
@@ -1127,18 +1127,26 @@ Pixel-value distributions surface the effect of normalization, casting, and pixe
 
 No version bump (bundled in H.x).
 
+**Design notes** (agreed at gate before implementation):
+
+1. **Matplotlib added to base `dependencies`** (not an optional extra). Reporting-mode visualizations run at materialize time, so gating behind an extra would surprise any user whose recipe declares a visualization. Set up across all four FR-VIZ ops, not just this one.
+2. **Multi-PNG return type extends `VisualizationOpHandle`.** Pre-H.t, the protocol returned `bytes` (one PNG per op, written as `<op.name>.png`). H.t extends it to `bytes | Mapping[str, bytes]`; mapping entries are written as `<op.name>_<key>.png`. `RenderedVisualization` grows `extras` (bytes mapping) and `extra_paths` (path mapping) fields. Existing ops are untouched.
+3. **Filename pattern uses `op.name`, not the op type name.** I.e., `<op.name>_<split>.png` (e.g. `px_dist_train.png`), preserving the cross-repo `report/visualizations/<name>*.png` contract documented in FR-15. The FR-VIZ-1 story prose's `pixel_distribution_<split>.png` shorthand has been folded into the FR-13 description.
+
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/__init__.py` (submodule init).
-- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/_render.py` with Apache-2.0 header. Shared Matplotlib helpers: figure setup with deterministic DPI; PNG output to `report/visualizations/`; deterministic file naming.
-- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/pixel_distribution.py` with header. Pydantic `PixelDistributionParams`: `bins: int = 64`, `splits: list[str]` (non-empty; which splits to render).
-- [ ] Implement: per requested split, compute per-channel histograms (R/G/B) and render 3 subplots in a single figure. Output: `pixel_distribution_<split>.png` per split.
-- [ ] Register op in `src/datarefinery/plugins/image_classification/__init__.py`.
-- [ ] Tests in `tests/plugins/image_classification/test_visualizations_pixel_distribution.py`: render against a synthesized fixture image set; assert PNG exists per split; figure has 3 subplots.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-13 (Visualizations): list the new op with param schema and reporting-mode behavior.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `visualizations/__init__.py`, `_render.py`, and `pixel_distribution.py` under `plugins/image_classification/`.
-- [ ] Verify.
+- [x] Create `src/datarefinery/plugins/image_classification/visualizations/__init__.py` (submodule init).
+- [x] Create `src/datarefinery/plugins/image_classification/visualizations/_render.py` with Apache-2.0 header. Shared Matplotlib helpers: figure setup with deterministic DPI; PNG output to `report/visualizations/`; deterministic file naming.
+- [x] Create `src/datarefinery/plugins/image_classification/visualizations/pixel_distribution.py` with header. Pydantic `PixelDistributionParams`: `bins: int = 64`, `splits: list[str]` (non-empty; which splits to render).
+- [x] Implement: per requested split, compute per-channel histograms (R/G/B) and render 3 subplots in a single figure. Output: `<op.name>_<split>.png` per split (see Design note 3).
+- [x] Register op in `src/datarefinery/plugins/image_classification/__init__.py`.
+- [x] Tests in `tests/plugins/image_classification/test_visualizations_pixel_distribution.py`: render against a synthesized fixture image set; assert PNG exists per split; figure has 3 subplots.
+- [x] Extend `VisualizationOpHandle` protocol + `RenderedVisualization` for the multi-PNG return type (Design note 2); pipeline stage writes one file per mapping entry; exploration-mode `render_visualization` exposes the full mapping via `extras`.
+- [x] Add `matplotlib` to `[project.dependencies]` in `pyproject.toml`.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-13 (Visualizations): list the new op with param schema and reporting-mode behavior; document the multi-PNG return type and updated FR-15 cross-repo filename pattern.
+  - [x] `docs/specs/tech-spec.md` § Package Structure: add `visualizations/__init__.py`, `_render.py`, and `pixel_distribution.py` under `plugins/image_classification/`; runtime-dependency table gains `matplotlib`.
+- [x] Verify.
 
 **Out of Scope**
 

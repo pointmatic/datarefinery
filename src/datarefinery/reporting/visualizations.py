@@ -38,14 +38,40 @@ def render_visualization(
     """Render one visualization on demand without persisting.
 
     Returns a :class:`RenderedVisualization` whose ``path`` is ``None``
-    (exploration mode never writes to disk). Failures propagate as the
-    plugin raised them; unlike reporting mode, exploration does not wrap
-    in ``MaterializeError`` - the caller is exploring, not materializing.
+    (exploration mode never writes to disk). Multi-output ops (mapping
+    return) populate ``extras`` with every PNG keyed by sub-name; the
+    first entry becomes the primary ``png_bytes``. Failures propagate as
+    the plugin raised them; unlike reporting mode, exploration does not
+    wrap in ``MaterializeError`` — the caller is exploring, not
+    materializing.
     """
     handle: VisualizationOpHandle = plugin.operation_factory("Visualizations", op.op)
-    png = handle.render(splits, op.params, label_field=label_field)
-    if not isinstance(png, (bytes, bytearray)):
-        raise TypeError(
-            f"Visualizations[{op.name!r}] returned {type(png).__name__}; PNG bytes required"
+    raw = handle.render(splits, op.params, label_field=label_field)
+    if isinstance(raw, (bytes, bytearray)):
+        return RenderedVisualization(name=op.name, op=op.op, png_bytes=bytes(raw), path=None)
+    if isinstance(raw, Mapping):
+        if not raw:
+            raise TypeError(
+                f"Visualizations[{op.name!r}] returned an empty mapping; "
+                f"at least one PNG entry required"
+            )
+        extras: dict[str, bytes] = {}
+        for key, value in raw.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    f"Visualizations[{op.name!r}] returned non-str key "
+                    f"{type(key).__name__}; PNG-mapping keys must be str"
+                )
+            if not isinstance(value, (bytes, bytearray)):
+                raise TypeError(
+                    f"Visualizations[{op.name!r}] entry {key!r} is "
+                    f"{type(value).__name__}; PNG bytes required"
+                )
+            extras[key] = bytes(value)
+        primary = next(iter(extras.values()))
+        return RenderedVisualization(
+            name=op.name, op=op.op, png_bytes=primary, path=None, extras=extras
         )
-    return RenderedVisualization(name=op.name, op=op.op, png_bytes=bytes(png), path=None)
+    raise TypeError(
+        f"Visualizations[{op.name!r}] returned {type(raw).__name__}; PNG bytes required"
+    )

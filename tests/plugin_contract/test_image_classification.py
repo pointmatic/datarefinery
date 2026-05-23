@@ -37,6 +37,7 @@ EXPECTED_OPERATIONS = frozenset(
         "class_distribution_histogram",
         "sample_grid",
         "mean_image_per_class",
+        "pixel_distribution",
     }
 )
 
