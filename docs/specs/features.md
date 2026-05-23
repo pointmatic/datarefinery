@@ -243,6 +243,7 @@ Verify a recipe's correctness without running the pipeline. Covers schema correc
 19. `label_from_spec_resolves` — `InputSource.label_from` is structurally valid; manifest file at `label_from.path` exists; declared `header` (when present) matches the file's column count; `id_field` / `label_field` reference columns that resolve; no duplicate ids for `join: by_id`; row count matches enumerated record count for `join: by_row_order`; source-type consistency (`image_folder` + `label_from` is rejected; `image_flat` without `label_from` is rejected). Plugin-specific: only applies to `image_classification` in v1.
 20. `partitions_consistent` — `InputSource.partition` declarations are all-or-nothing across sources; `partition` is not declared in `Output.record_schema` (reserved name); `Splits.applies_to` (when set) references a declared partition; `Splits.ratios` keys do not collide with sibling partition names when `applies_to` is set; `Splits.ratios` is empty (or unset) when source partitions are declared and `applies_to` is unset. Plugin-specific: only applies to plugins whose loader stamps `partition` (initially `image_classification`).
 21. `unlabeled_consistency` — `InputSource.unlabeled` cross-section consistency. `unlabeled: true` requires `type: image_flat` (v1 restriction; `image_folder` derives labels from class subdirectories so the combination is contradictory). Model-level validation already enforces that `unlabeled: true` requires `partition` and forbids `label_from`. `Splits.stratify_by` is rejected when `Splits.applies_to` names an unlabeled partition (no label field to stratify by). Filters using `filter_by_label` and Featurizations using `label_from_path` (or whose `inputs` reference the recipe's label field) are rejected when they target unlabeled splits. Plugin-specific: only applies to plugins whose loader honors `unlabeled` (initially `image_classification`).
+22. `stats_from_instance_mutually_exclusive_with_fit_source` — a `Transformations` op's `params["stats_from_instance"]` (FR-TRANS-1) and the op's `fit_source` field are mutually exclusive; declaring both is contradictory (the former imports fitted statistics from a sibling instance, the latter triggers a local fit), and check 6 short-circuits the fit-on-train requirement when `stats_from_instance` is set. The check additionally parses the spec against `StatsFromInstanceSpec` (`recipe: str`, `op_id: str`) so a misshapen spec surfaces at validate time rather than at materialize time.
 
 **Edge Cases:**
 - Plugin not installed -> hard error pointing at the plugin name and discovery path.
@@ -287,6 +288,7 @@ Compute a stable identity for a (recipe, inputs, seed) triple that is invariant 
 - Semantic edit (changed value, added/removed operation) -> different hash; cache miss.
 - Raw input file content changes -> different input hash; cache miss.
 - Variant selection -> the normalized form includes the variant overlay; different variants produce different recipe hashes.
+- Sibling-instance references (FR-TRANS-1 `stats_from_instance`) are **loose-coupled in v1**: the sibling recipe's `recipe_hash` does NOT participate in this recipe's cache identity. Re-materializing upstream does NOT auto-invalidate downstream — when upstream changes (e.g., the train recipe is re-fit and re-materialized), the user is responsible for re-materializing any downstream eval recipes that import its statistics. Tight coupling (sibling `recipe_hash` participates in cache identity, so upstream changes auto-invalidate downstream) is a documented Future upgrade tracked under FR-ARCH-1; it will be a `schema_version` bump.
 
 ### FR-5: Atomic Temp-then-Promote Materialization
 
@@ -311,10 +313,13 @@ Persist statistics fitted on the training split so the same preparation can be r
 2. Statistics are fitted only on the training split.
 3. Statistics are written to `fitted_statistics/` in a structured format (parquet for tabular stats, plugin-defined for others) — never as opaque pickles.
 4. The instance's library API exposes the fitted statistics for downstream replay.
+5. The same `fitted_statistics/<op_id>/` layout is also the **producer** side of FR-TRANS-1 `stats_from_instance`: a materialized instance's persisted fitted statistics are addressable by *other* recipes that reference this recipe via `stats_from_instance`, so train/inference parity holds when training and evaluation live in separate recipes.
+6. On the **consumer** side, imported statistics are **read-through, not copied**: when a recipe imports fitted statistics via `stats_from_instance`, the apply phase reads directly from the sibling instance's `fitted_statistics/<op_id>/` and does not duplicate the bytes into the consuming instance's own `fitted_statistics/`. The consuming instance therefore has no `fitted_statistics/<op_id>/` for ops that import their stats — this is intentional, so the materialized output honestly reflects "stats are owned by the sibling," not "stats are owned here too."
 
 **Edge Cases:**
 - Operation that requires fitting but is not declared on the training split -> caught by `validate` (check 6).
 - Statistics block missing on read -> instance is invalid; `inspect` reports the missing block.
+- Sibling-instance fitted statistics referenced via `stats_from_instance` but the sibling has not been materialized (or has been cleaned) -> caught at materialize time with a clear "sibling instance not found" error pointing at the recipe path and the cache root.
 
 ### FR-7: Splits
 
@@ -387,9 +392,36 @@ Apply deterministic modifications to one or more splits (e.g., resize, normalize
 2. Fit-on-train transformations fit on the training split, persist their statistics (FR-6), and apply across declared splits using the persisted statistics.
 3. Transformations are deterministic given inputs and (where applicable) fitted statistics.
 
+**Plugin-contributed parameter (image_classification, FR-TRANS-1):**
+
+`stats_from_instance` is a parameter recognized on fit-on-train Transformations operations (v1: `normalize`) that imports fitted statistics from a **sibling materialized instance** instead of fitting locally. Shape:
+
+```yaml
+stats_from_instance:
+  recipe: <filesystem path to the sibling recipe YAML>
+  op_id: <name of the op inside the sibling recipe whose fitted_statistics/<op_id>/ should be read>
+```
+
+The op resolves the sibling instance by computing the sibling recipe's canonical hash, locating the most-recent matching promoted instance under the cache root, and reading `fitted_statistics/<op_id>/`. No local fit phase runs. `stats_from_instance` and `fit_source` are mutually exclusive (check 22): exactly one must be set on a fit-on-train op.
+
+**Why the parameter exists.** Train/inference normalization parity is a correctness invariant — evaluation data must be normalized with the same statistics the model was trained against. When training and evaluation data live in the same recipe, `fit_source: train` already handles this. The gap appears when they live in separate recipes:
+
+- **Distribution-shift evaluation.** A held-out evaluation dataset (different distribution, e.g., domain transfer) must be normalized with the train statistics, not its own.
+- **A/B evaluation.** Two evaluation recipes compare model behavior under different input pre-processing; both normalize against the same train statistics.
+- **Cross-team workflows.** A team publishes a trained model + its train recipe; a downstream team writes an eval recipe that imports the published train statistics without re-fitting.
+- **Longitudinal evaluation.** Evaluation runs at later time points re-use the original train statistics so drift is observable in the data, not absorbed by re-fitting.
+
+In all four, re-fitting statistics on the evaluation data is a correctness bug, not an optimization. `stats_from_instance` makes the correct behavior expressible at the recipe surface.
+
+**Sibling reference is loose-coupled in v1.** The sibling's `recipe_hash` does NOT participate in the consuming recipe's cache identity (see FR-4 Edge Cases). Re-materializing upstream does NOT auto-invalidate downstream — the user re-materializes downstream when upstream changes. Tight coupling (auto-invalidation) is a Future upgrade tracked under FR-ARCH-1.
+
 **Edge Cases:**
 - Fit-on-train transformation declared without the training split as the fit source -> caught by `validate` (check 6).
 - Transformation parameters that are themselves data-dependent -> must be expressed as fit-on-train; otherwise caught at validation.
+- `stats_from_instance` declared alongside `fit_source` -> caught by `validate` (check 22, mutual exclusion).
+- `stats_from_instance` references a recipe whose promoted instance is not in the cache (never materialized, or `clean`-ed) -> hard error at materialize time naming the sibling recipe path and the expected cache lookup path ("sibling instance not found"). The recipe is still loadable and `validate`s clean — the sibling-resolve happens at materialize time so the error is actionable (the user re-materializes the sibling and retries).
+- `stats_from_instance.op_id` names an op that does not exist in the sibling instance's `fitted_statistics/` (typo, op was renamed, sibling recipe was edited without re-materializing) -> hard error at materialize time naming the missing op_id and the sibling instance path.
+- `stats_from_instance` references a sibling instance whose statistics format is incompatible with this op (e.g., this op requires a `mean` and `std` vector pair but the sibling op stored only `mean`) -> hard error at materialize time naming the missing statistic. In v1 this can surface for callers that pass `required_vectors=` / `required_scalars=` into the resolver; `normalize`'s apply path tolerates absent `std` per its existing edge handling.
 
 ### FR-11: Augmentations
 

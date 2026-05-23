@@ -62,6 +62,18 @@ This applies equally whether the trigger is a pydantic default change, a canonic
 
 **How to apply:** before merging any change in `recipe/`, `cache/`, or `pipeline/` (post-prod), ask "could this affect the canonical bytes or the materialized output bytes?" If yes, run the canonical-hash pinning test and check whether it would need to change. If it would, the change is cache-invalidating and must follow the ceremony above.
 
+### Sibling-instance dependencies are loose-coupled in v1
+
+When a recipe imports fitted statistics from a sibling materialized instance via FR-TRANS-1 `stats_from_instance` (today: `normalize`, more fit-on-train ops later), the sibling's `recipe_hash` does **NOT** participate in the consuming recipe's cache identity. Re-materializing upstream does **NOT** auto-invalidate downstream — the user re-materializes downstream when upstream changes. This is the **FR-ARCH-1 loose-coupling decision** (documented in `features.md` FR-4 Edge Cases / FR-10 Behavior and in `tech-spec.md` § Caching).
+
+**How to apply:** when extending sibling-stats functionality or touching anything in `src/datarefinery/cache/sibling_stats.py`, `src/datarefinery/pipeline/stages/transformations.py` (the `stats_from_instance` branch), or `src/datarefinery/cache/identity.py`, refuse the following tempting moves:
+
+- "Let's mix the sibling `recipe_hash` into the consumer's cache key so upstream changes auto-invalidate downstream." **No.** That's tight coupling — the documented Future upgrade behind a `schema_version` bump, not a v1 enhancement. Quietly adding it would silently invalidate every existing downstream cache for every user the moment they `stats_from_instance`-link any recipe pair.
+- "Let's add a warning when the resolver picks an instance whose `created_at` is older than the consumer's last materialization." **No.** Stale-downstream detection is also Future. A v1 warning here would either be noisy (most sibling reads are intentional) or quietly suggest auto-invalidation is "almost" available, which it is not.
+- "Let's copy the sibling's `fitted_statistics/<op_id>/` into the consumer's own `fitted_statistics/` so the consuming instance is self-contained." **No.** Read-through is intentional (FR-6 #6): the consuming instance should honestly reflect "stats are owned by the sibling," not "stats are owned here too." Duplicating would also create a *third* place (after recipe text and cache key) where the upstream link is recorded, multiplying the surface where loose/tight coupling questions could re-surface.
+
+The path forward for any of these is a story under FR-ARCH-1 (currently in Future), not an in-band code change in `cache/` or `pipeline/`.
+
 ### Recipe is authoritative for data-pipeline semantics
 
 Configuration precedence in DataRefinery is **recipe → CLI flags → environment variables**, with a hard separation of concerns:

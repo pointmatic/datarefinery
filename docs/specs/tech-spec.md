@@ -104,7 +104,7 @@ src/datarefinery/
     __init__.py
     models.py                # pydantic v2 Recipe model + per-section models
     loader.py                # FR-1 load + schema-version gate
-    validator.py             # FR-2 enumerated checks 1–21
+    validator.py             # FR-2 enumerated checks 1–22
     canonical.py             # JSON-canonical bytes for cache identity (FR-4)
     variants.py              # FR-14 variant overlay
   cache/
@@ -277,7 +277,7 @@ Edge cases mapped to features.md FR-1:
 
 ### `recipe.validator` (FR-2)
 
-Each of the 21 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
+Each of the 22 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
 
 ```python
 def validate(recipe: Recipe, plugin: Plugin) -> ValidationReport: ...
@@ -340,6 +340,40 @@ def mark_failed(temp_dir: pathlib.Path, exc: BaseException, stage: str) -> None:
 ```
 
 Same-filesystem requirement for temp and cache documented; `materialize` validates `<cache-root>/instances/.tmp/` and the final cache path live on the same device before starting work.
+
+### `cache.sibling_stats` (FR-TRANS-1)
+
+```python
+def resolve_sibling_stats(
+    cache_root: pathlib.Path,
+    recipe_path: pathlib.Path,
+    op_id: str,
+    *,
+    required_vectors: tuple[str, ...] = (),
+    required_scalars: tuple[str, ...] = (),
+) -> FittedStatistics: ...
+```
+
+Resolves the sibling materialized instance whose fitted statistics will be imported via FR-TRANS-1 `stats_from_instance`. Returns a read-only `FittedStatistics` handle rooted at the sibling's `fitted_statistics/` directory; callers read named stats through the standard `get_vector(op_id, name)` / `get_scalar(op_id, name)` interface.
+
+**Lookup rules** (in order):
+
+1. Load the sibling recipe at `recipe_path` via `recipe.loader.load`.
+2. Compute its canonical SHA-256 hash via `recipe.canonical.to_canonical_bytes`.
+3. Locate candidate promoted instances under `<cache_root>/instances/<recipe_hash16>/<input_hash16>/<seed>/` — every directory with a readable `manifest.json` is a candidate.
+4. Pick the **most-recent** candidate by `Manifest.created_at` (path-lexicographic tiebreak, so the choice is deterministic when timestamps collide).
+5. Verify `fitted_statistics/<op_id>/` exists.
+6. If `required_vectors` / `required_scalars` are passed, verify each named stat is present and readable.
+
+**Three explicit failure modes**, each a distinct subclass of `MaterializeError` so callers can branch on the failure shape:
+
+- `SiblingInstanceNotFoundError` — no promoted instance found under the expected shard, or the shard exists but contains no readable manifest.
+- `SiblingOpNotFoundError` — instance located, but `fitted_statistics/<op_id>/` is absent.
+- `SiblingStatsIncompatibleError` — instance + op_id located, but a caller-required statistic is missing or unreadable (e.g., corrupt parquet, malformed `scalars.json`).
+
+**Dispatcher-vs-op-handle decision.** The `stats_from_instance` branch lives in `pipeline.stages.transformations.apply_transformations` (the stage dispatcher), not inside the operation handle (`NormalizeOp`). When `op.params["stats_from_instance"]` is set, the dispatcher resolves the sibling, materializes the sibling's `fitted_statistics/<op_id>/` directory contents into a `FittedValues`, and feeds that into the op's `apply` phase — the op handle itself is unaware that the stats came from a sibling rather than a local fit. This keeps the dispatch generic: any future fit-on-train op (e.g., `mean_subtract`, encoder vocabularies) picks up sibling-import support automatically by declaring `stats_from_instance` in its `OperationSpec.parameters` — no per-op code changes.
+
+**Read-through, not copy.** The resolver returns a `FittedStatistics` handle rooted at the *sibling's* `fitted_statistics/` directory; the consuming run reads through to those bytes without persisting them under its own `fitted_statistics/<op_id>/`. The consuming instance therefore has no fitted-statistics directory for ops that imported their stats — this is intentional, so the materialized output honestly reflects "stats are owned by the sibling," not "stats are owned here too" (see FR-6 Behavior #6).
 
 ### `pipeline.runner` (FR-3, FR-7..FR-13)
 
@@ -498,7 +532,7 @@ Per-section models (sketch; full field definitions land alongside the FR-1 imple
 | `FilterOp` | `name`, `predicate`, `stages`, `splits`, `seed` (sampling only). Plugin-contributed sampling ops declare their own pydantic param model alongside the `OperationSpec` schema — `SamplePerClassParams` (`n_per_class: int > 0`, `label: str | None`, `exclude_already_labeled: list[str] | None`), `SamplePerClassFractionalParams` (`n_per_class_base: int > 0`, `fractions: dict[str, float]` each in `[0.0, 1.0]`, plus inherited `label` / `exclude_already_labeled`), and `DropByLabelParams` (`labels: list[str]`, non-empty) are validated inside the op via `model_validate(predicate)`; recipe-level validation still goes through the plugin's `OperationSpec` (check 18). |
 | `GenerationOp` | `name`, `inputs`, `output_schema`, `seed`, `applies_at`, `params: dict[str, Any] = {}`. Plugin-contributed parameterized ops declare a pydantic param model — e.g., `ImageCorruptionsApplyParams` (`corruption_types: list[str]` non-empty, `severities: list[int]` each in `[1,5]`, `preserve_original: bool = False`, `tag_fields: list[str]`) — validated inside the op via `model_validate(params)`. Recipe-level validation runs through the plugin's `OperationSpec` (check 18 covers Generation as well as Filters / Transformations / etc). |
 | `SplitsSection` | `ratios: dict[str, float]` or `key_assignment: KeyAssignment`, `stratify_by: str | None`, `seed: int | None`, `class_balance: ClassBalanceStrategy | None`, `applies_to: str | None`. When `applies_to` is set, it names a single source-declared partition to sub-partition via `ratios`; sibling partitions are preserved verbatim. |
-| `TransformationOp` | `name`, `op`, `params`, `fit_source: str | None`, `splits` |
+| `TransformationOp` | `name`, `op`, `params`, `fit_source: str | None`, `splits`. A fit-on-train op may set `params["stats_from_instance"]` (validated as `StatsFromInstanceSpec` with `recipe: str` + `op_id: str`) to import fitted statistics from a sibling materialized instance instead of fitting locally; `fit_source` and `stats_from_instance` are mutually exclusive (validator check 22). Resolution lives in `cache.sibling_stats.resolve_sibling_stats`; the apply path is wired into `pipeline.stages.transformations.apply_transformations` (the stage dispatcher), so any future fit-on-train op picks up sibling-import support by declaring `stats_from_instance` in its `OperationSpec`. |
 | `AugmentationOp` | `name`, `op`, `params`, `splits` (validator rejects non-train), `seed` |
 | `FeaturizationOp` | `name`, `inputs`, `output_field`, `op`, `params`, `splits`, `fit_source: str | None` |
 | `VisualizationOp` | `name`, `op`, `params`, `stage`, `mode: Literal["exploration", "reporting"]` |
@@ -706,6 +740,7 @@ CLI's exit-code mapping reads the exception type to choose 1 (user/recipe/contra
 - Content-addressed under `<cache-root>/instances/<recipe-hash16>/<input-hash16>/<seed>/`.
 - Orphan temp directories from killed runs are cleanable via `clean --orphans`; default age threshold 24h, configurable.
 - Cache hits are cheap: `compute_cache_key` + `pathlib.Path.exists()` + `Manifest` parse.
+- **Sibling-instance references are loose-coupled in v1 (FR-TRANS-1, FR-ARCH-1).** When a recipe imports fitted statistics from a sibling instance via `stats_from_instance`, the sibling's `recipe_hash` is **not** mixed into the consuming recipe's cache identity. Re-materializing upstream does not auto-invalidate downstream; the user is responsible for re-materializing downstream when upstream changes. The loose-coupling choice is justified for small-scale single-author workflows where the failure mode (stale downstream after upstream re-fit) is detectable by inspection. Tight coupling — sibling `recipe_hash` participates in cache identity, so upstream changes auto-invalidate downstream — is a planned upgrade for multi-team and longitudinal workflows where loose-coupling failures are harder to spot; it will be a `schema_version` bump.
 
 ### Schema versioning
 
@@ -713,6 +748,7 @@ CLI's exit-code mapping reads the exception type to choose 1 (user/recipe/contra
 - Pre-production: schema version 1 may be redefined as design evolves; cache invalidation across DataRefinery versions is acceptable and noted in release notes.
 - Post-production: each version is immutable; migrations live in `recipe.loader.migrations` keyed by `(from_version, to_version)`.
 - `Manifest.schema_version` is a separate counter for the manifest format itself.
+- Future upgrades that change cache-identity composition — notably FR-ARCH-1 tight coupling, where a sibling recipe's `recipe_hash` would begin participating in the consuming recipe's cache identity — are `schema_version` bumps, not silent shifts.
 
 ### Plugin trust boundary
 

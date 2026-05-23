@@ -5,6 +5,124 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-05-22
+
+### Added
+
+- **Story H.n — `stats_from_instance` on `normalize` + FR-ARCH-1
+  loose-coupling decision (FR-TRANS-1).** New parameter on fit-on-train
+  `Transformations` ops (v1: `normalize`; extensible to future
+  fit-on-train ops) that imports fitted statistics from a sibling
+  materialized DataRefinery instance instead of fitting locally — the
+  train/inference parity contract made expressible at the recipe
+  surface for distribution-shift, A/B, cross-team, and longitudinal
+  evaluation workflows. Shape:
+
+  ```yaml
+  Transformations:
+    - name: norm
+      op: normalize
+      params:
+        stats_from_instance:
+          recipe: ./train_recipe.yaml      # path to sibling recipe
+          op_id: norm                       # op name inside the sibling
+      splits: [eval]
+  ```
+
+  - **`StatsFromInstanceSpec` pydantic model** (`recipe: str`,
+    `op_id: str`; frozen). Mutually exclusive with the op's
+    `fit_source` field — exactly one must be set on a fit-on-train op,
+    enforced by new validator check 22
+    (`stats_from_instance_mutually_exclusive_with_fit_source`). Check 6
+    short-circuits the "fit-on-train requires `fit_source: train`"
+    requirement when `stats_from_instance` is set.
+  - **`cache.sibling_stats.resolve_sibling_stats(...)`** (Story H.n.1):
+    standalone resolver that loads the sibling recipe, computes its
+    canonical hash, locates the most-recent matching promoted instance
+    under `<cache_root>/instances/<recipe16>/`, and returns a
+    read-only `FittedStatistics` handle pointing at its
+    `fitted_statistics/`. Three explicit failure modes
+    (`SiblingInstanceNotFoundError`, `SiblingOpNotFoundError`,
+    `SiblingStatsIncompatibleError`) — each a `MaterializeError`
+    subclass so callers can branch on the failure shape.
+  - **Apply-path integration in the stage dispatcher** (Story H.n.2):
+    `pipeline.stages.transformations.apply_transformations` gained a
+    `cache_root` parameter and a `stats_from_instance`-branch that
+    skips the local fit, resolves the sibling, materializes the
+    sibling's `fitted_statistics/<op_id>/` as `FittedValues`, and feeds
+    that into the op's `apply` phase. The op handle (`NormalizeOp`) is
+    unchanged — any future fit-on-train op picks up sibling-import
+    support by declaring `stats_from_instance` in its `OperationSpec`.
+  - **Read-through, not copy.** Imported statistics are not duplicated
+    into the consuming instance's own `fitted_statistics/`; the apply
+    path reads through to the sibling's bytes. The consuming instance
+    therefore has no `fitted_statistics/<op_id>/` for ops that import
+    their stats — intentional, so the materialized output honestly
+    reflects "stats are owned by the sibling."
+
+### Loose-coupling semantics — read carefully
+
+The v1 `stats_from_instance` design is **loose-coupled** per the
+FR-ARCH-1 decision: the sibling recipe's `recipe_hash` does **NOT**
+participate in the consuming recipe's cache identity. **Concretely:**
+
+- Re-materializing an upstream (train) recipe does NOT auto-invalidate
+  any downstream (eval) recipes that import its statistics.
+- After re-materializing upstream, the user MUST manually re-materialize
+  every downstream recipe that imports the sibling — DataRefinery will
+  not detect the staleness for you.
+- The resolver always picks the **most-recent** promoted instance of
+  the sibling recipe (by `Manifest.created_at`), so re-materializing
+  downstream after upstream changes naturally picks up the new stats —
+  but the consumer's own cache identity hasn't changed, so a downstream
+  re-`materialize` against an unchanged input + unchanged consumer
+  recipe will hit the consumer cache and *not* re-run, even though the
+  underlying stats moved. **`clean` the downstream entry first, or edit
+  the downstream recipe semantically, to force a re-materialize.**
+- This is justified for small-scale single-author workflows where the
+  failure mode (stale downstream after upstream re-fit) is detectable
+  by inspection. For multi-team, cross-org, or longitudinal workflows
+  where the failure is harder to spot, tight coupling (sibling
+  `recipe_hash` participates in cache identity) is the documented
+  Future upgrade under FR-ARCH-1 — it will be a `schema_version` bump.
+
+### Documentation
+
+- **`features.md`** — added FR-2 check 22 (`stats_from_instance` /
+  `fit_source` mutual exclusion); FR-4 Edge Cases bullet on the
+  loose-coupling decision; FR-6 Behavior sub-points #5 (producer
+  side: sibling-addressable fitted stats) and #6 (consumer side:
+  read-through, not copied); FR-10 Behavior section on
+  `stats_from_instance` with the four-scenario motivation
+  (distribution-shift / A-B / cross-team / longitudinal) and the
+  three failure-mode edge cases.
+- **`tech-spec.md`** — new `cache.sibling_stats` § Key Component
+  Design sub-heading with the resolver signature, lookup rules, three
+  exception types, the dispatcher-vs-op-handle decision, and the
+  read-through note; § Cross-Cutting Concerns > Caching paragraph on
+  the loose-coupling cache-identity choice; § Data Models
+  `TransformationOp` row extended with `StatsFromInstanceSpec` and the
+  mutual-exclusion note; § Schema versioning sentence acknowledging
+  tight coupling as a future `schema_version` bump; validator
+  enumerated-count bumped 21 → 22.
+- **`project-essentials.md`** — new `### Sibling-instance dependencies
+  are loose-coupled in v1` reinforcement subsection (with the
+  tempting-LLM-mistakes list: don't mix sibling `recipe_hash`, don't
+  add stale-warning, don't copy sibling stats locally).
+
+### Notes
+
+- **Not cache-invalidating despite touching `recipe/`.** No pydantic
+  field default changed; `stats_from_instance` lives inside the
+  opaque `TransformationOp.params: dict[str, Any]`. Recipes that do
+  not use the feature have identical canonical bytes pre- and
+  post-upgrade. The canonical-hash pin (Story E.f gate at
+  `tests/unit/test_canonical_hash_pin.py`) holds without modification.
+  Despite the H.n umbrella story header preemptively labeling the
+  release "cache-invalidating," the actual implementation chose an
+  opaque-params shape rather than a new pydantic field, sidestepping
+  invalidation entirely.
+
 ## [0.13.0] - 2026-05-22
 
 ### Added
