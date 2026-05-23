@@ -38,8 +38,9 @@ class ClassDistributionHistogramOp:
         params: Mapping[str, Any],
         *,
         label_field: str | None,
+        recipe: Any = None,
     ) -> bytes:
-        del params
+        del params, recipe
         if label_field is None:
             raise PluginError("class_distribution_histogram requires Labels.field")
         counts: dict[Any, int] = {}
@@ -108,7 +109,9 @@ class SampleGridOp:
         params: Mapping[str, Any],
         *,
         label_field: str | None,
+        recipe: Any = None,
     ) -> bytes:
+        del recipe
         n = int(params.get("n", 16))
         per_class = bool(params.get("per_class", False))
         all_records = [r for recs in splits.values() for r in recs]
@@ -157,8 +160,9 @@ class MeanImagePerClassOp:
         params: Mapping[str, Any],
         *,
         label_field: str | None,
+        recipe: Any = None,
     ) -> bytes:
-        del params
+        del params, recipe
         if label_field is None:
             raise PluginError("mean_image_per_class requires Labels.field")
         all_records = [r for recs in splits.values() for r in recs]

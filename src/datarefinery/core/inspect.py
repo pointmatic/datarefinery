@@ -96,6 +96,7 @@ def build_inspection_view(
             op,
             plugin=plugin,
             label_field=instance.recipe.Labels.field,
+            recipe=instance.recipe,
         )
         rendered = RenderedView(name=op.name, op=op.op, png_bytes=rv.png_bytes)
 

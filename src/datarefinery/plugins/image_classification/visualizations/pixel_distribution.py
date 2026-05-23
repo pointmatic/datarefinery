@@ -101,8 +101,9 @@ class PixelDistributionOp:
         params: Mapping[str, Any],
         *,
         label_field: str | None,
+        recipe: Any = None,
     ) -> Mapping[str, bytes]:
-        del label_field
+        del label_field, recipe
         p = PixelDistributionParams(**dict(params))
         out: dict[str, bytes] = {}
         for split in p.splits:

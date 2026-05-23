@@ -158,10 +158,11 @@ src/datarefinery/
         horizontal_flip.py          # FR-AUG-2 `horizontal_flip` op + HorizontalFlipParams (Story H.q)
         color_jitter.py             # FR-AUG-3 `color_jitter` op + ColorJitterParams (Story H.r)
         random_erasing.py           # FR-AUG-4 `random_erasing` op + RandomErasingParams (Story H.r)
-      visualizations/               # FR-VIZ matplotlib-backed visualizations (Story H.t)
+      visualizations/               # FR-VIZ matplotlib-backed visualizations (Stories H.t-H.w)
         __init__.py
         _render.py                  # shared matplotlib helpers (deterministic DPI, PNG encoding)
         pixel_distribution.py       # FR-VIZ-1 `pixel_distribution` op + PixelDistributionParams (Story H.t)
+        augmented_sample_grid.py    # FR-VIZ-2 `augmented_sample_grid` op + AugmentedSampleGridParams (Story H.u)
     tabular/
       __init__.py
       plugin.py              # stub: section list + operation outline only

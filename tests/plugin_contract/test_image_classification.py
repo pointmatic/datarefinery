@@ -38,6 +38,7 @@ EXPECTED_OPERATIONS = frozenset(
         "sample_grid",
         "mean_image_per_class",
         "pixel_distribution",
+        "augmented_sample_grid",
     }
 )
 

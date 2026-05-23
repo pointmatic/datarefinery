@@ -355,6 +355,7 @@ class PipelineRunner:
                 plugin=self.plugin,
                 output_dir=viz_dir,
                 label_field=label_field,
+                recipe=self.recipe,
             )
             if stop_after == current_stage:
                 return self._partial_finish(

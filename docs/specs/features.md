@@ -475,19 +475,23 @@ Render standard or bespoke views over any pipeline stage.
 1. Each visualization declares its inputs, the stage it observes, an output mode (`exploration` or `reporting`), and any parameters.
 2. `exploration` visualizations are rendered on demand via the library API or `inspect`; not persisted.
 3. `reporting` visualizations are rendered during materialization and persisted to `report/visualizations/`.
-4. A visualization op handle may return either a single PNG (`bytes`) — persisted as `<op.name>.png` — or a `Mapping[str, bytes]` keyed by sub-name (e.g. split) — persisted as one `<op.name>_<key>.png` per entry. Multi-output ops also surface every PNG via `RenderedVisualization.extras` so callers (e.g. `inspect`) can consume all of them in memory.
+4. A visualization op handle may return either a single PNG (`bytes`) — persisted as `<op.name>.png` — or a `Mapping[str, bytes]` keyed by sub-name (e.g. split, augmentation op name) — persisted as one `<op.name>_<key>.png` per entry. Multi-output ops also surface every PNG via `RenderedVisualization.extras` so callers (e.g. `inspect`) can consume all of them in memory.
+5. The op handle's `render(...)` receives an optional `recipe: Recipe | None` kwarg, populated by the pipeline-stage / exploration-mode runner. Policy-aware ops (e.g. `augmented_sample_grid` reading `recipe.Augmentations` + `recipe.seed`; future `corruption_severity_grid` reading `recipe.Generation`) consume it; ops that don't need it ignore the argument.
 
 **Registered ops (image_classification plugin):**
 - `class_distribution_histogram` — bar chart of per-class record counts across all splits. No params.
 - `sample_grid` — tile the first N records' images into a square-ish grid. Params: `n: int = 16`, `per_class: bool = False`.
 - `mean_image_per_class` — per-class mean image, tiled in a row. No params.
 - `pixel_distribution` (FR-VIZ-1) — per-channel R/G/B pixel-value histograms for each requested split, rendered as a 1×3 matplotlib figure. Params: `bins: int = 64`, `splits: list[str]` (required, non-empty). Returns one PNG per requested split; persisted as `<op.name>_<split>.png`.
+- `augmented_sample_grid` (FR-VIZ-2) — for each declared `AugmentationOp`, an `n_base × n_variants` grid showing the policy applied to a deterministic train-split sample. Mode-aware: aggressive ops group the materialized train split by `source_record_id` + `variant_index`; lazy ops realize variants inline via the plugin's realizer registry, seeded by `per_record_variant_seed(recipe.seed ^ (viz.seed or 0), record, vi, op_id=aug.name)`. Params: `n_base: int` (>0, required), `n_variants: int` (>0, required), `seed: int | None = None`. Returns one PNG per declared augmentation op; persisted as `<op.name>_<aug.name>.png`. Empty mapping (no PNGs written) when the recipe declares no augmentations.
 
 **Edge Cases:**
 - Visualization without an output mode -> caught by `validate` (check 11).
 - `reporting` visualization that fails -> hard error during materialization (the report is not partial).
-- Multi-output op returning an empty mapping, a non-string key, or a non-bytes value -> hard error (reporting) / `TypeError` (exploration).
+- Multi-output op returning an empty mapping, a non-string key, or a non-bytes value -> hard error (reporting) / `TypeError` (exploration). The empty-mapping case is allowed when documented per-op (e.g. `augmented_sample_grid` with no declared augmentations); the stage handles the no-write path explicitly rather than treating it as a failure.
 - `pixel_distribution` requesting a split absent from the materialized splits -> hard error during materialization.
+- `augmented_sample_grid` declared without a `recipe` context (e.g. exploration call site that forgot to thread it) -> `ValueError`.
+- `augmented_sample_grid` against a train split smaller than `n_base` (or aggressive groups smaller than `n_variants`) -> hard error during materialization.
 
 ### FR-14: Variants
 

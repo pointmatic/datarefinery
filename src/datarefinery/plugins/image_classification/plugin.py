@@ -63,6 +63,9 @@ from datarefinery.plugins.image_classification.operations.visualizations import 
     MeanImagePerClassOp,
     SampleGridOp,
 )
+from datarefinery.plugins.image_classification.visualizations.augmented_sample_grid import (
+    AugmentedSampleGridOp,
+)
 from datarefinery.plugins.image_classification.visualizations.pixel_distribution import (
     PixelDistributionOp,
 )
@@ -91,18 +94,19 @@ _FEATURIZATION_OPS: dict[str, Operation] = {
     "image_size_stats": ImageSizeStatsOp(),
 }
 
-_VISUALIZATION_OPS: dict[str, Operation] = {
-    "class_distribution_histogram": ClassDistributionHistogramOp(),
-    "sample_grid": SampleGridOp(),
-    "mean_image_per_class": MeanImagePerClassOp(),
-    "pixel_distribution": PixelDistributionOp(),
-}
-
 _AUGMENTATION_REALIZERS: dict[str, Realizer] = {
     "random_crop": realize_random_crop,
     "horizontal_flip": realize_horizontal_flip,
     "color_jitter": realize_color_jitter,
     "random_erasing": realize_random_erasing,
+}
+
+_VISUALIZATION_OPS: dict[str, Operation] = {
+    "class_distribution_histogram": ClassDistributionHistogramOp(),
+    "sample_grid": SampleGridOp(),
+    "mean_image_per_class": MeanImagePerClassOp(),
+    "pixel_distribution": PixelDistributionOp(),
+    "augmented_sample_grid": AugmentedSampleGridOp(realizers=_AUGMENTATION_REALIZERS),
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -280,6 +284,14 @@ def _supported_operations() -> dict[str, OperationSpec]:
             parameters={
                 "bins": ParameterSpec(type="int", required=False, default=64),
                 "splits": ParameterSpec(type="list[str]", required=True),
+            },
+            applicable_sections=frozenset({"Visualizations"}),
+        ),
+        "augmented_sample_grid": OperationSpec(
+            parameters={
+                "n_base": ParameterSpec(type="int", required=True),
+                "n_variants": ParameterSpec(type="int", required=True),
+                "seed": ParameterSpec(type="int", required=False),
             },
             applicable_sections=frozenset({"Visualizations"}),
         ),

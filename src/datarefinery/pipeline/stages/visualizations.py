@@ -13,14 +13,19 @@ Operation handle (Visualizations section):
     class VisualizationOpHandle:
         def render(splits: Mapping[str, list[Record]],
                    params: Mapping[str, Any],
-                   *, label_field: str | None) -> bytes | Mapping[str, bytes]
+                   *, label_field: str | None,
+                   recipe: Recipe | None = None,
+                   ) -> bytes | Mapping[str, bytes]
 
 A ``bytes`` return persists as ``<op.name>.png``. A ``Mapping[str, bytes]``
 return persists each entry as ``<op.name>_<key>.png`` — used by FR-VIZ-1
 ``pixel_distribution`` (one PNG per split) and other per-key viz ops.
-Failures during reporting-mode rendering are wrapped in
-:class:`MaterializeError` per FR-13 ("reporting visualization that
-fails -> hard error during materialization").
+The optional ``recipe`` kwarg gives policy-aware viz ops (e.g.
+FR-VIZ-2 ``augmented_sample_grid``, FR-VIZ-3 ``corruption_severity_grid``)
+access to ``recipe.Augmentations`` / ``recipe.Generation`` / ``recipe.seed``;
+ops that don't need it ignore the argument. Failures during reporting-mode
+rendering are wrapped in :class:`MaterializeError` per FR-13 ("reporting
+visualization that fails -> hard error during materialization").
 """
 
 from __future__ import annotations
@@ -32,7 +37,7 @@ from typing import Any, Protocol
 
 from datarefinery.core.errors import MaterializeError
 from datarefinery.plugins.base import Plugin
-from datarefinery.recipe.models import VisualizationOp
+from datarefinery.recipe.models import Recipe, VisualizationOp
 
 Record = Mapping[str, Any]
 
@@ -46,6 +51,7 @@ class VisualizationOpHandle(Protocol):
         params: Mapping[str, Any],
         *,
         label_field: str | None,
+        recipe: Recipe | None = None,
     ) -> bytes | Mapping[str, bytes]: ...
 
 
@@ -95,6 +101,7 @@ def apply_reporting_visualizations(
     plugin: Plugin,
     output_dir: Path,
     label_field: str | None = None,
+    recipe: Recipe | None = None,
 ) -> VisualizationsResult:
     """Render and persist every reporting-mode visualization.
 
@@ -113,7 +120,7 @@ def apply_reporting_visualizations(
             continue
         try:
             handle: VisualizationOpHandle = plugin.operation_factory("Visualizations", op.op)
-            result_obj = handle.render(splits, op.params, label_field=label_field)
+            result_obj = handle.render(splits, op.params, label_field=label_field, recipe=recipe)
         except Exception as exc:
             raise MaterializeError(
                 f"Visualizations[{op.name!r}] (op={op.op!r}, "

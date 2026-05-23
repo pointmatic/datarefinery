@@ -1153,31 +1153,42 @@ No version bump (bundled in H.x).
 - `augmented_sample_grid` (H.u), `corruption_severity_grid` (H.v), `severity_ladder` (H.w).
 - Exploration-mode rendering. This op is reporting-only.
 
-### Story H.u: FR-VIZ-2 `augmented_sample_grid` (depends on H.r) [Planned]
+### Story H.u: FR-VIZ-2 `augmented_sample_grid` (depends on H.r) [Done]
 
 A grid showing `n_base` held-out base images, each rendered `n_variants` times with the recipe's declared augmentation policy applied with `n_variants` different seeds. See FR-VIZ-2 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
 Augmentation policies are non-materialized in lazy mode; without a visualization, the policy exists only as text and params, and nobody reading the recipe or report sees what the augmentations actually do to images. `augmented_sample_grid` realizes a small deterministic, seeded sample into the report so the policy is visible as concrete output.
 
 **Mode-aware implementation:**
-- **Aggressive mode:** augmented variants are already in the materialized dataset. The viz samples `n_base × n_variants` records by `(source_record_id, variant_index)`.
+- **Aggressive mode:** augmented variants are already in the materialized dataset. The viz samples `n_base x n_variants` records by `(source_record_id, variant_index)`.
 - **Lazy mode:** dataset is unaugmented. The viz picks `n_base` base records, realizes `n_variants` augmented variants inline using the same `_realizer.py` code paths. The realized variants are rendered into the visualization only — not persisted into the dataset.
 
 Depends on H.r (aggressive-mode realizers).
 
 No version bump (bundled in H.x).
 
+**Design notes** (agreed at gate before implementation):
+
+1. **`VisualizationOpHandle.render(...)` gains an optional `recipe: Recipe | None = None` kwarg.** Threaded through `apply_reporting_visualizations`, `render_visualization`, the pipeline runner, `reporting/report.py`, and `core/inspect.py`. The four pre-existing handles accept it as `recipe: Any = None` and `del recipe`. `augmented_sample_grid` is the first consumer; FR-VIZ-3 `corruption_severity_grid` will be the next.
+2. **Filename pattern uses `<viz.name>_<aug.name>.png`** (e.g. `aug_grid_flip.png`), matching the H.t `<op.name>_<key>.png` convention and preserving the FR-15 cross-repo contract.
+3. **Lazy seeding mixes `recipe.seed ^ (viz.seed or 0)`** as the `global_seed` argument to `per_record_variant_seed(global_seed, record, vi, op_id=aug.name)`. Same determinism contract as the existing lazy / aggressive realizers.
+4. **Aggressive-mode data access reads existing fields.** Records carry `source_record_id` + `variant_index` from `emit_variants`; the viz groups by those, sorts by id, and takes the first `n_base` groups + `n_variants` per group. No additional plumbing.
+5. **Train-only.** Augmentations are train-only per FR-11 (validator check 5 enforces this against the literal string `"train"`), so the viz reads `splits["train"]` for every dataset.
+6. **Empty-mapping return is a sanctioned no-op,** not a failure: when the recipe declares no augmentations the op returns `{}` and the pipeline stage writes no PNGs.
+7. **Realizer registry is injected at handle construction** (not looked up via a lazy `from ... import PLUGIN`), keeping the viz module free of circular imports.
+
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/augmented_sample_grid.py` with Apache-2.0 header. Pydantic `AugmentedSampleGridParams`: `n_base: int` (positive), `n_variants: int` (positive), `seed: int | None = None`.
-- [ ] Implement: detect each declared `Augmentations` op's materialization mode. For aggressive ops, query the materialized dataset for `n_base` `source_record_id` values and their first `n_variants` variants. For lazy ops, realize `n_variants` variants inline via `_realizer.py` seeded with the op's seed + this viz's `seed`.
-- [ ] Render: `n_base` rows × `n_variants` columns grid. Output: `augmented_sample_grid_<op_name>.png` per declared augmentation op.
-- [ ] Register op.
-- [ ] Tests in `tests/plugins/image_classification/test_visualizations_augmented_sample_grid.py`: render against an aggressive-mode recipe; render against a lazy-mode recipe; assert grid layout matches `n_base × n_variants`; deterministic against fixed seed.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-13: list this op; document the mode-aware behavior.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `augmented_sample_grid.py`.
-- [ ] Verify.
+- [x] Create `src/datarefinery/plugins/image_classification/visualizations/augmented_sample_grid.py` with Apache-2.0 header. Pydantic `AugmentedSampleGridParams`: `n_base: int` (positive), `n_variants: int` (positive), `seed: int | None = None`.
+- [x] Implement: detect each declared `Augmentations` op's materialization mode. For aggressive ops, query the materialized dataset for `n_base` `source_record_id` values and their first `n_variants` variants. For lazy ops, realize `n_variants` variants inline via `_realizer.py` seeded with the op's seed + this viz's `seed`.
+- [x] Render: `n_base` rows x `n_variants` columns grid. Output: `<viz.name>_<aug.name>.png` per declared augmentation op (Design note 2).
+- [x] Register op (plugin `_VISUALIZATION_OPS` + `_supported_operations` + the contract test's `EXPECTED_OPERATIONS`).
+- [x] Tests in `tests/plugins/image_classification/test_visualizations_augmented_sample_grid.py`: render against an aggressive-mode recipe; render against a lazy-mode recipe; assert grid layout matches `n_base x n_variants`; deterministic against fixed seed; pipeline-stage end-to-end; params validation; recipe-is-None error; mixed lazy+aggressive ops in one recipe.
+- [x] Extend `VisualizationOpHandle.render` protocol with `recipe: Recipe | None = None` (Design note 1); thread through stage runner + exploration renderer + `pipeline/runner.py` + `reporting/report.py` + `core/inspect.py`; existing 4 handles accept and `del` it.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-13: list this op; document the mode-aware behavior, the `recipe` protocol kwarg, and the empty-mapping no-op case.
+  - [x] `docs/specs/tech-spec.md` § Package Structure: add `augmented_sample_grid.py`.
+- [x] Verify.
 
 **Out of Scope**
 

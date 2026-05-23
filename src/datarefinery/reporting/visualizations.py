@@ -23,7 +23,7 @@ from datarefinery.pipeline.stages.visualizations import (
     VisualizationOpHandle,
 )
 from datarefinery.plugins.base import Plugin
-from datarefinery.recipe.models import VisualizationOp
+from datarefinery.recipe.models import Recipe, VisualizationOp
 
 Record = Mapping[str, Any]
 
@@ -34,6 +34,7 @@ def render_visualization(
     *,
     plugin: Plugin,
     label_field: str | None = None,
+    recipe: Recipe | None = None,
 ) -> RenderedVisualization:
     """Render one visualization on demand without persisting.
 
@@ -46,7 +47,7 @@ def render_visualization(
     materializing.
     """
     handle: VisualizationOpHandle = plugin.operation_factory("Visualizations", op.op)
-    raw = handle.render(splits, op.params, label_field=label_field)
+    raw = handle.render(splits, op.params, label_field=label_field, recipe=recipe)
     if isinstance(raw, (bytes, bytearray)):
         return RenderedVisualization(name=op.name, op=op.op, png_bytes=bytes(raw), path=None)
     if isinstance(raw, Mapping):

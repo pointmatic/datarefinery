@@ -261,4 +261,5 @@ def re_render_report(
         plugin=plugin,
         output_dir=report_root / "visualizations",
         label_field=recipe.Labels.field,
+        recipe=recipe,
     )

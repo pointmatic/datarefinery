@@ -244,8 +244,9 @@ class _FailingPlugin:
                 params: Mapping[str, Any],
                 *,
                 label_field: str | None,
+                recipe: Any = None,
             ) -> bytes:
-                del splits, params, label_field
+                del splits, params, label_field, recipe
                 raise RuntimeError("kaboom")
 
         return _Fail()
@@ -284,8 +285,9 @@ class _BadReturnPlugin:
                 params: Mapping[str, Any],
                 *,
                 label_field: str | None,
+                recipe: Any = None,
             ) -> str:
-                del splits, params, label_field
+                del splits, params, label_field, recipe
                 return "not bytes"
 
         return _BadReturn()
