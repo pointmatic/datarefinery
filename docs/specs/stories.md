@@ -885,7 +885,7 @@ The spike demonstrated this generalization is **not necessary**. The cleaner sha
 
 **Decision: PROCEED with Option A + per-record-variant seeding as proposed.** All three uncertainties resolved positively. Two refinements recommended for H.p before it begins: (a) add an explicit task for image-bytes persistence (sidecar vs. inline) — the dataset writer was not designed for self-contained augmented records; (b) remove the `pipeline/workers.py` change from the H.p task list and locate the per-variant logic in `augmentations/_realizer.py` + the augmentations stage instead.
 
-### Story H.p: FR-11 extension — `materialization: lazy \| aggressive` framework [Planned]
+### Story H.p: FR-11 extension — `materialization: lazy \| aggressive` framework [Done]
 
 Extends `AugmentationOp` to support two materialization modes per-op, building the framework H.q and H.r populate with concrete ops. The current FR-11 framing ("augmentations apply on-the-fly during training; they do not produce additional persisted records") becomes the **lazy** mode; the new **aggressive** mode lets DataRefinery materialize augmented records into the cached dataset deterministically. See FR-11 reframing in the phase plan: [phase-h-image-classification-extensions-2-plan.md](phase-h-image-classification-extensions-2-plan.md).
 
@@ -913,18 +913,18 @@ No version bump (bundled in H.s). Cache-invalidating: adds two new fields with d
 
 **Tasks:**
 
-- [ ] Extend `AugmentationOp` in `src/datarefinery/recipe/models.py`: add `materialization: Literal["lazy", "aggressive"] = "lazy"` and `expansion: int = 1`. Frozen. Model-level validation: `expansion < 1` rejected; `expansion > 1` requires `materialization == "aggressive"`.
-- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/__init__.py` (submodule init) and `src/datarefinery/plugins/image_classification/augmentations/_realizer.py` with Apache-2.0 headers. `_realizer.py` exposes shared aggressive-mode helpers: per-record-variant seed derivation, variant-emission loop, metadata tagging (`source_record_id`, `variant_index`).
-- [ ] Extend `src/datarefinery/pipeline/workers.py`: per-record seed derivation generalizes to per-record-variant. Reorder-invariant becomes `(record_id, variant_index)` tuples for aggressive expansion. Lazy mode unchanged.
-- [ ] Extend `src/datarefinery/pipeline/stages/augmentations.py`: lazy-mode preserves the current passthrough; aggressive-mode dispatches per-record to the op's realizer via `_realizer.py`, emitting `expansion` variant records per input.
-- [ ] Extend `src/datarefinery/reporting/report.py`: render augmentation policy mode-aware. Lazy declares the policy; aggressive also reports the expansion-multiplied record count in the per-split statistics summary.
-- [ ] Validator coverage: existing FR-2 check 5 (train-only) still applies; check 18 covers the new fields via plugin schemas. Surface the `expansion > 1 + lazy` rejection through the validator (relies on pydantic model-level validator).
-- [ ] Tests in `tests/recipe/test_augmentation_op_model.py`: model validation accepts both modes; rejects `expansion < 1`; rejects `expansion > 1` + `lazy`.
-- [ ] Tests in `tests/pipeline/test_augmentations_aggressive.py`: stub realizer (no real op yet); aggressive-mode produces `N × expansion` records with `source_record_id` and `variant_index` metadata; lazy-mode unchanged; workers=1/2/4 byte-identical.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-11 (Augmentations): rewrite to document both lazy and aggressive modes; document `materialization` and `expansion` behavior; document the train-only invariant still applies (check 5); add edge-case bullets for `expansion < 1` and `expansion > 1 + lazy` rejection.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `augmentations/__init__.py` and `augmentations/_realizer.py`. § Cross-Cutting Concerns > Determinism: extend per-record seeding scheme description to include `variant_index`. § Data Models > Recipe model section table: extend the `AugmentationOp` row to include `materialization` and `expansion`.
-- [ ] Verify: tests green, ruff + ruff format + mypy clean. **Do not bump the version** — release lands in H.s.
+- [x] Extend `AugmentationOp` in `src/datarefinery/recipe/models.py`: add `materialization: Literal["lazy", "aggressive"] = "lazy"` and `expansion: int = 1`. Frozen. Model-level validation: `expansion < 1` rejected; `expansion > 1` requires `materialization == "aggressive"`.
+- [x] Create `src/datarefinery/plugins/image_classification/augmentations/__init__.py` (submodule init) and `src/datarefinery/plugins/image_classification/augmentations/_realizer.py` with Apache-2.0 headers. `_realizer.py` exposes shared aggressive-mode helpers: per-record-variant seed derivation, variant-emission loop, metadata tagging (`source_record_id`, `variant_index`).
+- [x] Extend `src/datarefinery/pipeline/workers.py`: per-record seed derivation generalizes to per-record-variant. Reorder-invariant becomes `(record_id, variant_index)` tuples for aggressive expansion. Lazy mode unchanged.
+- [x] Extend `src/datarefinery/pipeline/stages/augmentations.py`: lazy-mode preserves the current passthrough; aggressive-mode dispatches per-record to the op's realizer via `_realizer.py`, emitting `expansion` variant records per input.
+- [x] Extend `src/datarefinery/reporting/report.py`: render augmentation policy mode-aware. Lazy declares the policy; aggressive also reports the expansion-multiplied record count in the per-split statistics summary.
+- [x] Validator coverage: existing FR-2 check 5 (train-only) still applies; check 18 covers the new fields via plugin schemas. Surface the `expansion > 1 + lazy` rejection through the validator (relies on pydantic model-level validator).
+- [x] Tests in `tests/recipe/test_augmentation_op_model.py`: model validation accepts both modes; rejects `expansion < 1`; rejects `expansion > 1` + `lazy`.
+- [x] Tests in `tests/pipeline/test_augmentations_aggressive.py`: stub realizer (no real op yet); aggressive-mode produces `N x expansion` records with `source_record_id` and `variant_index` metadata; lazy-mode unchanged; workers=1/2/4 byte-identical.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-11 (Augmentations): rewrite to document both lazy and aggressive modes; document `materialization` and `expansion` behavior; document the train-only invariant still applies (check 5); add edge-case bullets for `expansion < 1` and `expansion > 1 + lazy` rejection.
+  - [x] `docs/specs/tech-spec.md` § Package Structure: add `augmentations/__init__.py` and `augmentations/_realizer.py`. § Cross-Cutting Concerns > Determinism: extend per-record seeding scheme description to include `variant_index`. § Data Models > Recipe model section table: extend the `AugmentationOp` row to include `materialization` and `expansion`.
+- [x] Verify: tests green, ruff + ruff format + mypy clean. **Do not bump the version** — release lands in H.s.
 
 **Out of Scope**
 

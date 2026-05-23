@@ -159,6 +159,54 @@ def test_report_partial_run_marker() -> None:
     assert "Visualizations" in md
 
 
+def test_report_augmentations_render_mode_aware() -> None:
+    """FR-11 H.p: each augmentation op surfaces its mode (+ expansion if
+    aggressive) in the report so readers see the per-op fan-out without
+    cross-referencing the recipe."""
+    recipe = Recipe.model_validate(
+        {
+            "schema_version": 1,
+            "plugin": "image_classification",
+            "Input": {
+                "sources": [
+                    {
+                        "name": "train",
+                        "type": "image_folder",
+                        "path": "/data/train",
+                    }
+                ]
+            },
+            "Output": {"record_schema": {"image": {"dtype": "uint8"}, "label": {"dtype": "str"}}},
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": {"ratios": {"train": 0.6, "val": 0.2, "test": 0.2}, "seed": 11},
+            "Augmentations": [
+                {
+                    "name": "lazy_flip",
+                    "op": "horizontal_flip",
+                    "params": {"p": 0.5},
+                    "splits": ["train"],
+                    "seed": 1,
+                },
+                {
+                    "name": "agg_crop",
+                    "op": "random_crop",
+                    "params": {"size": 32},
+                    "splits": ["train"],
+                    "seed": 2,
+                    "materialization": "aggressive",
+                    "expansion": 4,
+                },
+            ],
+        }
+    )
+    md = render_report_md(recipe, _manifest(recipe))
+    assert "### Augmentations" in md
+    # Renamed: no longer "policy-only".
+    assert "policy-only" not in md
+    assert "lazy_flip (`horizontal_flip`, materialization=lazy)" in md
+    assert "agg_crop (`random_crop`, materialization=aggressive, expansion=4)" in md
+
+
 def test_report_is_byte_stable_for_identical_inputs() -> None:
     recipe = _recipe()
     manifest = _manifest(recipe)

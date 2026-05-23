@@ -119,14 +119,14 @@ src/datarefinery/
     inputs.py                # disk-backed input loader (FR-3): image_folder + image_flat with label_from join
     fitted_stats.py          # FR-6 persistence (JSON for scalars, parquet for vectors)
     contracts.py             # FR-23 InputContracts / OutputExpectations evaluation
-    workers.py               # opt-in ProcessPoolExecutor wrapper with deterministic seeding
+    workers.py               # opt-in ProcessPoolExecutor wrapper with deterministic seeding (per-record + per-record-variant)
     stages/
       __init__.py
       filters.py             # FR-8
       generation.py          # FR-9
       splits.py              # FR-7
       transformations.py     # FR-10 (incl. fit-on-train)
-      augmentations.py       # FR-11
+      augmentations.py       # FR-11 lazy policy capture + aggressive variant realization
       featurizations.py      # FR-12 (also drives derived labels via FR-22)
       visualizations.py      # FR-13
   reporting/
@@ -150,6 +150,9 @@ src/datarefinery/
       _corruption_data/             # vendored frost textures + upstream attribution NOTICE
       _corruption_names.py          # FR-GEN-1: dependency-free corruption vocabulary (Story H.m.2)
       generation_imagecorruptions.py # FR-GEN-1: `imagecorruptions_apply` Generation op (Story H.m.2)
+      augmentations/                # FR-11 aggressive-mode realizer scaffolding (Story H.p)
+        __init__.py
+        _realizer.py                # per_variant_seed + emit_variants helpers; Realizer callable type
     tabular/
       __init__.py
       plugin.py              # stub: section list + operation outline only
@@ -415,6 +418,8 @@ def run_parallel(
 
 Determinism contract: the per-record seed is derived as `seed_for_record = sha256(seed.to_bytes(8, 'big') + record_id_bytes).digest()[:8]`, decoded as a 64-bit int. `record_id` is the record's stable identifier from the input manifest (filename for image inputs, primary key for tabular). Output is collected and reordered by `record_id` before downstream stages so the iteration order is fixed regardless of worker scheduling.
 
+FR-11 aggressive-mode extension (Story H.p): when an `AugmentationOp` declares `materialization=aggressive`, each input record fans out into `expansion` variants, each seeded by `seed_for_variant = sha256(seed.to_bytes(8, 'big') + op_id.encode() + record_id_bytes + variant_index.to_bytes(4, 'big')).digest()[:8]`. The per-variant seed depends only on `(global_seed, op_id, record_id, variant_index)`, so worker scheduling does not perturb the per-variant outcome — the same byte-identical guarantee extends one level. The augmentations stage sorts variant records by `record_id` (zero-padded variant index suffix preserves numeric order under lexicographic sort) before yielding, mirroring the per-record reorder invariant.
+
 ### `pipeline.fitted_stats` (FR-6)
 
 ```python
@@ -533,7 +538,7 @@ Per-section models (sketch; full field definitions land alongside the FR-1 imple
 | `GenerationOp` | `name`, `inputs`, `output_schema`, `seed`, `applies_at`, `params: dict[str, Any] = {}`. Plugin-contributed parameterized ops declare a pydantic param model — e.g., `ImageCorruptionsApplyParams` (`corruption_types: list[str]` non-empty, `severities: list[int]` each in `[1,5]`, `preserve_original: bool = False`, `tag_fields: list[str]`) — validated inside the op via `model_validate(params)`. Recipe-level validation runs through the plugin's `OperationSpec` (check 18 covers Generation as well as Filters / Transformations / etc). |
 | `SplitsSection` | `ratios: dict[str, float]` or `key_assignment: KeyAssignment`, `stratify_by: str | None`, `seed: int | None`, `class_balance: ClassBalanceStrategy | None`, `applies_to: str | None`. When `applies_to` is set, it names a single source-declared partition to sub-partition via `ratios`; sibling partitions are preserved verbatim. |
 | `TransformationOp` | `name`, `op`, `params`, `fit_source: str | None`, `splits`. A fit-on-train op may set `params["stats_from_instance"]` (validated as `StatsFromInstanceSpec` with `recipe: str` + `op_id: str`) to import fitted statistics from a sibling materialized instance instead of fitting locally; `fit_source` and `stats_from_instance` are mutually exclusive (validator check 22). Resolution lives in `cache.sibling_stats.resolve_sibling_stats`; the apply path is wired into `pipeline.stages.transformations.apply_transformations` (the stage dispatcher), so any future fit-on-train op picks up sibling-import support by declaring `stats_from_instance` in its `OperationSpec`. |
-| `AugmentationOp` | `name`, `op`, `params`, `splits` (validator rejects non-train), `seed` |
+| `AugmentationOp` | `name`, `op`, `params`, `splits` (validator rejects non-train), `seed`, `materialization: Literal["lazy", "aggressive"] = "lazy"`, `expansion: int = 1`. Model-level validator rejects `expansion < 1` and `expansion > 1 + materialization=lazy` — surfaced as `RecipeError` through the loader. Aggressive ops dispatch through a plugin-registered `Realizer` (see `plugins/image_classification/augmentations/_realizer.py`); per-variant seeding extends the FR-3 determinism contract with an `(op_id, variant_index)` coordinate. |
 | `FeaturizationOp` | `name`, `inputs`, `output_field`, `op`, `params`, `splits`, `fit_source: str | None` |
 | `VisualizationOp` | `name`, `op`, `params`, `stage`, `mode: Literal["exploration", "reporting"]` |
 

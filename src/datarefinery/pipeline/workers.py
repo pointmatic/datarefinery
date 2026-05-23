@@ -23,6 +23,13 @@ bytes:
 
 Serial fast-path: when ``workers <= 1`` the executor is bypassed
 entirely (still per-record-seeded, still reorder-by-record-id).
+
+FR-11 aggressive-mode extension (Story H.p): :func:`per_record_variant_seed`
+adds a third coordinate (``op_id`` and ``variant_index``) so a single
+record can yield N deterministically-seeded variants. The reorder
+invariant for aggressive expansion is ``(record_id, variant_index)`` —
+handled inside the augmentations stage rather than by
+:func:`run_parallel`, which stays single-record per call.
 """
 
 from __future__ import annotations
@@ -57,6 +64,42 @@ def per_record_seed(
     rid = record[record_id_field]
     rid_bytes = str(rid).encode("utf-8")
     digest = hashlib.sha256(int(global_seed).to_bytes(8, "big") + rid_bytes).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
+def per_record_variant_seed(
+    global_seed: int,
+    record: Record,
+    variant_index: int,
+    *,
+    op_id: str,
+    record_id_field: str = "record_id",
+) -> int:
+    """Derive the per-variant seed for FR-11 aggressive-mode augmentation.
+
+    Formula:
+    ``sha256(global_seed.to_bytes(8,"big") + op_id.encode("utf-8")
+             + str(record_id).encode("utf-8")
+             + variant_index.to_bytes(4,"big")).digest()[:8]``
+    decoded as a 64-bit unsigned int.
+
+    Depends only on ``(global_seed, op_id, record_id, variant_index)`` so
+    worker scheduling cannot perturb the per-variant outcome. Validated
+    by the H.o architectural spike against ``workers=1/2/4``.
+    """
+    if record_id_field not in record:
+        raise MaterializeError(
+            f"per_record_variant_seed: record missing record_id field "
+            f"{record_id_field!r}; cannot derive deterministic seed"
+        )
+    rid_bytes = str(record[record_id_field]).encode("utf-8")
+    payload = (
+        int(global_seed).to_bytes(8, "big")
+        + op_id.encode("utf-8")
+        + rid_bytes
+        + int(variant_index).to_bytes(4, "big")
+    )
+    digest = hashlib.sha256(payload).digest()
     return int.from_bytes(digest[:8], "big")
 
 

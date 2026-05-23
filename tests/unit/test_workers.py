@@ -18,7 +18,11 @@ from typing import Any
 import pytest
 
 from datarefinery.core.errors import MaterializeError
-from datarefinery.pipeline.workers import per_record_seed, run_parallel
+from datarefinery.pipeline.workers import (
+    per_record_seed,
+    per_record_variant_seed,
+    run_parallel,
+)
 
 
 def _records(n: int) -> list[Mapping[str, Any]]:
@@ -245,6 +249,52 @@ def test_determinism_across_worker_counts(workers: int) -> None:
         key=lambda r: r["record_id"],
     )
     assert out == expected
+
+
+# ---------------------------------------------------------------------------
+# per_record_variant_seed (Story H.p, FR-11 aggressive-mode determinism)
+# ---------------------------------------------------------------------------
+
+
+def test_per_record_variant_seed_is_deterministic() -> None:
+    record = {"record_id": "abc"}
+    a = per_record_variant_seed(7, record, 2, op_id="random_crop")
+    b = per_record_variant_seed(7, record, 2, op_id="random_crop")
+    assert a == b
+
+
+def test_per_record_variant_seed_varies_on_variant_index() -> None:
+    record = {"record_id": "abc"}
+    a = per_record_variant_seed(7, record, 2, op_id="random_crop")
+    b = per_record_variant_seed(7, record, 3, op_id="random_crop")
+    assert a != b
+
+
+def test_per_record_variant_seed_varies_on_op_id() -> None:
+    record = {"record_id": "abc"}
+    a = per_record_variant_seed(7, record, 0, op_id="random_crop")
+    b = per_record_variant_seed(7, record, 0, op_id="horizontal_flip")
+    assert a != b
+
+
+def test_per_record_variant_seed_varies_on_record_id() -> None:
+    a = per_record_variant_seed(7, {"record_id": "x"}, 0, op_id="random_crop")
+    b = per_record_variant_seed(7, {"record_id": "y"}, 0, op_id="random_crop")
+    assert a != b
+
+
+def test_per_record_variant_seed_matches_documented_formula() -> None:
+    """Pin the formula: changing this invalidates every aggressive-mode
+    cached instance for every user post-production."""
+    payload = (7).to_bytes(8, "big") + b"random_crop" + b"abc" + (2).to_bytes(4, "big")
+    expected = int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
+    got = per_record_variant_seed(7, {"record_id": "abc"}, 2, op_id="random_crop")
+    assert got == expected
+
+
+def test_per_record_variant_seed_missing_id_raises() -> None:
+    with pytest.raises(MaterializeError, match="record_id"):
+        per_record_variant_seed(0, {"value": 1}, 0, op_id="random_crop")
 
 
 # Sanity: PID is an example of why per-record seed must NOT depend on the

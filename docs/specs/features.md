@@ -425,16 +425,22 @@ In all four, re-fitting statistics on the evaluation data is a correctness bug, 
 
 ### FR-11: Augmentations
 
-Apply stochastic operations on the training split that expand the effective dataset without changing record count.
+Apply stochastic operations on the training split that expand the effective dataset. Each augmentation op chooses its materialization mode independently — lazy ops are policy-only (training-time realization) and aggressive ops produce persisted variant records during materialization.
 
 **Behavior:**
-1. Each augmentation declares its parameters, the splits it applies to (train-only by default; validation/test rejected by `validate`), and a seed.
-2. Augmentations apply on-the-fly during training; they are described in the recipe and report but do not produce additional persisted records.
-3. The recipe declares augmentation policies, not concrete augmented examples.
+1. Each augmentation declares its parameters, the splits it applies to (train-only by default; validation/test rejected by `validate`), a seed, a `materialization` mode (`lazy` or `aggressive`, default `lazy`), and an `expansion` factor (default `1`; must be `>= 1`; values `> 1` require `materialization=aggressive`).
+2. **Lazy mode** (current behavior): augmentations apply on-the-fly during training; they are described in the recipe and report but do not produce additional persisted records. Record count is unchanged.
+3. **Aggressive mode** (Story H.p): each input record is replaced by `expansion` augmented variant records at materialization time. Variant records carry `source_record_id: str` and `variant_index: int` metadata, and become peer records in the materialized dataset. Per-split record count becomes `N × expansion` per aggressive op (sequential composition: two aggressive ops with `expansion=a` and `expansion=b` produce `N × a × b` records).
+4. The recipe declares the augmentation policy regardless of mode. The manifest captures the policy verbatim; the report renders each op with its mode (and expansion if aggressive).
+5. Aggressive-mode determinism: each variant's seed is derived as `sha256(global_seed.to_bytes(8,"big") + op_id.encode() + record_id.encode() + variant_index.to_bytes(4,"big"))[:8]`. Worker count is irrelevant to output bytes (validated by the H.o spike against `workers=1/2/4`).
+6. Materialization is per-op, not per-section: a single `Augmentations` block can mix lazy and aggressive ops.
 
 **Edge Cases:**
 - Augmentation declared on validation or test -> caught by `validate` (check 5).
 - Augmentation seeded but with a non-train split -> caught by `validate` before the seed check matters.
+- `expansion < 1` -> rejected by the `AugmentationOp` model-level validator (pydantic `ValidationError` surfaced through the recipe loader as `RecipeError`).
+- `expansion > 1` paired with `materialization=lazy` -> rejected by the same model-level validator. Lazy mode has no variant fan-out; the pairing is meaningless and refused early.
+- Aggressive op referenced in the recipe with no realizer registered by the declaring plugin -> hard error at materialization (`MaterializeError` from the augmentations stage).
 
 ### FR-12: Featurizations
 

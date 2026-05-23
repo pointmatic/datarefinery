@@ -285,6 +285,22 @@ class AugmentationOp(_Frozen):
     params: dict[str, Any] = Field(default_factory=dict)
     splits: list[str] = Field(default_factory=lambda: ["train"])
     seed: int | None = None
+    materialization: Literal["lazy", "aggressive"] = "lazy"
+    expansion: int = 1
+
+    @model_validator(mode="after")
+    def _validate_materialization(self) -> AugmentationOp:
+        if self.expansion < 1:
+            raise ValueError(
+                f"AugmentationOp[{self.name!r}]: expansion must be >= 1 (got {self.expansion})"
+            )
+        if self.expansion > 1 and self.materialization != "aggressive":
+            raise ValueError(
+                f"AugmentationOp[{self.name!r}]: expansion={self.expansion} "
+                f"requires materialization='aggressive' (got "
+                f"materialization={self.materialization!r})"
+            )
+        return self
 
 
 class FeaturizationOp(_Frozen):

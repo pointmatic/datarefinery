@@ -97,9 +97,9 @@ def render_report_md(
     )
     _section_header(
         lines,
-        "Augmentations (policy-only)",
+        "Augmentations",
         recipe.Augmentations,
-        lambda op: f"{op.name} (`{op.op}`)",
+        _format_augmentation_op,
     )
     _section_header(
         lines,
@@ -128,6 +128,20 @@ def render_report_md(
     lines.append("")
 
     return "\n".join(lines)
+
+
+def _format_augmentation_op(op: Any) -> str:
+    """FR-11 mode-aware op formatter.
+
+    Lazy ops render with their op name only; aggressive ops also surface
+    ``expansion`` so the report reader can see the per-record fan-out
+    without cross-referencing the recipe. The manifest's
+    ``record_counts`` already reflect the post-aggressive count for any
+    split touched by aggressive realization.
+    """
+    if op.materialization == "aggressive":
+        return f"{op.name} (`{op.op}`, materialization=aggressive, expansion={op.expansion})"
+    return f"{op.name} (`{op.op}`, materialization=lazy)"
 
 
 def _section_header(

@@ -98,6 +98,8 @@ def test_to_manifest_dict_shape() -> None:
         "params": {"p": 0.5},
         "splits": ["train"],
         "seed": 42,
+        "materialization": "lazy",
+        "expansion": 1,
     }
 
 
