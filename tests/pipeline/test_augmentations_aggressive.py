@@ -35,17 +35,28 @@ def _records(n: int) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def _stub_realizer(record: Mapping[str, Any], seed: int, variant_index: int) -> dict[str, Any]:
+def _stub_realizer(
+    record: Mapping[str, Any],
+    seed: int,
+    variant_index: int,
+    params: Mapping[str, Any],
+) -> dict[str, Any]:
     """Deterministic stub: copies record + records the seed and index it saw."""
+    del params
     out = dict(record)
     out["_observed_seed"] = seed
     out["_observed_variant_index"] = variant_index
     return out
 
 
-def _identity_realizer(record: Mapping[str, Any], seed: int, variant_index: int) -> dict[str, Any]:
-    """Realizer that ignores seed/variant; identical output for every variant."""
-    del seed, variant_index
+def _identity_realizer(
+    record: Mapping[str, Any],
+    seed: int,
+    variant_index: int,
+    params: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Realizer that ignores seed/variant/params; identical output for every variant."""
+    del seed, variant_index, params
     return dict(record)
 
 

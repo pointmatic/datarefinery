@@ -24,15 +24,23 @@ from typing import Any
 from datarefinery.pipeline.workers import per_record_variant_seed
 
 Record = Mapping[str, Any]
-Realizer = Callable[[Record, int, int], Record]
+Realizer = Callable[[Record, int, int, Mapping[str, Any]], Record]
 """Single-variant realize function.
 
-Signature: ``realize_fn(record, seed, variant_index) -> record``.
+Signature: ``realize_fn(record, seed, variant_index, params) -> record``.
 
 Receives the input record, a deterministic per-variant seed (already
-derived via :func:`per_record_variant_seed`), and the variant index. The
-return value is the augmented record's *payload* — image data and any
-op-specific fields. :func:`emit_variants` adds the metadata fields
+derived via :func:`per_record_variant_seed`), the variant index, and
+the op's raw ``params`` mapping (from
+:attr:`recipe.models.AugmentationOp.params`). The realizer is expected
+to validate ``params`` against its own pydantic model on first use —
+this mirrors the pattern established by ``imagecorruptions_apply``
+(``generation_imagecorruptions.py``). Carrying ``params`` per call
+keeps the registry stateless (one realizer per op name handles every
+recipe instance regardless of param values).
+
+The return value is the augmented record's *payload* — image data and
+any op-specific fields. :func:`emit_variants` adds the metadata fields
 (``source_record_id``, ``variant_index``) and rewrites ``record_id``
 after the realizer returns.
 """
@@ -58,6 +66,7 @@ def emit_variants(
     global_seed: int,
     expansion: int,
     realize_fn: Realizer,
+    params: Mapping[str, Any] | None = None,
     record_id_field: str = "record_id",
 ) -> list[dict[str, Any]]:
     """Realize one input record into ``expansion`` augmented variants.
@@ -65,6 +74,9 @@ def emit_variants(
     Each variant:
 
     - Receives a deterministic seed from :func:`per_record_variant_seed`.
+    - Gets the op's ``params`` mapping (defaults to empty dict if the
+      caller doesn't supply one; concrete realizers ignore the value if
+      they take no params).
     - Gets ``source_record_id`` and ``variant_index`` metadata.
     - Has its ``record_id`` rewritten via :func:`derive_variant_record_id`.
 
@@ -78,6 +90,7 @@ def emit_variants(
             f"emit_variants: record missing record_id field "
             f"{record_id_field!r}; cannot tag variants deterministically"
         )
+    bound_params: Mapping[str, Any] = {} if params is None else params
     source_record_id = record[record_id_field]
     out: list[dict[str, Any]] = []
     for vi in range(expansion):
@@ -88,7 +101,7 @@ def emit_variants(
             op_id=op_id,
             record_id_field=record_id_field,
         )
-        realized = realize_fn(record, seed, vi)
+        realized = realize_fn(record, seed, vi, bound_params)
         merged = dict(realized)
         merged["record_id"] = derive_variant_record_id(source_record_id, vi)
         merged["source_record_id"] = source_record_id

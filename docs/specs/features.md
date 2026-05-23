@@ -442,6 +442,11 @@ Apply stochastic operations on the training split that expand the effective data
 - `expansion > 1` paired with `materialization=lazy` -> rejected by the same model-level validator. Lazy mode has no variant fan-out; the pairing is meaningless and refused early.
 - Aggressive op referenced in the recipe with no realizer registered by the declaring plugin -> hard error at materialization (`MaterializeError` from the augmentations stage).
 
+**Available `image_classification` augmentation ops** (Story H.q):
+
+- **FR-AUG-1 `random_crop`** — random spatial crop with optional pre-crop padding. Params (`RandomCropParams`): `size: int | tuple[int, int]` (positive; required), `padding: int = 0` (non-negative), `padding_mode: Literal["reflect", "replicate", "zero", "constant"] = "reflect"`. Aggressive realizer pads via `numpy.pad` (mapping `replicate -> edge`, `zero`/`constant -> constant fill 0`), then selects a random crop top-left coordinate via `numpy.random.default_rng(seed_for_variant)`.
+- **FR-AUG-2 `horizontal_flip`** — random horizontal flip. Params (`HorizontalFlipParams`): `p: float = 0.5` in `[0.0, 1.0]`. Aggressive realizer runs a per-variant `rng.random() < p` coin flip and calls `Image.transpose(Image.FLIP_LEFT_RIGHT)` on heads. Pillow's transpose is RNG-free (H.o spike confirmed), so the only stochastic choice is the coin flip the realizer drives.
+
 ### FR-12: Featurizations
 
 Derive new features from one or more existing inputs.

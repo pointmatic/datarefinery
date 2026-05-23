@@ -15,6 +15,15 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
+from datarefinery.plugins.image_classification.augmentations._realizer import (
+    Realizer,
+)
+from datarefinery.plugins.image_classification.augmentations.horizontal_flip import (
+    realize_horizontal_flip,
+)
+from datarefinery.plugins.image_classification.augmentations.random_crop import (
+    realize_random_crop,
+)
 from datarefinery.plugins.image_classification.filters_drop_by_label import (
     drop_by_label,
 )
@@ -77,6 +86,11 @@ _VISUALIZATION_OPS: dict[str, Operation] = {
     "class_distribution_histogram": ClassDistributionHistogramOp(),
     "sample_grid": SampleGridOp(),
     "mean_image_per_class": MeanImagePerClassOp(),
+}
+
+_AUGMENTATION_REALIZERS: dict[str, Realizer] = {
+    "random_crop": realize_random_crop,
+    "horizontal_flip": realize_horizontal_flip,
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -200,7 +214,8 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "random_crop": OperationSpec(
             parameters={
                 "size": ParameterSpec(type="int", required=True),
-                "seed": ParameterSpec(type="int", required=True),
+                "padding": ParameterSpec(type="int", required=False, default=0),
+                "padding_mode": ParameterSpec(type="str", required=False, default="reflect"),
             },
             applicable_sections=frozenset({"Augmentations"}),
             applicable_splits=frozenset({"train"}),
@@ -208,7 +223,6 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "horizontal_flip": OperationSpec(
             parameters={
                 "p": ParameterSpec(type="float", required=False, default=0.5),
-                "seed": ParameterSpec(type="int", required=True),
             },
             applicable_sections=frozenset({"Augmentations"}),
             applicable_splits=frozenset({"train"}),
@@ -249,6 +263,7 @@ class ImageClassificationPlugin:
 
     def __init__(self) -> None:
         self.supported_operations = _supported_operations()
+        self.augmentation_realizers: dict[str, Realizer] = dict(_AUGMENTATION_REALIZERS)
 
     def operation_factory(self, section: str, op_name: str) -> Operation:
         if section == "Filters" and op_name in _FILTER_OPS:

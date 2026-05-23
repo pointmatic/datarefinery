@@ -932,7 +932,7 @@ No version bump (bundled in H.s). Cache-invalidating: adds two new fields with d
 - ModelFoundry dependency spec doc. H.s.
 - Visualizations of augmented samples. H.u.
 
-### Story H.q: Spatial augmentations — `random_crop` + `horizontal_flip` (lazy + aggressive) [Planned]
+### Story H.q: Spatial augmentations — `random_crop` + `horizontal_flip` (lazy + aggressive) [Done]
 
 Two image_classification augmentation ops sharing the spatial-transform pattern. Build on the FR-11 framework from H.p; emit augmented variants via the shared `_realizer.py` scaffolding.
 
@@ -945,18 +945,18 @@ No version bump (bundled in H.s).
 
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/random_crop.py` with Apache-2.0 header. Pydantic `RandomCropParams`: `size: int | tuple[int, int]`, `padding: int = 0`, `padding_mode: Literal["reflect", "replicate", "zero", "constant"] = "reflect"`. Frozen. Validation: positive size, non-negative padding.
-- [ ] Implement aggressive realizer: pad per `padding_mode`, then random crop to `size` using `numpy.random.default_rng(seed_for_variant)` for crop coordinates.
-- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/horizontal_flip.py` with header. Pydantic `HorizontalFlipParams`: `p: float = 0.5` in `[0.0, 1.0]`. Frozen.
-- [ ] Implement aggressive realizer: per-variant `rng.random() < p` coin flip; `Image.transpose(Image.FLIP_LEFT_RIGHT)` when true.
-- [ ] Register both ops in `src/datarefinery/plugins/image_classification/__init__.py`.
-- [ ] Tests in `tests/plugins/image_classification/test_augmentations_random_crop.py`: lazy declares without realizing; aggressive emits `expansion` variants with correct shapes; padding modes apply; deterministic under workers=1/2/4 byte-identical.
-- [ ] Tests in `tests/plugins/image_classification/test_augmentations_horizontal_flip.py`: lazy declares; aggressive realizes; deterministic; probability convergence with large `expansion`.
-- [ ] Cross-recipe bit-identity test: identical recipe + inputs + seed produces byte-identical aggressive-mode instances.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-11: list `random_crop` and `horizontal_flip` as available `image_classification` augmentation ops with their param schemas.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `random_crop.py` and `horizontal_flip.py`. § Data Models > Recipe model section table: reference `RandomCropParams` and `HorizontalFlipParams`.
-- [ ] Verify.
+- [x] Create `src/datarefinery/plugins/image_classification/augmentations/random_crop.py` with Apache-2.0 header. Pydantic `RandomCropParams`: `size: int | tuple[int, int]`, `padding: int = 0`, `padding_mode: Literal["reflect", "replicate", "zero", "constant"] = "reflect"`. Frozen. Validation: positive size, non-negative padding.
+- [x] Implement aggressive realizer: pad per `padding_mode`, then random crop to `size` using `numpy.random.default_rng(seed_for_variant)` for crop coordinates.
+- [x] Create `src/datarefinery/plugins/image_classification/augmentations/horizontal_flip.py` with header. Pydantic `HorizontalFlipParams`: `p: float = 0.5` in `[0.0, 1.0]`. Frozen.
+- [x] Implement aggressive realizer: per-variant `rng.random() < p` coin flip; `Image.transpose(Image.FLIP_LEFT_RIGHT)` when true.
+- [x] Register both ops in `src/datarefinery/plugins/image_classification/__init__.py`.
+- [x] Tests in `tests/plugins/image_classification/test_augmentations_random_crop.py`: lazy declares without realizing; aggressive emits `expansion` variants with correct shapes; padding modes apply; deterministic under workers=1/2/4 byte-identical.
+- [x] Tests in `tests/plugins/image_classification/test_augmentations_horizontal_flip.py`: lazy declares; aggressive realizes; deterministic; probability convergence with large `expansion`.
+- [x] Cross-recipe bit-identity test: identical recipe + inputs + seed produces byte-identical aggressive-mode instances.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-11: list `random_crop` and `horizontal_flip` as available `image_classification` augmentation ops with their param schemas.
+  - [x] `docs/specs/tech-spec.md` § Package Structure: add `random_crop.py` and `horizontal_flip.py`. § Data Models > Recipe model section table: reference `RandomCropParams` and `HorizontalFlipParams`.
+- [x] Verify.
 
 **Out of Scope**
 
@@ -991,6 +991,67 @@ No version bump (bundled in H.s).
 **Out of Scope**
 
 - Visualizations of augmented variants — H.u.
+
+### Story H.r.1: Aggressive-mode runner wiring + temporary fail-loud guard [Planned]
+
+Wires `pipeline.stages.augmentations.realize_aggressive_split` into the runner so aggressive ops actually fan out the train split during materialization. The H.p framework story added the realizer scaffolding and H.q/H.r added concrete ops, but the runner currently calls only `collect_augmentation_policies` — a recipe declaring `materialization: aggressive` produces a manifest claiming aggressive expansion while the dataset remains unchanged (silent semantic failure).
+
+H.r.1 lands the wiring AND a defensive guard so a user declaring aggressive in a real recipe discovers the persistence gap loudly rather than silently producing metadata-only records. H.r.2 closes the persistence gap and removes the guard.
+
+This is the first of two cleanup stories closing the gaps the H.o spike surfaced and the H.p/H.q/H.r framework intentionally left for later. Originally raised at the H.p approval gate; tracked here per the developer's "add as H.r.1/H.r.2" direction.
+
+No version bump (bundled in H.s).
+
+**Tasks:**
+
+- [ ] In `src/datarefinery/pipeline/runner.py`, locate the augmentations-stage call site (currently invokes only `collect_augmentation_policies`). Call `realize_aggressive_split` for the train split immediately BEFORE policy capture, so the manifest still records the declared policy verbatim while the dataset receives the multiplied record set. Ops apply in recipe-declared order. The realizer registry is plugin-supplied (see H.q registration).
+- [ ] Plumb the resulting record list back into the per-split records dict so `_write_dataset` receives the multiplied train records. `manifest.record_counts["train"]` reflects the post-augmentation count via the existing count-records path.
+- [ ] Add a defensive guard at materialize time: if any `AugmentationOp` declares `materialization=aggressive`, the runner raises `MaterializeError("aggressive-mode augmentation persistence pending Story H.r.2; the recipe is accepted but cannot materialize until persistence lands")` BEFORE invoking `realize_aggressive_split`. The wiring is still exercised by unit tests that bypass the guard so the runner integration is covered, but real recipes fail loud.
+- [ ] Validator surface: `recipe.validator` adds a check (warning, not fail) that surfaces the same "pending H.r.2" condition so `validate` callers see the limitation before reaching `materialize`. Both the warning and the runner guard are removed in H.r.2.
+- [ ] Tests:
+  - [ ] `tests/unit/test_datarefinery.py` (or sibling): runner integration — train split with one aggressive op produces the multiplied record count when the guard is patched out (validates the wiring directly).
+  - [ ] Runner raises `MaterializeError` containing "pending Story H.r.2" when an aggressive op is declared and the guard is in place.
+  - [ ] `tests/unit/test_validator.py`: warning surfaced for aggressive recipes; lazy-only recipes get no warning.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-11: append a short "Status" subsection noting aggressive wiring lands in H.r.1 with a temporary guard; persistence + ungating lands in H.r.2. Remove the subsection in H.r.2.
+- [ ] Verify: tests green, ruff + ruff format + mypy clean. **Do not bump the version** — release lands in H.s.
+
+**Out of Scope**
+
+- Image-bytes persistence — H.r.2.
+- ModelFoundry consumption of aggressive variants — H.s.
+
+### Story H.r.2: Image-bytes persistence for aggressive variants + ungating [Planned]
+
+Closes the loop on aggressive-mode augmentation: each variant's image bytes are persisted as a per-record sidecar PNG under `dataset/<split>/images/<record_id>.png`, and the JSONL record carries `image_path: str` pointing at the sidecar. Removes the H.r.1 runner guard and validator warning so aggressive recipes materialize end-to-end into a complete, self-contained instance ModelFoundry (or any consumer) can read without referring back to the source images.
+
+Resolves the H.o spike's open question about Option A persistence — chosen path is sidecar PNGs over inline base64 because (a) Pillow is already a dependency and handles PNG encode natively, (b) JSONL stays human-readable for debugging, (c) the on-disk layout matches how the image plugin already handles writes elsewhere.
+
+This is the second of two cleanup stories closing the H.p/H.q/H.r gaps.
+
+No version bump (bundled in H.s).
+
+**Tasks:**
+
+- [ ] Extend `pipeline.runner._write_dataset` (or add a sibling `_write_image_sidecars` helper invoked from the runner) to detect records carrying aggressive-mode metadata (`source_record_id` + `variant_index` + a numpy `uint8` `image` array). For those records, encode the image as PNG via Pillow and write to `dataset/<split>/images/<record_id>.png`. The runner replaces the `image` field with `image_path: str` (relative to the dataset dir) BEFORE the JSONL serialization runs, so `_coerce` no longer needs to drop the bytes.
+- [ ] Non-aggressive records keep the existing "image bytes resolve via source `path`" behavior. Sidecars are aggressive-only — document the distinction in the writer's docstring.
+- [ ] Cache layout: sidecars live under the materialized instance's dataset dir, so they're naturally covered by the existing cache-identity contract (the materialized output IS the cached output). No separate cache key surface; no `cache.layout` change required unless we want a helper for the new `images/` subdirectory.
+- [ ] Remove the H.r.1 runner guard (`MaterializeError "pending Story H.r.2"`). Remove the validator warning. Both surfaces flip to fully-supported.
+- [ ] Tests:
+  - [ ] `tests/unit/test_runner.py` (or sibling): end-to-end materialize with an aggressive `horizontal_flip` recipe produces sidecar PNGs at the expected paths; `train.jsonl` lines carry `image_path` not `image`.
+  - [ ] Round-trip: read a sidecar PNG back, assert byte-equality with the in-memory variant produced by the realizer.
+  - [ ] Determinism: re-running with the same recipe + seed produces byte-identical sidecar PNGs (FR-3 + FR-4 contract still holds).
+  - [ ] Lazy-only recipe: no sidecars written; existing behavior preserved.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-11: remove the "Status: pending H.r.2" subsection added in H.r.1. Document the sidecar PNG output, the `image_path` field, and the aggressive-vs-non-aggressive persistence distinction.
+  - [ ] `docs/specs/tech-spec.md` § Data layout (instance directory tree): document `dataset/<split>/images/<record_id>.png` for aggressive-mode instances.
+- [ ] Verify.
+
+**Out of Scope**
+
+- Compression/quality tuning of PNGs. Default Pillow settings.
+- A "preserve original" tag for aggressive records — currently aggressive replaces originals. If needed, separate story.
+- ModelFoundry consumption tests — H.s.
 
 ### Story H.s: v0.15.0 AUG release — ModelFoundry dependency spec + cross-cutting docs sweep + release [Planned]
 

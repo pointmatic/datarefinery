@@ -36,13 +36,15 @@ from datarefinery.core.errors import MaterializeError
 from datarefinery.recipe.models import AugmentationOp
 
 Record = Mapping[str, Any]
-Realizer = Callable[[Record, int, int], Record]
+Realizer = Callable[[Record, int, int, Mapping[str, Any]], Record]
 RealizerRegistry = Mapping[str, Realizer]
 """Map from ``AugmentationOp.op`` name to its single-variant realizer.
 
 Populated by the plugin (H.q, H.r); the stage looks ops up by name and
 raises :class:`MaterializeError` if an aggressive-mode op is missing
-from the registry.
+from the registry. The realizer is stateless w.r.t. ``params`` — the
+stage passes each op's ``params`` mapping through on every call so one
+registered callable handles every recipe instance of the same op name.
 """
 
 
@@ -195,6 +197,7 @@ def realize_aggressive_split(
         realize_fn = realizer_registry[op.op]
         op_id = op.op
         expansion = op.expansion
+        params = dict(op.params)
 
         if workers <= 1:
             packs = [
@@ -204,6 +207,7 @@ def realize_aggressive_split(
                     global_seed=global_seed,
                     expansion=expansion,
                     realize_fn=realize_fn,
+                    params=params,
                 )
                 for record in current
             ]
@@ -219,6 +223,7 @@ def realize_aggressive_split(
                         global_seed=global_seed,
                         expansion=expansion,
                         realize_fn=realize_fn,
+                        params=params,
                     )
                     for record in current
                 ]
