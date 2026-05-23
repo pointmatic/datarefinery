@@ -825,6 +825,346 @@ Patch bump (v0.14.1) per Version Cadence (bugfix → patch).
 - A separate "no-extras smoke" CI job that confirms `pip install ml-datarefinery` (no extras) still imports cleanly. Worth doing eventually as a release-gate guard; out of scope for a one-line CI bugfix.
 - Adding `importorskip` to other files that may transitively pull cv2/skimage. The two failing files are the only ones that exercise the corruption codepath; other tests do not import `_corruptions` (directly or via the lazy path in `generation_imagecorruptions.py`).
 
+### Story H.o: Architectural spike — aggressive-mode augmentation realization viability [Done]
+
+Time-boxed architectural spike validating the design choices in the proposed FR-11 extension before H.p commits to them. Per-record-variant seeding under multi-worker execution and the Option A on-disk representation (record multiplication) are the two design choices the spike must confirm before the framework story (H.p) builds on them. Deliverable is documented findings, not shipping code. `horizontal_flip` is the exemplar — simplest realization, fewest variables. See the phase plan for the full design context: [phase-h-image-classification-extensions-2-plan.md](phase-h-image-classification-extensions-2-plan.md).
+
+Three uncertainties to resolve:
+
+1. **Per-record-variant seeding determinism.** Does the proposed `sha256(global_seed || op_id || record_id || variant_index)` scheme produce byte-identical augmented variants across `workers=1`, `workers=2`, and `workers=4`?
+2. **On-disk representation (Option A: record multiplication).** Do `N × expansion` augmented records integrate cleanly with the existing dataset materialization layer? Do downstream consumers (validator, report, manifest) handle the multiplied record count without bespoke special cases?
+3. **Pillow + numpy seeding composition.** Does Pillow's stochastic surface compose cleanly with explicit per-call seeded `numpy.random.default_rng`? Are there Pillow-internal randomness sources that bypass our seed?
+
+No version bump (spike-only; bundled under the AUG release in H.s).
+
+**Tasks:**
+
+- [x] In a scratch worktree (or scratch branch), write a minimal stub `horizontal_flip` realizer that takes `(image_record, seed)` and emits N variants. Use Pillow + `numpy.random.default_rng(seed)`.
+- [x] Implement per-record-variant seed derivation: `seed_for_variant = sha256(global_seed.to_bytes(8, 'big') + op_id.encode() + record_id_bytes + variant_index.to_bytes(4, 'big')).digest()[:8]`. Verify byte-identical seeds for the same `(global_seed, op_id, record_id, variant_index)` across repeated invocations.
+- [x] Run a small end-to-end test: 10 input image records × `expansion=4` → 40 output records. Run under `workers=1/2/4`. Assert byte-identical instance directories across worker counts.
+- [x] Sketch the on-disk record schema for aggressive mode: each augmented record carries `source_record_id: str` and `variant_index: int` metadata fields. Verify round-trip through the existing image-plugin dataset writer.
+- [x] Verify Pillow's `Image.transpose(Image.FLIP_LEFT_RIGHT)` is fully deterministic (no Pillow-internal RNG); the only randomness is the per-variant coin flip we control.
+- [x] Document findings inline in this story body: confirmed/refuted per uncertainty; recommended implementation patterns for H.p (RNG library choice; seed-derivation helper signature; metadata-field naming); blockers or open questions H.p must handle.
+- [x] Decision: proceed with Option A + per-record-variant seeding as proposed, or identify the blocking issue and propose an alternative.
+- [x] Tear down the scratch worktree. Do **not** commit any code in this story — H.p lands the production-grade implementation.
+
+**Out of Scope**
+
+- Implementing any of the four augmentation ops or the FR-11 framework changes. Those are H.p, H.q, H.r.
+- Performance benchmarking. The determinism check is the spike's deliverable.
+- Lazy-mode path. The current FR-11 passthrough is unchanged and doesn't need spike coverage.
+
+**Findings** (recorded 2026-05-22; scratch script at `/tmp/dr-spike-ho/spike_realizer.py`, removed after the run)
+
+1. **Per-record-variant seeding determinism — CONFIRMED.** The proposed formula `sha256(global_seed.to_bytes(8,"big") + op_id.encode() + record_id_bytes + variant_index.to_bytes(4,"big")).digest()[:8]` produced byte-identical materialized output (sha256 = `74bd0ade358bd40135ebd9af3fa5739439fc57fdbe4fb7e6f1260eaffd965fe7`) across `workers=1`, `workers=2`, `workers=4`, AND across a separate Python process invocation. Worker scheduling does not perturb the per-variant seed (depends only on `(global_seed, op_id, record_id, variant_index)`), and the fan-out → sort-by-`(source_record_id, variant_index)` → emit pattern yields a deterministic order independent of `ProcessPoolExecutor` completion order. The pure-function check `derive_variant_seed(42, "random_crop", "img_007", 2)` returned `16774609658038245661` on both invocations and a different value (`9695138196995935303`) for `variant_index=3` — pure and variant-discriminating.
+
+2. **Option A on-disk representation (record multiplication) — CONFIRMED.** A 10-record × `expansion=4` run produced exactly 40 augmented records and round-tripped cleanly through `pipeline.runner._write_dataset` with **zero modifications to the writer**. `source_record_id: str` and `variant_index: int` are JSON-native and pass through `_coerce` unchanged; `variant_index` round-trips as `int`, not `str`. **Open question surfaced for H.p:** `_write_dataset._coerce` silently drops numpy `image` arrays (the writer was designed under the "image bytes resolve via source `path`" model — see `pipeline/runner.py:448-491`). Aggressively-augmented records have no meaningful source path. `generation_imagecorruptions.py` has the same constraint and currently lives with it. H.p must decide image-bytes persistence: write a sidecar (e.g. `dataset/<split>/<record_id>.png`) and add an `image_path` field, or persist image bytes inline via a new branch in `_coerce`. **This is not a blocker for the spike's recommendation but needs an explicit task in H.p.**
+
+3. **Pillow + numpy seeding composition — CONFIRMED for `horizontal_flip`.** `Image.transpose(Image.FLIP_LEFT_RIGHT)` produced identical bytes across 100 repeated calls — no Pillow-internal RNG. The pattern that worked: derive seed → `numpy.random.default_rng(seed)` → draw the parameter (here, the coin-flip via `rng.integers(0, 2)`) → call Pillow with explicit parameters. Pillow never gets to choose anything stochastically. **Generalization caveat:** ops with stochastic Pillow surfaces must be verified case-by-case at implementation time. The H.q/H.r ops (`random_crop`, `horizontal_flip`, `color_jitter`, `random_erasing`) all admit this pattern — none requires a stochastic Pillow call. `imagecorruptions_apply` already established the same precedent (`generation_imagecorruptions.py:98-99`).
+
+**Recommended implementation patterns for H.p**
+
+- **Seed-derivation helper** — place in `augmentations/_realizer.py`, mirror the shape of existing `pipeline.workers.per_record_seed` so plugin authors recognize the contract:
+
+  ```python
+  def per_variant_seed(global_seed: int, op_id: str, record_id: str, variant_index: int) -> int:
+      payload = (int(global_seed).to_bytes(8, "big") + op_id.encode("utf-8")
+                 + str(record_id).encode("utf-8") + int(variant_index).to_bytes(4, "big"))
+      return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big")
+  ```
+
+- **RNG library** — `numpy.random.default_rng(seed)`. Reuses the precedent set by `imagecorruptions_apply`. Plugin authors call `rng.integers(...)`, `rng.uniform(...)`, etc. to draw Pillow-call parameters; they never call Pillow's stochastic surfaces directly.
+- **Metadata field naming** — `source_record_id: str` and `variant_index: int` at the **top level** of the record dict (not nested under a "metadata" sub-dict). Top-level placement is what makes the existing JSONL writer capture them without modification.
+- **Variant `record_id`** — `f"{source_record_id}__v{variant_index}"` (or `_derive_output_record_id`-style hash analogous to `generation_imagecorruptions.py:50-53`). Variant record_ids are already unique and sortable, which means the reorder-by-record-id invariant in `pipeline.workers.run_parallel` extends naturally without code changes.
+
+**Design simplification recommended for H.p's task list**
+
+The story's current task says: *"Extend `src/datarefinery/pipeline/workers.py`: per-record seed derivation generalizes to per-record-variant. Reorder-invariant becomes `(record_id, variant_index)` tuples for aggressive expansion."*
+
+The spike demonstrated this generalization is **not necessary**. The cleaner shape: keep `pipeline.workers.run_parallel` unchanged — it still reorders by parent `record_id`. The augmentations stage runs the per-record worker (which emits a *variant pack*), then performs a single fan-out + sort-by-`(source_record_id, variant_index)` inside `stages/augmentations.py`. The seed derivation lives in `augmentations/_realizer.py`, not in `pipeline.workers`. H.p should update its task list to scope `pipeline.workers` out of the change set; the stage-local fan-out preserves determinism with strictly less surface area touched.
+
+**Decision: PROCEED with Option A + per-record-variant seeding as proposed.** All three uncertainties resolved positively. Two refinements recommended for H.p before it begins: (a) add an explicit task for image-bytes persistence (sidecar vs. inline) — the dataset writer was not designed for self-contained augmented records; (b) remove the `pipeline/workers.py` change from the H.p task list and locate the per-variant logic in `augmentations/_realizer.py` + the augmentations stage instead.
+
+### Story H.p: FR-11 extension — `materialization: lazy \| aggressive` framework [Planned]
+
+Extends `AugmentationOp` to support two materialization modes per-op, building the framework H.q and H.r populate with concrete ops. The current FR-11 framing ("augmentations apply on-the-fly during training; they do not produce additional persisted records") becomes the **lazy** mode; the new **aggressive** mode lets DataRefinery materialize augmented records into the cached dataset deterministically. See FR-11 reframing in the phase plan: [phase-h-image-classification-extensions-2-plan.md](phase-h-image-classification-extensions-2-plan.md).
+
+Recipe surface:
+
+```yaml
+Augmentations:
+  - name: random_crop
+    op: random_crop
+    params: { size: 32, padding: 4, padding_mode: reflect }
+    materialization: aggressive      # default: lazy
+    expansion: 4                     # aggressive only; N variants per original record
+    splits: [train]
+    seed: 42
+```
+
+In lazy mode, behavior is unchanged from current FR-11: policy declared and persisted into the recipe + manifest + report, dataset unaugmented, ModelFoundry realizes per epoch. In aggressive mode, `pipeline/stages/augmentations.py` realizes `expansion` variants per record at materialization time; augmented records become peer records in the materialized dataset.
+
+Design decisions (informed by H.o spike):
+- **Materialization is per-op** (not per-section). A single `Augmentations` block can mix lazy and aggressive ops.
+- **Option A on-disk representation:** record multiplication; augmented records are peer records carrying `source_record_id` and `variant_index` metadata.
+- **Per-record-variant seeding:** existing determinism contract extends one level.
+
+No version bump (bundled in H.s). Cache-invalidating: adds two new fields with defaults to `AugmentationOp`, perturbing canonical bytes of any recipe with `Augmentations`. Pre-prod invalidation acceptable per `project-essentials.md`; H.s release notes call it out.
+
+**Tasks:**
+
+- [ ] Extend `AugmentationOp` in `src/datarefinery/recipe/models.py`: add `materialization: Literal["lazy", "aggressive"] = "lazy"` and `expansion: int = 1`. Frozen. Model-level validation: `expansion < 1` rejected; `expansion > 1` requires `materialization == "aggressive"`.
+- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/__init__.py` (submodule init) and `src/datarefinery/plugins/image_classification/augmentations/_realizer.py` with Apache-2.0 headers. `_realizer.py` exposes shared aggressive-mode helpers: per-record-variant seed derivation, variant-emission loop, metadata tagging (`source_record_id`, `variant_index`).
+- [ ] Extend `src/datarefinery/pipeline/workers.py`: per-record seed derivation generalizes to per-record-variant. Reorder-invariant becomes `(record_id, variant_index)` tuples for aggressive expansion. Lazy mode unchanged.
+- [ ] Extend `src/datarefinery/pipeline/stages/augmentations.py`: lazy-mode preserves the current passthrough; aggressive-mode dispatches per-record to the op's realizer via `_realizer.py`, emitting `expansion` variant records per input.
+- [ ] Extend `src/datarefinery/reporting/report.py`: render augmentation policy mode-aware. Lazy declares the policy; aggressive also reports the expansion-multiplied record count in the per-split statistics summary.
+- [ ] Validator coverage: existing FR-2 check 5 (train-only) still applies; check 18 covers the new fields via plugin schemas. Surface the `expansion > 1 + lazy` rejection through the validator (relies on pydantic model-level validator).
+- [ ] Tests in `tests/recipe/test_augmentation_op_model.py`: model validation accepts both modes; rejects `expansion < 1`; rejects `expansion > 1` + `lazy`.
+- [ ] Tests in `tests/pipeline/test_augmentations_aggressive.py`: stub realizer (no real op yet); aggressive-mode produces `N × expansion` records with `source_record_id` and `variant_index` metadata; lazy-mode unchanged; workers=1/2/4 byte-identical.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-11 (Augmentations): rewrite to document both lazy and aggressive modes; document `materialization` and `expansion` behavior; document the train-only invariant still applies (check 5); add edge-case bullets for `expansion < 1` and `expansion > 1 + lazy` rejection.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `augmentations/__init__.py` and `augmentations/_realizer.py`. § Cross-Cutting Concerns > Determinism: extend per-record seeding scheme description to include `variant_index`. § Data Models > Recipe model section table: extend the `AugmentationOp` row to include `materialization` and `expansion`.
+- [ ] Verify: tests green, ruff + ruff format + mypy clean. **Do not bump the version** — release lands in H.s.
+
+**Out of Scope**
+
+- The four concrete augmentation ops. Those are H.q and H.r.
+- ModelFoundry dependency spec doc. H.s.
+- Visualizations of augmented samples. H.u.
+
+### Story H.q: Spatial augmentations — `random_crop` + `horizontal_flip` (lazy + aggressive) [Planned]
+
+Two image_classification augmentation ops sharing the spatial-transform pattern. Build on the FR-11 framework from H.p; emit augmented variants via the shared `_realizer.py` scaffolding.
+
+- **`random_crop` (FR-AUG-1):** random spatial crop with optional pre-crop padding. Params: `size` (int or tuple), `padding` (default 0), `padding_mode` (`reflect`/`replicate`/`zero`/`constant`, default `reflect`).
+- **`horizontal_flip` (FR-AUG-2):** random horizontal flip. Param: `p` (probability per sample, default 0.5).
+
+Both implement both materialization modes. Lazy: op declared, no realization. Aggressive: realizer emits `expansion` variants per record, each seeded by `(global_seed, op_id, record_id, variant_index)`.
+
+No version bump (bundled in H.s).
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/random_crop.py` with Apache-2.0 header. Pydantic `RandomCropParams`: `size: int | tuple[int, int]`, `padding: int = 0`, `padding_mode: Literal["reflect", "replicate", "zero", "constant"] = "reflect"`. Frozen. Validation: positive size, non-negative padding.
+- [ ] Implement aggressive realizer: pad per `padding_mode`, then random crop to `size` using `numpy.random.default_rng(seed_for_variant)` for crop coordinates.
+- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/horizontal_flip.py` with header. Pydantic `HorizontalFlipParams`: `p: float = 0.5` in `[0.0, 1.0]`. Frozen.
+- [ ] Implement aggressive realizer: per-variant `rng.random() < p` coin flip; `Image.transpose(Image.FLIP_LEFT_RIGHT)` when true.
+- [ ] Register both ops in `src/datarefinery/plugins/image_classification/__init__.py`.
+- [ ] Tests in `tests/plugins/image_classification/test_augmentations_random_crop.py`: lazy declares without realizing; aggressive emits `expansion` variants with correct shapes; padding modes apply; deterministic under workers=1/2/4 byte-identical.
+- [ ] Tests in `tests/plugins/image_classification/test_augmentations_horizontal_flip.py`: lazy declares; aggressive realizes; deterministic; probability convergence with large `expansion`.
+- [ ] Cross-recipe bit-identity test: identical recipe + inputs + seed produces byte-identical aggressive-mode instances.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-11: list `random_crop` and `horizontal_flip` as available `image_classification` augmentation ops with their param schemas.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `random_crop.py` and `horizontal_flip.py`. § Data Models > Recipe model section table: reference `RandomCropParams` and `HorizontalFlipParams`.
+- [ ] Verify.
+
+**Out of Scope**
+
+- `color_jitter` and `random_erasing` — H.r.
+- Visualizations of augmented variants — H.u.
+
+### Story H.r: Appearance augmentations — `color_jitter` + `random_erasing` (lazy + aggressive) [Planned]
+
+Two augmentation ops sharing the appearance-perturbation pattern.
+
+- **`color_jitter` (FR-AUG-3):** random color-space perturbations. Params: `brightness`, `contrast`, `saturation`, `hue` — each a float magnitude. Each enabled dimension applies a uniformly-random offset within `[-magnitude, +magnitude]`.
+- **`random_erasing` (FR-AUG-4):** random rectangular region erasing (Zhong et al. 2020). Params: `p` (probability), `scale` (range of masked area as fraction of image), `ratio` (range of aspect ratio of the mask).
+
+Both implement both materialization modes via the FR-11 framework.
+
+No version bump (bundled in H.s).
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/color_jitter.py` with Apache-2.0 header. Pydantic `ColorJitterParams`: `brightness: float = 0.0`, `contrast: float = 0.0`, `saturation: float = 0.0`, `hue: float = 0.0`. Frozen. Validation: each in `[0.0, 1.0]` except `hue` in `[0.0, 0.5]`.
+- [ ] Implement aggressive realizer: per-variant RNG samples each enabled dimension within `[-magnitude, +magnitude]`; apply via Pillow `ImageEnhance` (brightness/contrast/saturation) and HSV-space rotation (hue). Document the grayscale edge case (hue is a no-op on `< 3` channel images).
+- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/random_erasing.py` with header. Pydantic `RandomErasingParams`: `p: float = 0.5`, `scale: tuple[float, float] = (0.02, 0.33)`, `ratio: tuple[float, float] = (0.3, 3.3)`. Frozen. Validation: `0 <= p <= 1`; sane `scale` and `ratio` ranges.
+- [ ] Implement aggressive realizer: per-variant `rng.random() < p` decides whether to erase; sample area fraction from `scale` and aspect ratio from `ratio`, compute rectangle bounds, fill with mean pixel value.
+- [ ] Register both ops.
+- [ ] Tests in `tests/plugins/image_classification/test_augmentations_color_jitter.py`: lazy declares; aggressive realizes; deterministic; per-channel magnitudes within bounds.
+- [ ] Tests in `tests/plugins/image_classification/test_augmentations_random_erasing.py`: lazy declares; aggressive realizes; erased rectangles fall within image bounds and respect `scale`/`ratio`.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-11: list `color_jitter` and `random_erasing` with their param schemas. Add an edge-case bullet for `color_jitter` on grayscale images.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `color_jitter.py` and `random_erasing.py`. § Data Models > Recipe model section table: reference `ColorJitterParams` and `RandomErasingParams`.
+- [ ] Verify.
+
+**Out of Scope**
+
+- Visualizations of augmented variants — H.u.
+
+### Story H.s: v0.15.0 AUG release — ModelFoundry dependency spec + cross-cutting docs sweep + release [Planned]
+
+Release story for the AUG bundle. Three deliverables: (a) create `docs/specs/modelfoundry/dependency-spec.md` (the cross-repo contract document ModelFoundry consumers bind against); (b) cross-cutting docs sweep across `features.md`, `tech-spec.md`, `README.md` for drift accumulated during H.p–H.r; (c) CHANGELOG, version bump to v0.15.0, Future-section cleanup.
+
+Minor bump (v0.15.0) — new features (FR-11 framework + four augmentation ops). Cache-invalidating for any recipe declaring `Augmentations` ops (new `materialization` and `expansion` defaults perturb canonical bytes). Pre-prod invalidation acceptable per `project-essentials.md` § "Cache identity is the reproducibility contract" pre-production rules; user re-materializes once after upgrade.
+
+**Tasks:**
+
+- [ ] Create `docs/specs/modelfoundry/` directory.
+- [ ] Create `docs/specs/modelfoundry/dependency-spec.md`. Sections:
+  - **Overview** — documented cross-repo contract surface for ModelFoundry and other downstream consumers.
+  - **Recipe-side contract** — `Augmentations` section schema with all four ops + param schemas; `materialization` and `expansion` semantics.
+  - **Materialized dataset on-disk layout** — directory structure; aggressive-mode record-multiplication shape with `source_record_id` and `variant_index` metadata.
+  - **Manifest fields** ModelFoundry binds against — `schema_version`, `plugin`, `plugin_version`, `record_counts`, `variant`, `seed`.
+  - **Report subsections** — augmentation policy summary; `drift.json` schema (pointer to FR-15).
+  - **Cache-identity contract** — canonical bytes include all recipe fields with defaults; bumping `schema_version` is the deliberate-invalidation lever; non-bumped releases preserve cache.
+  - **Schema-version coordination policy** — ModelFoundry tracks DataRefinery's `SUPPORTED_SCHEMA_VERSIONS`; consuming a recipe with a future schema version is a hard error on ModelFoundry's side.
+  - **Forward-compatibility expectations** — ModelFoundry should detect recipes declaring unknown ops and fail with a clear "unknown op" error.
+  - **Failure modes ModelFoundry should detect** — stale fitted statistics; missing required fields; schema-version mismatch.
+  - **Versioning and adoption** — DataRefinery ships forward-declared contracts; ModelFoundry adopts on its own schedule; not a precondition.
+- [ ] Cross-cutting docs sweep:
+  - [ ] `docs/specs/features.md`: verify all four new augmentation ops are documented in § FR-11; cross-reference `dependency-spec.md` from § FR-11 and § FR-15.
+  - [ ] `docs/specs/tech-spec.md`: verify all new augmentation files appear in § Package Structure; § Data Models consistent with the new `AugmentationOp` shape.
+  - [ ] `README.md` § Plugin model: existing "etc." covers the new ops; no edit needed there. § CLI verbs table: **verify the validate row's "Schema + N enumerated static logical checks" count matches features.md's actual enumerated check count** (this sub-bundle adds no new top-level checks, but the count is currently drifted — features.md ends at check 22 while README still says 21 from H.n's release; fix to whatever features.md actually enumerates at v0.15.0). Other CLI-verb table rows: unchanged.
+  - [ ] `docs/guides/recipe-authoring.md` (if present and current): add a short section on the lazy vs aggressive trade-off; mention `dependency-spec.md`.
+- [ ] `docs/specs/project-essentials.md`: append a new `###` subsection (placed after § "Sibling-instance dependencies are loose-coupled in v1") titled "Recipe / manifest / report shape changes need a cross-repo coordination check." Content: name the three external contract surfaces (recipe model in `src/datarefinery/recipe/models.py`; manifest schema; report subsections `report.md` + `drift.json`); name `docs/specs/modelfoundry/dependency-spec.md` as the authoritative cross-repo contract doc; specify the "before changing field name / dropping field / changing emitted-bytes default / renaming manifest key / restructuring report subsection, check `dependency-spec.md` first" rule; list three tempting-LLM-mistakes-to-refuse (silent field removal "because no internal callers"; recipe field rename without `schema_version` bump + dependency-spec.md update; treating drift.json's "unstable until production release" framing as license to skip dependency-spec.md updates pre-prod). Append-only — do not rewrite or reorder existing project-essentials sections.
+- [ ] `CHANGELOG.md`: new `## [0.15.0]` "Added" section. Sub-sections: FR-11 framework (lazy/aggressive), four augmentation ops, ModelFoundry dependency spec. **Prominent callout:** pre-prod cache invalidation — recipes with `Augmentations` ops will re-materialize on first run after upgrade.
+- [ ] Remove the `FR-AUG-1..4 augmentation policies` sub-bullet from the `## Future` entry "Image-classification plugin: additional capabilities deferred from Phase H sub-bundle." Other sub-bullets remain.
+- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.15.0`.
+- [ ] Verify: full test suite green; ruff + ruff format + mypy clean. Canonical-hash pin: update if the pinned fixture recipe uses `Augmentations`.
+- [ ] Release-prep: verify `pip install ml-datarefinery==0.15.0` succeeds in a clean Python 3.12 venv per Acceptance Criterion 12; manual check per `docs/guides/releasing.md`.
+
+**Out of Scope**
+
+- VIZ bundle work — H.t–H.x.
+- ModelFoundry adoption coordination. Forward-declared; ModelFoundry adopts on its own schedule.
+- Promoting `dependency-spec.md` to an immutable stability contract. Pre-prod the spec may evolve as ModelFoundry adoption surfaces gaps; post-prod, it becomes a stability contract.
+
+### Story H.t: FR-VIZ-1 `pixel_distribution` [Planned]
+
+Per-channel pixel-value histograms across a named split, rendered as a PNG. Reporting-mode visualization persisted to `report/visualizations/`. See FR-VIZ-1 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Pixel-value distributions surface the effect of normalization, casting, and pixel-space transformations in a way that record-count or class-distribution histograms cannot. Comparing pre- and post-normalize distributions makes the centering-and-scaling effect numerically visible — useful for debugging normalization parameters, documentation, and reviewing what a pipeline did to its inputs.
+
+No version bump (bundled in H.x).
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/__init__.py` (submodule init).
+- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/_render.py` with Apache-2.0 header. Shared Matplotlib helpers: figure setup with deterministic DPI; PNG output to `report/visualizations/`; deterministic file naming.
+- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/pixel_distribution.py` with header. Pydantic `PixelDistributionParams`: `bins: int = 64`, `splits: list[str]` (non-empty; which splits to render).
+- [ ] Implement: per requested split, compute per-channel histograms (R/G/B) and render 3 subplots in a single figure. Output: `pixel_distribution_<split>.png` per split.
+- [ ] Register op in `src/datarefinery/plugins/image_classification/__init__.py`.
+- [ ] Tests in `tests/plugins/image_classification/test_visualizations_pixel_distribution.py`: render against a synthesized fixture image set; assert PNG exists per split; figure has 3 subplots.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-13 (Visualizations): list the new op with param schema and reporting-mode behavior.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `visualizations/__init__.py`, `_render.py`, and `pixel_distribution.py` under `plugins/image_classification/`.
+- [ ] Verify.
+
+**Out of Scope**
+
+- `augmented_sample_grid` (H.u), `corruption_severity_grid` (H.v), `severity_ladder` (H.w).
+- Exploration-mode rendering. This op is reporting-only.
+
+### Story H.u: FR-VIZ-2 `augmented_sample_grid` (depends on H.r) [Planned]
+
+A grid showing `n_base` held-out base images, each rendered `n_variants` times with the recipe's declared augmentation policy applied with `n_variants` different seeds. See FR-VIZ-2 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Augmentation policies are non-materialized in lazy mode; without a visualization, the policy exists only as text and params, and nobody reading the recipe or report sees what the augmentations actually do to images. `augmented_sample_grid` realizes a small deterministic, seeded sample into the report so the policy is visible as concrete output.
+
+**Mode-aware implementation:**
+- **Aggressive mode:** augmented variants are already in the materialized dataset. The viz samples `n_base × n_variants` records by `(source_record_id, variant_index)`.
+- **Lazy mode:** dataset is unaugmented. The viz picks `n_base` base records, realizes `n_variants` augmented variants inline using the same `_realizer.py` code paths. The realized variants are rendered into the visualization only — not persisted into the dataset.
+
+Depends on H.r (aggressive-mode realizers).
+
+No version bump (bundled in H.x).
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/augmented_sample_grid.py` with Apache-2.0 header. Pydantic `AugmentedSampleGridParams`: `n_base: int` (positive), `n_variants: int` (positive), `seed: int | None = None`.
+- [ ] Implement: detect each declared `Augmentations` op's materialization mode. For aggressive ops, query the materialized dataset for `n_base` `source_record_id` values and their first `n_variants` variants. For lazy ops, realize `n_variants` variants inline via `_realizer.py` seeded with the op's seed + this viz's `seed`.
+- [ ] Render: `n_base` rows × `n_variants` columns grid. Output: `augmented_sample_grid_<op_name>.png` per declared augmentation op.
+- [ ] Register op.
+- [ ] Tests in `tests/plugins/image_classification/test_visualizations_augmented_sample_grid.py`: render against an aggressive-mode recipe; render against a lazy-mode recipe; assert grid layout matches `n_base × n_variants`; deterministic against fixed seed.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-13: list this op; document the mode-aware behavior.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `augmented_sample_grid.py`.
+- [ ] Verify.
+
+**Out of Scope**
+
+- Variant-by-variant exploration UI. The grid is a snapshot.
+- Cross-op grids (e.g., `random_crop` and `color_jitter` chained on the same record). Each op gets its own grid; chained-augmentation visualization is a Future enhancement.
+
+### Story H.v: FR-VIZ-3 `corruption_severity_grid` [Planned]
+
+A K-corruption × L-severity grid showing the same set of base images under each (corruption, severity) combination. See FR-VIZ-3 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+The output of a corruption-generation pipeline (FR-GEN-1) is otherwise a flat collection of records tagged with corruption and severity metadata. A 2-D grid laying out the two metadata dimensions makes the corruption space visible at a glance — sanity-checking that each corruption type produces visually distinct output, documenting the robustness evaluation's coverage.
+
+Depends on the `[corruptions]` extras shipped in H.m. Uses the same lazy-import pattern as `generation_imagecorruptions.py` so the viz remains importable only when extras are installed.
+
+No version bump (bundled in H.x).
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/corruption_severity_grid.py` with Apache-2.0 header. Module-level guard raises `ImportError` with install-pointer (`pip install 'ml-datarefinery[corruptions]'`) when `cv2` or `imagecorruptions` is missing.
+- [ ] Pydantic `CorruptionSeverityGridParams`: `n_images: int` (positive), `corruption_types: list[str]` (non-empty), `severities: list[int]` (each in 1..5).
+- [ ] Implement: select `n_images` base records; apply each `(corruption_type, severity)` combination; render as `len(corruption_types)` × `len(severities)` grid. Output: `corruption_severity_grid.png`.
+- [ ] Recipe-validation hook: when extras importable, validate `corruption_types` against `imagecorruptions.get_corruption_names()`; defer with clear error at materialize time when extras absent.
+- [ ] Register op.
+- [ ] Tests with `pytest.importorskip("cv2", reason="...")` per the H.n.4 pattern: render with 2 corruptions × 3 severities × 4 images; verify grid layout.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-13: list this op; note `[corruptions]` extras requirement.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `corruption_severity_grid.py`.
+- [ ] Verify.
+
+**Out of Scope**
+
+- `severity_ladder` (H.w).
+- Combined grids spanning multiple base images and multiple corruption types as a single tiled figure.
+
+### Story H.w: FR-VIZ-4 `severity_ladder` [Planned]
+
+`n_examples` example images, each rendered at every severity of a single corruption type, arranged as a ladder (one row per image, one column per severity). See FR-VIZ-4 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
+
+Complements `corruption_severity_grid` by isolating the severity dimension. Useful when documenting a single corruption type's behavior across severity levels without the visual noise of other corruption types in the same figure.
+
+Depends on the `[corruptions]` extras (same as H.v).
+
+No version bump (bundled in H.x).
+
+**Tasks:**
+
+- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/severity_ladder.py` with Apache-2.0 header. Same extras-guard pattern as H.v.
+- [ ] Pydantic `SeverityLadderParams`: `n_examples: int` (positive), `corruption_type: str` (non-empty).
+- [ ] Implement: select `n_examples` base records; apply `corruption_type` at all 5 severities to each; render as `n_examples` rows × 5 columns. Output: `severity_ladder_<corruption_type>.png`.
+- [ ] Recipe-validation: validate `corruption_type` against the H-D vocabulary when extras installed; defer with clear error otherwise.
+- [ ] Register op.
+- [ ] Tests with `pytest.importorskip("cv2", reason="...")`: render with 4 example images × 5 severities of `gaussian_noise`.
+- [ ] Scoped doc updates:
+  - [ ] `docs/specs/features.md` § FR-13: list this op; note `[corruptions]` extras requirement.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `severity_ladder.py`.
+- [ ] Verify.
+
+**Out of Scope**
+
+- Multi-corruption ladders. Use `corruption_severity_grid` for that.
+
+### Story H.x: v0.16.0 VIZ release — cross-cutting docs sweep + release [Planned]
+
+Release story for the VIZ bundle. Two deliverables: cross-cutting docs sweep + CHANGELOG section + version bump + Future-section cleanup.
+
+Minor bump (v0.16.0) — new features (four reporting-mode visualization ops). Cache-invalidating only for recipes that declare one of the four new viz ops; recipes that don't are unaffected. Pre-prod invalidation acceptable.
+
+**Tasks:**
+
+- [ ] Cross-cutting docs sweep:
+  - [ ] `docs/specs/features.md` § FR-13: verify all four new viz ops are documented; cross-reference the new files in tech-spec.md.
+  - [ ] `docs/specs/tech-spec.md` § Package Structure: verify the four new viz files plus `_render.py` and the submodule `__init__.py` appear. § Data Models > Recipe model section table: extend the `VisualizationOp` row to reference the four new param models.
+  - [ ] `README.md`: no edit needed (Plugin model "etc." covers the new ops; CLI verb table unchanged).
+- [ ] `CHANGELOG.md`: new `## [0.16.0]` "Added" section listing the four new viz ops; note `corruption_severity_grid` and `severity_ladder` require the `[corruptions]` extras shipped in H.m.
+- [ ] Remove the `FR-VIZ-1..4 reporting visualizations` sub-bullet from the `## Future` entry. Other sub-bullets remain.
+- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.16.0`.
+- [ ] Verify: tests green, ruff + ruff format + mypy clean. Canonical-hash pin unchanged (pinned fixture should not use the new viz ops).
+- [ ] Release-prep: verify `pip install ml-datarefinery==0.16.0` succeeds in a clean venv.
+
+**Out of Scope**
+
+- ModelFoundry-related work — already shipped in H.s.
+- Further visualization ops beyond FR-VIZ-1..4.
+
 ---
 
 ## Future
@@ -853,3 +1193,4 @@ The `archive_stories` mode preserves this section verbatim when archiving storie
   - FR-VIZ-1..4 reporting visualizations (`pixel_distribution`, `augmented_sample_grid`, `corruption_severity_grid`, `severity_ladder`).
   - FR-ARCH-1 tight coupling — sibling `recipe_hash` participating in the current recipe's cache identity, so re-materializing upstream auto-invalidates downstream. The Phase H sub-bundle shipped FR-TRANS-1 with loose coupling; tight coupling is the follow-up needed for multi-team or longitudinal workflows.
   - Generic record-tagging primitive — factor FR-FILTER-1's bespoke `label` / `exclude_already_labeled` params into a shared mechanism multiple filter ops can use.
+- **Default-change discipline tooling for cache-identity stability** — expand the canonical-hash pinning test suite to cover multiple fixture recipes with different default-coverage profiles, so any change to a pydantic field default (anywhere in the recipe model graph) trips at least one pin and forces the developer to either revert or bump `schema_version`. Add an optional pre-commit / CI hook that diffs pydantic field defaults against `main` and requires a `schema_version` bump or an explicit "non-semantic default change" acknowledgement in the commit message. End-state invariant: cache invalidations are always deliberate (acknowledged at change time, announced in release notes); never silent. Plan as production-readiness work.
