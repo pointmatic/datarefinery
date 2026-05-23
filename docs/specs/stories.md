@@ -800,6 +800,31 @@ Minor bump (v0.14.0). **Not cache-invalidating after all** — H.n.2's implement
 
 - Same as H.n's umbrella out-of-scope: tight coupling, extending `stats_from_instance` to other fit-phase ops, stale-downstream linter.
 
+### Story H.n.4: v0.14.1 CI bugfix — `[corruptions]` extras availability in tests [Done]
+
+Patch release. Bug surfaced by CI for the v0.14.0 release (not introduced by H.n): `tests/plugins/image_classification/test_corruptions_vendored.py` does a module-top-level `from datarefinery.plugins.image_classification import _corruptions`, which transitively does `import cv2` / `import skimage`. CI's install step (`pip install -e .` + `pip install -r requirements-dev.txt`) never installs the `[corruptions]` extras, so pytest aborts at *collection time* with `ModuleNotFoundError: No module named 'cv2'` and no tests run. `test_generation_imagecorruptions.py` has the same problem one step deferred (the lazy import inside `imagecorruptions_apply` fires at *test execution* time) and would have failed identically if collection had reached it.
+
+Latent since Story H.m.1; masked locally by an opportunistically-installed `opencv-python-headless` in the dev venv. The `[corruptions]` extras are an **end-user** optional install ("only execution requires them" per `features.md` FR-GEN-1 / H.m.3 release notes); but CI's job is to exercise every code path, so CI needs them installed.
+
+Plan C (belt-and-suspenders): install `[corruptions]` extras in CI **and** add `pytest.importorskip("cv2")` at the top of both test modules so dev environments without the extras get clean skips rather than failures. The CI install ensures the corruption codepaths are actually exercised; the `importorskip` guard makes future regressions of this exact failure mode impossible without explicit removal.
+
+Patch bump (v0.14.1) per Version Cadence (bugfix → patch).
+
+**Tasks:**
+
+- [x] Added `pytest.importorskip("cv2", reason=...)` after the `import pytest` line in `tests/plugins/image_classification/test_corruptions_vendored.py`. Gates the collection-time eager import of `_corruptions`.
+- [x] Added the same `pytest.importorskip("cv2")` guard to `tests/plugins/image_classification/test_generation_imagecorruptions.py`. *(Sub-finding: ruff doesn't fire E402 after `pytest.importorskip`, so no `# noqa: E402` needed on the subsequent imports — ruff treats `importorskip` as init-like. The initial commit included unnecessary `# noqa` comments which ruff auto-fixed.)*
+- [x] `.github/workflows/ci.yml`: install step changed from `pip install -e .` to `pip install -e ".[corruptions]"`; comment explains the exercise-every-codepath rationale and points at Story H.n.4.
+- [x] `CHANGELOG.md`: `## [0.14.1]` "Fixed" section landed. Names the failure mode, the latent-since-H.m.1 framing, the two-part fix, and notes that the "friendly-error" mocked test still gets coverage in CI.
+- [x] Bumped `pyproject.toml` and `src/datarefinery/__init__.py` to `0.14.1`.
+- [x] Verified locally: 834/834 tests green, ruff + ruff format + mypy clean, canonical-hash pin holds unmodified.
+
+**Out of Scope (H.n.4 specifically)**
+
+- Reshaping the `[corruptions]` extras' optionality (e.g., promoting them to core dependencies) — they remain optional for end users; CI installs them as a CI policy, not a project policy.
+- A separate "no-extras smoke" CI job that confirms `pip install ml-datarefinery` (no extras) still imports cleanly. Worth doing eventually as a release-gate guard; out of scope for a one-line CI bugfix.
+- Adding `importorskip` to other files that may transitively pull cv2/skimage. The two failing files are the only ones that exercise the corruption codepath; other tests do not import `_corruptions` (directly or via the lazy path in `generation_imagecorruptions.py`).
+
 ---
 
 ## Future

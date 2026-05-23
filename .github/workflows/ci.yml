@@ -39,9 +39,14 @@ jobs:
           cache: pip
 
       - name: Install dependencies
+        # Install the `[corruptions]` extras so the image_classification
+        # corruption tests (test_corruptions_vendored.py,
+        # test_generation_imagecorruptions.py) are exercised in CI. The
+        # extras are optional for end users but required for CI's
+        # exercise-every-codepath job. Story H.n.4.
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
+          pip install -e ".[corruptions]"
           pip install -r requirements-dev.txt
 
       - name: ruff check

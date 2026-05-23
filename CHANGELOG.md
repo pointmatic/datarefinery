@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-05-22
+
+### Fixed
+
+- **Story H.n.4 — CI module-collection failure on missing `cv2`.** CI
+  for the v0.14.0 release aborted at pytest *collection* time with
+  `ModuleNotFoundError: No module named 'cv2'` because
+  `tests/plugins/image_classification/test_corruptions_vendored.py`
+  does a module-top-level `from datarefinery.plugins.image_classification
+  import _corruptions`, which transitively does `import cv2` / `import
+  skimage` at module load. CI's install step (`pip install -e .` +
+  `pip install -r requirements-dev.txt`) never installed the
+  `[corruptions]` extras, so collection failed and **no tests ran** —
+  the run was a false negative on the entire suite, not just the
+  corruptions tests. `test_generation_imagecorruptions.py` had the same
+  defect one step deferred (the lazy `_corruptions` import inside
+  `imagecorruptions_apply` would fire at test *execution* time) and
+  would have failed identically had collection reached it.
+
+  **Latent since Story H.m.1** (vendored `_corruptions` module);
+  masked locally by an opportunistically-installed
+  `opencv-python-headless` in the dev venv. The `[corruptions]` extras
+  remain **optional for end users** per FR-GEN-1 — "only execution
+  requires them" — but CI's job is to exercise every code path.
+
+  Two-part fix (belt-and-suspenders):
+
+  - **`.github/workflows/ci.yml`** — install step changed from
+    `pip install -e .` to `pip install -e ".[corruptions]"` on both
+    `ubuntu-latest` and `macos-latest` runners.
+  - **`pytest.importorskip("cv2", reason=...)`** added at the top of
+    both
+    `tests/plugins/image_classification/test_corruptions_vendored.py`
+    and
+    `tests/plugins/image_classification/test_generation_imagecorruptions.py`.
+    Dev environments without the extras now skip these test modules
+    cleanly instead of failing. The CI install ensures the corruption
+    codepaths are still actually exercised; the importorskip prevents
+    this exact failure mode from recurring if CI infrastructure
+    changes.
+
+  `test_friendly_import_error_when_backend_missing` (which mocks the
+  import failure to test the friendly-error path) still runs in CI
+  where extras are installed; in dev environments without extras the
+  whole file skips, which is acceptable since the failure-path test
+  still has coverage in CI.
+
+### Notes
+
+- No code changes outside tests + CI workflow. No pydantic models or
+  recipe semantics were touched. Canonical-hash pin holds unmodified.
+
 ## [0.14.0] - 2026-05-22
 
 ### Added

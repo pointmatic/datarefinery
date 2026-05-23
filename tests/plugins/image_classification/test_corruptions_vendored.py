@@ -15,6 +15,11 @@ import hashlib
 import numpy as np
 import pytest
 
+# Skip this entire module when the `[corruptions]` extras aren't installed.
+# `_corruptions` does a module-top-level `import cv2` / `import skimage`, so
+# importing it without the extras would explode at collection time. Story H.n.4.
+pytest.importorskip("cv2", reason="requires the [corruptions] extras (opencv-python-headless)")
+
 from datarefinery.plugins.image_classification import _corruptions
 
 # ---------------------------------------------------------------------------

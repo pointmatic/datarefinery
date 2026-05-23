@@ -20,6 +20,14 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
+# Most tests in this module invoke `imagecorruptions_apply`, which lazily
+# imports `_corruptions` (cv2 / skimage). Skip cleanly when the
+# `[corruptions]` extras aren't installed. The `test_friendly_import_error_…`
+# test mocks the failure so it does not actually need extras absent; running it
+# in CI (where extras *are* installed) still exercises the error path via the
+# mock. Story H.n.4.
+pytest.importorskip("cv2", reason="requires the [corruptions] extras (opencv-python-headless)")
+
 from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.stages.generation import apply_generation
 from datarefinery.pipeline.workers import run_parallel
@@ -28,7 +36,11 @@ from datarefinery.plugins.image_classification.generation_imagecorruptions impor
     CORRUPTIONS_EXTRAS_INSTALL_HINT,
     imagecorruptions_apply,
 )
-from datarefinery.recipe.models import FieldSpec, GenerationOp, ImageCorruptionsApplyParams
+from datarefinery.recipe.models import (
+    FieldSpec,
+    GenerationOp,
+    ImageCorruptionsApplyParams,
+)
 
 Record = Mapping[str, Any]
 
