@@ -998,6 +998,35 @@ def check_22_stats_from_instance_mutually_exclusive_with_fit_source(
     )
 
 
+def check_23_aggressive_mode_pending_persistence(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Warning: aggressive-mode augmentation persistence pending Story H.r.2.
+
+    H.r.1 wires the realizer into the runner but guards it behind a
+    fail-loud :class:`MaterializeError` because image-bytes persistence
+    isn't yet implemented. This check surfaces the same limitation at
+    `validate` time so callers see the gap before reaching `materialize`.
+    Removed (along with the runner guard) when H.r.2 lands.
+    """
+    del plugin
+    descriptor = "aggressive_mode_pending_persistence"
+    aggressive_ops = [op for op in recipe.Augmentations if op.materialization == "aggressive"]
+    if not aggressive_ops:
+        return _passed(23, descriptor)
+    names = [op.name for op in aggressive_ops]
+    return CheckResult(
+        check_id=23,
+        descriptor=descriptor,
+        status="warn",
+        location=None,
+        message=(
+            f"aggressive-mode augmentation(s) declared: {names}; image-bytes "
+            "persistence is pending Story H.r.2 — recipes that declare "
+            "materialization='aggressive' will fail at materialize time until "
+            "that story lands"
+        ),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1072,6 +1101,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         22,
         "stats_from_instance_mutually_exclusive_with_fit_source",
         check_22_stats_from_instance_mutually_exclusive_with_fit_source,
+    ),
+    (
+        23,
+        "aggressive_mode_pending_persistence",
+        check_23_aggressive_mode_pending_persistence,
     ),
 )
 

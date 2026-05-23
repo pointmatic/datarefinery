@@ -58,6 +58,7 @@ from datarefinery.pipeline.manifest import (
 )
 from datarefinery.pipeline.stages.augmentations import (
     collect_augmentation_policies,
+    realize_aggressive_split,
 )
 from datarefinery.pipeline.stages.featurizations import apply_featurizations
 from datarefinery.pipeline.stages.filters import (
@@ -86,6 +87,14 @@ from datarefinery.reporting.report import (
 
 Record = Mapping[str, Any]
 ProgressCallback = Callable[[str], None]
+
+#: Toggle for the temporary H.r.1 aggressive-mode guard. Real
+#: invocations fail loud (``MaterializeError``) when this is ``True``
+#: because image-bytes persistence is pending Story H.r.2. Tests that
+#: want to exercise the wiring directly flip this to ``False`` via
+#: :meth:`pytest.MonkeyPatch.setattr`. Removed in H.r.2 along with the
+#: guard itself and validator check 23.
+_AGGRESSIVE_GUARD_ACTIVE: bool = True
 
 #: Stage names accepted by the ``stop_after`` partial-run option, in
 #: execution order. The runner refuses any other value with
@@ -298,6 +307,36 @@ class PipelineRunner:
                 )
 
             _emit("Augmentations")
+            # H.r.1: aggressive-mode dispatch. The guard short-circuits
+            # real recipes with a fail-loud MaterializeError pointing at
+            # Story H.r.2 (which lands image-bytes persistence and
+            # removes this guard). Tests bypass the guard via
+            # monkeypatch on ``_AGGRESSIVE_GUARD_ACTIVE`` to validate
+            # the wiring itself; the realizer registry is sourced from
+            # the plugin (image_classification exposes
+            # ``augmentation_realizers``).
+            aggressive_ops = [
+                op for op in self.recipe.Augmentations if op.materialization == "aggressive"
+            ]
+            if aggressive_ops:
+                if _AGGRESSIVE_GUARD_ACTIVE:
+                    names = [op.name for op in aggressive_ops]
+                    raise MaterializeError(
+                        f"aggressive-mode augmentation persistence pending "
+                        f"Story H.r.2; the recipe is accepted but cannot "
+                        f"materialize until persistence lands (declared "
+                        f"aggressive ops: {names})"
+                    )
+                realizer_registry = getattr(self.plugin, "augmentation_realizers", {})
+                train_records: list[Mapping[str, Any]] = list(split_map.get("train", []))
+                split_map["train"] = list(
+                    realize_aggressive_split(
+                        train_records,
+                        self.recipe.Augmentations,
+                        global_seed=self.seed,
+                        realizer_registry=realizer_registry,
+                    )
+                )
             collect_augmentation_policies(self.recipe.Augmentations)
             # Policies are descriptive only in v1 (FR-11); the
             # serialized block is recorded in the manifest's eventual

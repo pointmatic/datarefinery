@@ -992,7 +992,7 @@ No version bump (bundled in H.s).
 
 - Visualizations of augmented variants — H.u.
 
-### Story H.r.1: Aggressive-mode runner wiring + temporary fail-loud guard [Planned]
+### Story H.r.1: Aggressive-mode runner wiring + temporary fail-loud guard [Done]
 
 Wires `pipeline.stages.augmentations.realize_aggressive_split` into the runner so aggressive ops actually fan out the train split during materialization. The H.p framework story added the realizer scaffolding and H.q/H.r added concrete ops, but the runner currently calls only `collect_augmentation_policies` — a recipe declaring `materialization: aggressive` produces a manifest claiming aggressive expansion while the dataset remains unchanged (silent semantic failure).
 
@@ -1004,17 +1004,17 @@ No version bump (bundled in H.s).
 
 **Tasks:**
 
-- [ ] In `src/datarefinery/pipeline/runner.py`, locate the augmentations-stage call site (currently invokes only `collect_augmentation_policies`). Call `realize_aggressive_split` for the train split immediately BEFORE policy capture, so the manifest still records the declared policy verbatim while the dataset receives the multiplied record set. Ops apply in recipe-declared order. The realizer registry is plugin-supplied (see H.q registration).
-- [ ] Plumb the resulting record list back into the per-split records dict so `_write_dataset` receives the multiplied train records. `manifest.record_counts["train"]` reflects the post-augmentation count via the existing count-records path.
-- [ ] Add a defensive guard at materialize time: if any `AugmentationOp` declares `materialization=aggressive`, the runner raises `MaterializeError("aggressive-mode augmentation persistence pending Story H.r.2; the recipe is accepted but cannot materialize until persistence lands")` BEFORE invoking `realize_aggressive_split`. The wiring is still exercised by unit tests that bypass the guard so the runner integration is covered, but real recipes fail loud.
-- [ ] Validator surface: `recipe.validator` adds a check (warning, not fail) that surfaces the same "pending H.r.2" condition so `validate` callers see the limitation before reaching `materialize`. Both the warning and the runner guard are removed in H.r.2.
-- [ ] Tests:
-  - [ ] `tests/unit/test_datarefinery.py` (or sibling): runner integration — train split with one aggressive op produces the multiplied record count when the guard is patched out (validates the wiring directly).
-  - [ ] Runner raises `MaterializeError` containing "pending Story H.r.2" when an aggressive op is declared and the guard is in place.
-  - [ ] `tests/unit/test_validator.py`: warning surfaced for aggressive recipes; lazy-only recipes get no warning.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-11: append a short "Status" subsection noting aggressive wiring lands in H.r.1 with a temporary guard; persistence + ungating lands in H.r.2. Remove the subsection in H.r.2.
-- [ ] Verify: tests green, ruff + ruff format + mypy clean. **Do not bump the version** — release lands in H.s.
+- [x] In `src/datarefinery/pipeline/runner.py`, locate the augmentations-stage call site (currently invokes only `collect_augmentation_policies`). Call `realize_aggressive_split` for the train split immediately BEFORE policy capture, so the manifest still records the declared policy verbatim while the dataset receives the multiplied record set. Ops apply in recipe-declared order. The realizer registry is plugin-supplied (see H.q registration).
+- [x] Plumb the resulting record list back into the per-split records dict so `_write_dataset` receives the multiplied train records. `manifest.record_counts["train"]` reflects the post-augmentation count via the existing count-records path.
+- [x] Add a defensive guard at materialize time: if any `AugmentationOp` declares `materialization=aggressive`, the runner raises `MaterializeError("aggressive-mode augmentation persistence pending Story H.r.2; the recipe is accepted but cannot materialize until persistence lands")` BEFORE invoking `realize_aggressive_split`. The wiring is still exercised by unit tests that bypass the guard so the runner integration is covered, but real recipes fail loud.
+- [x] Validator surface: `recipe.validator` adds a check (warning, not fail) that surfaces the same "pending H.r.2" condition so `validate` callers see the limitation before reaching `materialize`. Both the warning and the runner guard are removed in H.r.2.
+- [x] Tests:
+  - [x] `tests/integration/test_runner.py`: runner integration — train split with one aggressive op produces the multiplied record count when the guard is patched out (validates the wiring directly).
+  - [x] Runner raises `MaterializeError` containing "pending Story H.r.2" when an aggressive op is declared and the guard is in place.
+  - [x] `tests/unit/test_validator.py`: warning surfaced for aggressive recipes; lazy-only recipes get no warning.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-11: append a short "Status" subsection noting aggressive wiring lands in H.r.1 with a temporary guard; persistence + ungating lands in H.r.2. Remove the subsection in H.r.2.
+- [x] Verify: tests green, ruff + ruff format + mypy clean. **Do not bump the version** — release lands in H.s.
 
 **Out of Scope**
 

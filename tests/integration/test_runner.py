@@ -68,6 +68,7 @@ def _recipe(
     *,
     visualizations: list[VisualizationOp] | None = None,
     transformations: list[TransformationOp] | None = None,
+    augmentations: list[dict[str, Any]] | None = None,
 ) -> Recipe:
     return Recipe.model_validate(
         {
@@ -97,6 +98,7 @@ def _recipe(
                 "seed": 11,
             },
             "Transformations": [t.model_dump() for t in (transformations or [])],
+            "Augmentations": augmentations or [],
             "Visualizations": [v.model_dump() for v in (visualizations or [])],
         }
     )
@@ -429,3 +431,106 @@ def test_dataset_jsonl_omits_image_arrays(tmp_path: Path) -> None:
         assert "image" not in r  # numpy arrays are dropped
         assert "record_id" in r
         assert "label" in r
+
+
+# ---------------------------------------------------------------------------
+# H.r.1: aggressive-mode runner wiring + fail-loud guard
+# ---------------------------------------------------------------------------
+
+
+def _aggressive_recipe() -> Recipe:
+    return _recipe(
+        augmentations=[
+            {
+                "name": "flip",
+                "op": "horizontal_flip",
+                "params": {"p": 0.5},
+                "splits": ["train"],
+                "seed": 1,
+                "materialization": "aggressive",
+                "expansion": 3,
+            }
+        ]
+    )
+
+
+def test_runner_guards_aggressive_recipe_with_pending_persistence_error(
+    tmp_path: Path,
+) -> None:
+    """Story H.r.1: real recipes declaring aggressive must fail loud
+    with a clear pointer to Story H.r.2 (where persistence lands)."""
+    cache_root = tmp_path / "cache"
+    runner = PipelineRunner(
+        recipe=_aggressive_recipe(),
+        plugin=IMAGE_PLUGIN,
+        config=_config(cache_root),
+        seed=7,
+    )
+    temp = tmp_dir_for(cache_root, "run-1")
+    records = _records(12)
+    with pytest.raises(MaterializeError, match=r"pending Story H\.r\.2"):
+        runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
+
+
+def test_runner_aggressive_wiring_fans_out_train_split_when_guard_bypassed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Story H.r.1: when the H.r.2-pending guard is bypassed (via
+    monkeypatch — meant for tests, not production), the runner actually
+    invokes :func:`realize_aggressive_split` and the train split's
+    record count reflects the multiplicative expansion. This pins the
+    wiring itself, independent of the guard."""
+    from datarefinery.pipeline import runner as runner_mod
+
+    monkeypatch.setattr(runner_mod, "_AGGRESSIVE_GUARD_ACTIVE", False)
+
+    cache_root = tmp_path / "cache"
+    runner = PipelineRunner(
+        recipe=_aggressive_recipe(),
+        plugin=IMAGE_PLUGIN,
+        config=_config(cache_root),
+        seed=7,
+    )
+    temp = tmp_dir_for(cache_root, "run-1")
+    records = _records(12)  # 60/20/20 split -> 7 train, 2 val, 3 test (depending on seed)
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
+
+    manifest = read_manifest(manifest_path(result.instance_dir))
+    train_jsonl = (dataset_dir(result.instance_dir) / "train.jsonl").read_text()
+    lines = [line for line in train_jsonl.strip().splitlines() if line]
+    train_count_post = manifest.record_counts["train"]
+    # Expansion = 3 -> post-augmentation train count is 3x the pre-augmentation count.
+    # We don't pin the pre-augmentation count exactly (depends on Splits seeding), but
+    # we do pin that the post count is divisible by 3 and matches the JSONL line count.
+    assert train_count_post == len(lines)
+    assert train_count_post % 3 == 0
+    assert train_count_post > 0
+
+    # Each variant line carries the H.p metadata fields.
+    import json as _json
+
+    first = _json.loads(lines[0])
+    assert "source_record_id" in first
+    assert "variant_index" in first
+
+
+def test_runner_lazy_only_augmentations_do_not_trigger_guard(tmp_path: Path) -> None:
+    """Lazy-mode augmentations are unaffected by the H.r.2-pending guard."""
+    recipe = _recipe(
+        augmentations=[
+            {
+                "name": "flip",
+                "op": "horizontal_flip",
+                "params": {"p": 0.5},
+                "splits": ["train"],
+                "seed": 1,
+            }
+        ]
+    )
+    cache_root = tmp_path / "cache"
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
+    temp = tmp_dir_for(cache_root, "run-1")
+    records = _records(12)
+    # Should materialize cleanly — no guard for lazy.
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
+    assert result.manifest.record_counts["train"] > 0

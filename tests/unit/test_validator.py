@@ -144,12 +144,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_twenty_two_checks() -> None:
+def test_valid_recipe_passes_all_twenty_three_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 22
-    assert {r.check_id for r in report.results} == set(range(1, 23))
+    assert len(report.results) == 23
+    assert {r.check_id for r in report.results} == set(range(1, 24))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -1351,3 +1351,43 @@ def test_check_21_propagates_unlabeled_to_sub_splits() -> None:
     ]
     failures = _failures_for(validate(_build(payload), _ic_plugin()), 21)
     assert failures and "sub_a" in failures[0].message
+
+
+# ---------------------------------------------------------------------------
+# check 23: aggressive-mode materialization pending Story H.r.2 (warning)
+# ---------------------------------------------------------------------------
+
+
+def _warnings_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
+    return [r for r in report.warnings if r.check_id == check_id]
+
+
+def test_check_23_warns_when_aggressive_mode_declared() -> None:
+    bad = _base_dict()
+    bad["Augmentations"] = [
+        {
+            "name": "agg",
+            "op": "horizontal_flip",
+            "splits": ["train"],
+            "seed": 1,
+            "materialization": "aggressive",
+            "expansion": 4,
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    warnings = _warnings_for(report, 23)
+    assert len(warnings) == 1
+    assert "H.r.2" in warnings[0].message
+    assert "agg" in warnings[0].message
+
+
+def test_check_23_passes_for_lazy_only_recipes() -> None:
+    ok = _base_dict()
+    ok["Augmentations"] = [{"name": "f", "op": "horizontal_flip", "splits": ["train"], "seed": 1}]
+    report = validate(_build(ok), _Plugin())
+    assert not _warnings_for(report, 23)
+
+
+def test_check_23_passes_when_no_augmentations() -> None:
+    report = validate(_build(_base_dict()), _Plugin())
+    assert not _warnings_for(report, 23)
