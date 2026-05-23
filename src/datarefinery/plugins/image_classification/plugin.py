@@ -18,11 +18,17 @@ from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
 from datarefinery.plugins.image_classification.augmentations._realizer import (
     Realizer,
 )
+from datarefinery.plugins.image_classification.augmentations.color_jitter import (
+    realize_color_jitter,
+)
 from datarefinery.plugins.image_classification.augmentations.horizontal_flip import (
     realize_horizontal_flip,
 )
 from datarefinery.plugins.image_classification.augmentations.random_crop import (
     realize_random_crop,
+)
+from datarefinery.plugins.image_classification.augmentations.random_erasing import (
+    realize_random_erasing,
 )
 from datarefinery.plugins.image_classification.filters_drop_by_label import (
     drop_by_label,
@@ -91,6 +97,8 @@ _VISUALIZATION_OPS: dict[str, Operation] = {
 _AUGMENTATION_REALIZERS: dict[str, Realizer] = {
     "random_crop": realize_random_crop,
     "horizontal_flip": realize_horizontal_flip,
+    "color_jitter": realize_color_jitter,
+    "random_erasing": realize_random_erasing,
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -232,7 +240,20 @@ def _supported_operations() -> dict[str, OperationSpec]:
                 "brightness": ParameterSpec(type="float", required=False, default=0.0),
                 "contrast": ParameterSpec(type="float", required=False, default=0.0),
                 "saturation": ParameterSpec(type="float", required=False, default=0.0),
-                "seed": ParameterSpec(type="int", required=True),
+                "hue": ParameterSpec(type="float", required=False, default=0.0),
+            },
+            applicable_sections=frozenset({"Augmentations"}),
+            applicable_splits=frozenset({"train"}),
+        ),
+        "random_erasing": OperationSpec(
+            parameters={
+                "p": ParameterSpec(type="float", required=False, default=0.5),
+                "scale": ParameterSpec(
+                    type="tuple[float, float]", required=False, default=(0.02, 0.33)
+                ),
+                "ratio": ParameterSpec(
+                    type="tuple[float, float]", required=False, default=(0.3, 3.3)
+                ),
             },
             applicable_sections=frozenset({"Augmentations"}),
             applicable_splits=frozenset({"train"}),

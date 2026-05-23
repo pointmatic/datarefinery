@@ -963,7 +963,7 @@ No version bump (bundled in H.s).
 - `color_jitter` and `random_erasing` — H.r.
 - Visualizations of augmented variants — H.u.
 
-### Story H.r: Appearance augmentations — `color_jitter` + `random_erasing` (lazy + aggressive) [Planned]
+### Story H.r: Appearance augmentations — `color_jitter` + `random_erasing` (lazy + aggressive) [Done]
 
 Two augmentation ops sharing the appearance-perturbation pattern.
 
@@ -976,17 +976,17 @@ No version bump (bundled in H.s).
 
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/color_jitter.py` with Apache-2.0 header. Pydantic `ColorJitterParams`: `brightness: float = 0.0`, `contrast: float = 0.0`, `saturation: float = 0.0`, `hue: float = 0.0`. Frozen. Validation: each in `[0.0, 1.0]` except `hue` in `[0.0, 0.5]`.
-- [ ] Implement aggressive realizer: per-variant RNG samples each enabled dimension within `[-magnitude, +magnitude]`; apply via Pillow `ImageEnhance` (brightness/contrast/saturation) and HSV-space rotation (hue). Document the grayscale edge case (hue is a no-op on `< 3` channel images).
-- [ ] Create `src/datarefinery/plugins/image_classification/augmentations/random_erasing.py` with header. Pydantic `RandomErasingParams`: `p: float = 0.5`, `scale: tuple[float, float] = (0.02, 0.33)`, `ratio: tuple[float, float] = (0.3, 3.3)`. Frozen. Validation: `0 <= p <= 1`; sane `scale` and `ratio` ranges.
-- [ ] Implement aggressive realizer: per-variant `rng.random() < p` decides whether to erase; sample area fraction from `scale` and aspect ratio from `ratio`, compute rectangle bounds, fill with mean pixel value.
-- [ ] Register both ops.
-- [ ] Tests in `tests/plugins/image_classification/test_augmentations_color_jitter.py`: lazy declares; aggressive realizes; deterministic; per-channel magnitudes within bounds.
-- [ ] Tests in `tests/plugins/image_classification/test_augmentations_random_erasing.py`: lazy declares; aggressive realizes; erased rectangles fall within image bounds and respect `scale`/`ratio`.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-11: list `color_jitter` and `random_erasing` with their param schemas. Add an edge-case bullet for `color_jitter` on grayscale images.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `color_jitter.py` and `random_erasing.py`. § Data Models > Recipe model section table: reference `ColorJitterParams` and `RandomErasingParams`.
-- [ ] Verify.
+- [x] Create `src/datarefinery/plugins/image_classification/augmentations/color_jitter.py` with Apache-2.0 header. Pydantic `ColorJitterParams`: `brightness: float = 0.0`, `contrast: float = 0.0`, `saturation: float = 0.0`, `hue: float = 0.0`. Frozen. Validation: each in `[0.0, 1.0]` except `hue` in `[0.0, 0.5]`.
+- [x] Implement aggressive realizer: per-variant RNG samples each enabled dimension within `[-magnitude, +magnitude]`; apply via Pillow `ImageEnhance` (brightness/contrast/saturation) and HSV-space rotation (hue). Document the grayscale edge case (hue is a no-op on `< 3` channel images).
+- [x] Create `src/datarefinery/plugins/image_classification/augmentations/random_erasing.py` with header. Pydantic `RandomErasingParams`: `p: float = 0.5`, `scale: tuple[float, float] = (0.02, 0.33)`, `ratio: tuple[float, float] = (0.3, 3.3)`. Frozen. Validation: `0 <= p <= 1`; sane `scale` and `ratio` ranges.
+- [x] Implement aggressive realizer: per-variant `rng.random() < p` decides whether to erase; sample area fraction from `scale` and aspect ratio from `ratio`, compute rectangle bounds, fill with mean pixel value.
+- [x] Register both ops.
+- [x] Tests in `tests/plugins/image_classification/test_augmentations_color_jitter.py`: lazy declares; aggressive realizes; deterministic; per-channel magnitudes within bounds.
+- [x] Tests in `tests/plugins/image_classification/test_augmentations_random_erasing.py`: lazy declares; aggressive realizes; erased rectangles fall within image bounds and respect `scale`/`ratio`.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-11: list `color_jitter` and `random_erasing` with their param schemas. Add an edge-case bullet for `color_jitter` on grayscale images.
+  - [x] `docs/specs/tech-spec.md` § Package Structure: add `color_jitter.py` and `random_erasing.py`. § Data Models > Recipe model section table: reference `ColorJitterParams` and `RandomErasingParams`.
+- [x] Verify.
 
 **Out of Scope**
 

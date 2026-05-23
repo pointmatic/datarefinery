@@ -33,6 +33,7 @@ EXPECTED_OPERATIONS = frozenset(
         "random_crop",
         "horizontal_flip",
         "color_jitter",
+        "random_erasing",
         "class_distribution_histogram",
         "sample_grid",
         "mean_image_per_class",
