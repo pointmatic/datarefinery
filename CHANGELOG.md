@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-05-23
+
+### Added
+
+- **FR-11 augmentation framework — lazy + aggressive modes (Stories
+  H.o–H.r.3).** `AugmentationOp` gains two new fields:
+  `materialization: Literal["lazy", "aggressive"] = "lazy"` and
+  `expansion: int = 1`. Lazy is the previous behavior (policy-only;
+  ModelFoundry realizes on-the-fly at training time). Aggressive
+  realizes `expansion` augmented variants per train record at
+  materialize time; variants become peer records with persisted
+  sidecar PNG image bytes. Both modes coexist in a single
+  `Augmentations:` block.
+- **Four concrete image-classification augmentation ops.**
+  `random_crop` and `horizontal_flip` (Story H.q),
+  `color_jitter` and `random_erasing` (Story H.r). Each has a
+  pydantic param model (`RandomCropParams`, `HorizontalFlipParams`,
+  `ColorJitterParams`, `RandomErasingParams`) and a deterministic
+  aggressive-mode realizer. The four realizers are registered on
+  `PLUGIN.augmentation_realizers` and dispatched by the augmentations
+  stage.
+- **Runner wiring for aggressive mode (Story H.r.1).**
+  `pipeline.runner` invokes `realize_aggressive_split` for the train
+  split when a recipe declares any aggressive op.
+- **Image-bytes persistence for aggressive variants (Story H.r.2).**
+  Each variant's image bytes are written to a sidecar PNG at
+  `dataset/<split>/images/<record_id>.png` using Pillow's PNG encode
+  (deterministic). The JSONL record carries `image_path: str`
+  (relative to the dataset directory) instead of the dropped numpy
+  `image` array. Materialized aggressive instances are self-contained:
+  consumers read variant pixels from sidecars, not from the source
+  filesystem.
+- **`docs/specs/modelfoundry/dependency-spec.md`** — new authoritative
+  cross-repo contract document. Enumerates the recipe-side
+  augmentation surface, materialized dataset on-disk layout, manifest
+  fields ModelFoundry binds against, report subsections, the
+  cache-identity contract, schema-version coordination policy,
+  forward-compatibility expectations, and failure modes downstream
+  consumers should detect.
+- **`docs/specs/project-essentials.md`** gains a new section: "Recipe
+  / manifest / report shape changes need a cross-repo coordination
+  check." Names the three external contract surfaces and points at
+  `dependency-spec.md` as the authoritative reference.
+
+### Fixed
+
+- **CI mypy gap (Story H.r.3).** Widened
+  `pipeline.stages.augmentations.realize_aggressive_split`'s `records`
+  parameter from `list[Record]` to `Sequence[Record]` (covariant) so
+  all test call sites passing `list[dict[str, Any]]` type-check
+  cleanly. Removed 5 stale `# type: ignore[arg-type]` comments
+  flagged as `[unused-ignore]`.
+
+### ⚠ Cache invalidation (pre-production)
+
+**Recipes that declare an `Augmentations:` section will re-materialize
+on first run after upgrade.** Adding the `materialization` and
+`expansion` defaults to `AugmentationOp` perturbs canonical recipe
+bytes for any recipe that uses augmentations, which changes the cache
+identity (instance directory path). Per
+`docs/specs/project-essentials.md` § "Cache identity is the
+reproducibility contract — invalidations are ceremonious," pre-prod
+invalidation is acceptable; the next run after `pip install --upgrade
+ml-datarefinery` will re-materialize affected recipes once. Recipes
+without any augmentations are unaffected.
+
+Post-production, this style of change will require a `schema_version`
+bump + migration entry; pre-production it's a release-notes mention
+only.
+
 ## [0.14.1] - 2026-05-22
 
 ### Fixed

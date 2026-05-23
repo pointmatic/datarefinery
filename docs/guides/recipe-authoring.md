@@ -585,23 +585,52 @@ The validator rejects a fit-on-train op whose `fit_source` is not
 
 ### `Augmentations`
 
-Stochastic, train-only operations that expand the *effective* dataset
-without changing the record count. Each augmentation declares its
-parameters, the splits it applies to (train-only by default, val/test
-rejected by validator check 5), and a seed:
+Stochastic, train-only operations that expand the *effective* dataset.
+Each augmentation declares its parameters, the splits it applies to
+(train-only by default, val/test rejected by validator check 5), a
+seed, and a **materialization mode** (`lazy` by default; `aggressive`
+opt-in). Lazy and aggressive ops can be mixed in a single
+`Augmentations:` block.
 
 ```yaml
 Augmentations:
   - name: hflip
     op: horizontal_flip
-    params: { p: 0.5, seed: 42 }
+    params: { p: 0.5 }
     splits: [train]
     seed: 42
+  - name: crop
+    op: random_crop
+    params: { size: 32, padding: 4, padding_mode: reflect }
+    splits: [train]
+    seed: 43
+    materialization: aggressive    # default: lazy
+    expansion: 4                   # aggressive only; N variants per input record
 ```
 
-Augmentations are **described** in the recipe; they apply on-the-fly
-during training and are not persisted as new records. To disable
-augmentation for a comparison run, use a variant — see [Variants](#variants).
+**Lazy vs. aggressive trade-off:**
+
+- **`lazy` (default).** The recipe declares the policy; the
+  materialized dataset is unchanged. ModelFoundry's framework adapter
+  realizes augmented examples on-the-fly during training, drawing
+  fresh samples each epoch. Pro: small on-disk footprint, unbounded
+  effective dataset size. Con: requires a framework adapter that
+  honors the policy at training time.
+- **`aggressive`.** DataRefinery realizes `expansion` augmented
+  variants per train record at materialize time. Variants become peer
+  records in the dataset with sidecar PNG image bytes. Pro: dataset is
+  framework-agnostic — any consumer that reads the JSONL + sidecar
+  PNGs sees augmented variants without any adapter. Con: on-disk size
+  grows by `expansion` per aggressive op; the variant space is fixed
+  at materialize time (not redrawn each epoch).
+
+To disable augmentation for a comparison run, use a variant — see
+[Variants](#variants).
+
+The four image-classification augmentation ops — `random_crop`,
+`horizontal_flip`, `color_jitter`, `random_erasing` — are documented
+under § FR-11 of `features.md`, and the full cross-repo contract is in
+[`docs/specs/modelfoundry/dependency-spec.md`](../specs/modelfoundry/dependency-spec.md).
 
 ### `Featurizations`
 

@@ -1081,7 +1081,7 @@ No version bump (bundled in H.s).
 - Lifting the `Sequence` widening elsewhere in the stages or pipeline modules. Apply this case-by-case as similar patterns surface; not a wholesale refactor.
 - Re-evaluating which other `# type: ignore[...]` comments across the repo might be stale. Out of scope.
 
-### Story H.s: v0.15.0 AUG release — ModelFoundry dependency spec + cross-cutting docs sweep + release [Planned]
+### Story H.s: v0.15.0 AUG release — ModelFoundry dependency spec + cross-cutting docs sweep + release [Done]
 
 Release story for the AUG bundle. Three deliverables: (a) create `docs/specs/modelfoundry/dependency-spec.md` (the cross-repo contract document ModelFoundry consumers bind against); (b) cross-cutting docs sweep across `features.md`, `tech-spec.md`, `README.md` for drift accumulated during H.p–H.r; (c) CHANGELOG, version bump to v0.15.0, Future-section cleanup.
 
@@ -1089,8 +1089,8 @@ Minor bump (v0.15.0) — new features (FR-11 framework + four augmentation ops).
 
 **Tasks:**
 
-- [ ] Create `docs/specs/modelfoundry/` directory.
-- [ ] Create `docs/specs/modelfoundry/dependency-spec.md`. Sections:
+- [x] Create `docs/specs/modelfoundry/` directory.
+- [x] Create `docs/specs/modelfoundry/dependency-spec.md`. Sections:
   - **Overview** — documented cross-repo contract surface for ModelFoundry and other downstream consumers.
   - **Recipe-side contract** — `Augmentations` section schema with all four ops + param schemas; `materialization` and `expansion` semantics.
   - **Materialized dataset on-disk layout** — directory structure; aggressive-mode record-multiplication shape with `source_record_id` and `variant_index` metadata.
@@ -1101,17 +1101,17 @@ Minor bump (v0.15.0) — new features (FR-11 framework + four augmentation ops).
   - **Forward-compatibility expectations** — ModelFoundry should detect recipes declaring unknown ops and fail with a clear "unknown op" error.
   - **Failure modes ModelFoundry should detect** — stale fitted statistics; missing required fields; schema-version mismatch.
   - **Versioning and adoption** — DataRefinery ships forward-declared contracts; ModelFoundry adopts on its own schedule; not a precondition.
-- [ ] Cross-cutting docs sweep:
-  - [ ] `docs/specs/features.md`: verify all four new augmentation ops are documented in § FR-11; cross-reference `dependency-spec.md` from § FR-11 and § FR-15.
-  - [ ] `docs/specs/tech-spec.md`: verify all new augmentation files appear in § Package Structure; § Data Models consistent with the new `AugmentationOp` shape.
-  - [ ] `README.md` § Plugin model: existing "etc." covers the new ops; no edit needed there. § CLI verbs table: **verify the validate row's "Schema + N enumerated static logical checks" count matches features.md's actual enumerated check count** (this sub-bundle adds no new top-level checks, but the count is currently drifted — features.md ends at check 22 while README still says 21 from H.n's release; fix to whatever features.md actually enumerates at v0.15.0). Other CLI-verb table rows: unchanged.
-  - [ ] `docs/guides/recipe-authoring.md` (if present and current): add a short section on the lazy vs aggressive trade-off; mention `dependency-spec.md`.
-- [ ] `docs/specs/project-essentials.md`: append a new `###` subsection (placed after § "Sibling-instance dependencies are loose-coupled in v1") titled "Recipe / manifest / report shape changes need a cross-repo coordination check." Content: name the three external contract surfaces (recipe model in `src/datarefinery/recipe/models.py`; manifest schema; report subsections `report.md` + `drift.json`); name `docs/specs/modelfoundry/dependency-spec.md` as the authoritative cross-repo contract doc; specify the "before changing field name / dropping field / changing emitted-bytes default / renaming manifest key / restructuring report subsection, check `dependency-spec.md` first" rule; list three tempting-LLM-mistakes-to-refuse (silent field removal "because no internal callers"; recipe field rename without `schema_version` bump + dependency-spec.md update; treating drift.json's "unstable until production release" framing as license to skip dependency-spec.md updates pre-prod). Append-only — do not rewrite or reorder existing project-essentials sections.
-- [ ] `CHANGELOG.md`: new `## [0.15.0]` "Added" section. Sub-sections: FR-11 framework (lazy/aggressive), four augmentation ops, ModelFoundry dependency spec. **Prominent callout:** pre-prod cache invalidation — recipes with `Augmentations` ops will re-materialize on first run after upgrade.
-- [ ] Remove the `FR-AUG-1..4 augmentation policies` sub-bullet from the `## Future` entry "Image-classification plugin: additional capabilities deferred from Phase H sub-bundle." Other sub-bullets remain.
-- [ ] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.15.0`.
-- [ ] Verify: full test suite green; ruff + ruff format + mypy clean. Canonical-hash pin: update if the pinned fixture recipe uses `Augmentations`.
-- [ ] Release-prep: verify `pip install ml-datarefinery==0.15.0` succeeds in a clean Python 3.12 venv per Acceptance Criterion 12; manual check per `docs/guides/releasing.md`.
+- [x] Cross-cutting docs sweep:
+  - [x] `docs/specs/features.md`: verify all four new augmentation ops are documented in § FR-11; cross-reference `dependency-spec.md` from § FR-11 and § FR-15.
+  - [x] `docs/specs/tech-spec.md`: verify all new augmentation files appear in § Package Structure; § Data Models consistent with the new `AugmentationOp` shape.
+  - [x] `README.md` § CLI verbs table: validate row count corrected to `22` (was `21`; features.md enumerates through check 22). Other CLI-verb table rows: unchanged.
+  - [x] `docs/guides/recipe-authoring.md`: § Augmentations rewritten with the lazy-vs-aggressive trade-off; pointer to `dependency-spec.md`.
+- [x] `docs/specs/project-essentials.md`: appended `### Recipe / manifest / report shape changes need a cross-repo coordination check` after § "Sibling-instance dependencies are loose-coupled in v1". Names the three external contract surfaces, points at `docs/specs/modelfoundry/dependency-spec.md` as the authoritative cross-repo contract doc, and lists three tempting-LLM-mistakes-to-refuse (silent field removal "because no internal callers"; recipe field rename without `schema_version` bump + dependency-spec.md update; treating drift.json's pre-prod-unstable framing as license to skip dependency-spec.md updates). Append-only; existing sections unchanged.
+- [x] `CHANGELOG.md`: `## [0.15.0]` "Added" section enumerates FR-11 framework + four ops + ModelFoundry dependency spec + project-essentials addition; `### Fixed` covers H.r.3 mypy gap; `### ⚠ Cache invalidation (pre-production)` block prominently calls out the re-materialization requirement for any recipe with `Augmentations`.
+- [x] Removed the `FR-AUG-1..4 augmentation policies` sub-bullet from the `## Future` entry "Image-classification plugin: additional capabilities deferred from Phase H sub-bundle." Other sub-bullets remain (FR-VIZ, FR-ARCH-1, generic record-tagging).
+- [x] Bumped `pyproject.toml` and `src/datarefinery/__init__.py` to `0.15.0`.
+- [x] Verify: full test suite green (961 passed); `mypy src tests` clean (165 source files); `ruff check` + `ruff format --check` clean. Canonical-hash pin: unchanged — the pinned fixture has no `Augmentations` section, so the digest is unaffected.
+- [ ] Release-prep: verify `pip install ml-datarefinery==0.15.0` succeeds in a clean Python 3.12 venv per Acceptance Criterion 12; manual check per `docs/guides/releasing.md`. **(Developer-driven post-tag; outside LLM scope per releasing.md.)**
 
 **Out of Scope**
 
@@ -1278,7 +1278,6 @@ The `archive_stories` mode preserves this section verbatim when archiving storie
 - **Native Windows first-class support** — WSL2 is the recommended Windows path in v1.
 - **Plugin sandboxing** — plugins run in-process, unsandboxed in v1; sandboxing is a post-v1 trust-boundary upgrade.
 - **Image-classification plugin: additional capabilities deferred from Phase H sub-bundle** — see [`phase-h-datarefinery-feature-recommendation.md`](phase-h-datarefinery-feature-recommendation.md) for full specifications:
-  - FR-AUG-1..4 augmentation policies (`random_crop`, `horizontal_flip`, `color_jitter`, `random_erasing`) — non-materialized policies forwarded to ModelFoundry's framework adapter.
   - FR-VIZ-1..4 reporting visualizations (`pixel_distribution`, `augmented_sample_grid`, `corruption_severity_grid`, `severity_ladder`).
   - FR-ARCH-1 tight coupling — sibling `recipe_hash` participating in the current recipe's cache identity, so re-materializing upstream auto-invalidates downstream. The Phase H sub-bundle shipped FR-TRANS-1 with loose coupling; tight coupling is the follow-up needed for multi-team or longitudinal workflows.
   - Generic record-tagging primitive — factor FR-FILTER-1's bespoke `label` / `exclude_already_labeled` params into a shared mechanism multiple filter ops can use.

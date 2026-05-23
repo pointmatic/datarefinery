@@ -74,6 +74,24 @@ When a recipe imports fitted statistics from a sibling materialized instance via
 
 The path forward for any of these is a story under FR-ARCH-1 (currently in Future), not an in-band code change in `cache/` or `pipeline/`.
 
+### Recipe / manifest / report shape changes need a cross-repo coordination check
+
+Three surfaces leave DataRefinery and bind downstream consumers (ModelFoundry today; other tools tomorrow). Any change to these shapes is a cross-repo contract change, not just an internal refactor:
+
+1. **Recipe model** in `src/datarefinery/recipe/models.py` — every pydantic field, default, and validator becomes a contract surface the moment a release ships.
+2. **Manifest schema** emitted by `pipeline.manifest.write_manifest` — every key, type, and emitted-bytes default is read by downstream tools.
+3. **Report subsections** — `report/report.md`, `report/drift.json`, and persisted reporting-mode visualizations. Schema changes in `drift.json` and section ordering / heading text in `report.md` are both consumer-visible.
+
+The authoritative cross-repo contract doc is **`docs/specs/modelfoundry/dependency-spec.md`** (Story H.s). Before changing a field name, dropping a field, changing an emitted-bytes default, renaming a manifest key, or restructuring a report subsection, **read `dependency-spec.md` first**, update it in the same commit, and decide whether the change requires a `schema_version` bump (the deliberate-invalidation lever; see § "Cache identity is the reproducibility contract" above).
+
+**How to apply:** when working in `recipe/models.py`, `pipeline/manifest.py`, or `reporting/report.py` / `reporting/drift.py`, refuse the following tempting moves:
+
+- "Let's drop this manifest field; nothing in this repo reads it." **No.** Internal-callers absence is not the criterion — downstream consumers (including ModelFoundry) bind against the documented manifest shape via `dependency-spec.md`. Silent removal breaks adopters. Update `dependency-spec.md`, deprecate explicitly, and follow the post-prod bump ceremony if applicable.
+- "Let's rename `AugmentationOp.foo` to `bar`; it's clearer." **No, not without ceremony.** Renaming a recipe field perturbs canonical bytes for every recipe that uses it, AND breaks any cross-repo doc / tool that references the old name. A rename requires (a) `schema_version` bump in `recipe.loader.SUPPORTED_SCHEMA_VERSIONS`, (b) migration in `recipe.loader.migrations`, (c) `dependency-spec.md` update naming both old and new names with a deprecation horizon, (d) release-notes blast-radius announcement.
+- "Pre-production, `drift.json` is documented as unstable, so I don't need to update `dependency-spec.md` when I change its shape." **No.** "Unstable" describes the post-prod stability commitment, not pre-prod hygiene. Pre-prod consumers (including ModelFoundry's adoption work) still read the doc to know what to bind against; not updating it as you change `drift.json` strands those consumers.
+
+`dependency-spec.md` itself is the working document; keep it current as the source of truth. The CHANGELOG entry for each release should enumerate cross-repo contract changes prominently (see v0.15.0 for the FR-11 augmentation example).
+
 ### Recipe is authoritative for data-pipeline semantics
 
 Configuration precedence in DataRefinery is **recipe → CLI flags → environment variables**, with a hard separation of concerns:
