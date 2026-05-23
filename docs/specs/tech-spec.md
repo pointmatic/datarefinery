@@ -633,6 +633,10 @@ Recipe semantics never read from CLI/env. The only field where CLI flag override
 │   │       └── <seed>/
 │   │           ├── recipe.yaml
 │   │           ├── dataset/
+│   │           │   ├── train.jsonl                  # one record per line
+│   │           │   ├── val.jsonl
+│   │           │   ├── test.jsonl
+│   │           │   └── <split>/images/<record_id>.png    # FR-11 aggressive-mode variants only (Story H.r.2)
 │   │           ├── fitted_statistics/
 │   │           ├── report/
 │   │           │   ├── report.md

@@ -1021,7 +1021,7 @@ No version bump (bundled in H.s).
 - Image-bytes persistence — H.r.2.
 - ModelFoundry consumption of aggressive variants — H.s.
 
-### Story H.r.2: Image-bytes persistence for aggressive variants + ungating [Planned]
+### Story H.r.2: Image-bytes persistence for aggressive variants + ungating [Done]
 
 Closes the loop on aggressive-mode augmentation: each variant's image bytes are persisted as a per-record sidecar PNG under `dataset/<split>/images/<record_id>.png`, and the JSONL record carries `image_path: str` pointing at the sidecar. Removes the H.r.1 runner guard and validator warning so aggressive recipes materialize end-to-end into a complete, self-contained instance ModelFoundry (or any consumer) can read without referring back to the source images.
 
@@ -1033,19 +1033,19 @@ No version bump (bundled in H.s).
 
 **Tasks:**
 
-- [ ] Extend `pipeline.runner._write_dataset` (or add a sibling `_write_image_sidecars` helper invoked from the runner) to detect records carrying aggressive-mode metadata (`source_record_id` + `variant_index` + a numpy `uint8` `image` array). For those records, encode the image as PNG via Pillow and write to `dataset/<split>/images/<record_id>.png`. The runner replaces the `image` field with `image_path: str` (relative to the dataset dir) BEFORE the JSONL serialization runs, so `_coerce` no longer needs to drop the bytes.
-- [ ] Non-aggressive records keep the existing "image bytes resolve via source `path`" behavior. Sidecars are aggressive-only — document the distinction in the writer's docstring.
-- [ ] Cache layout: sidecars live under the materialized instance's dataset dir, so they're naturally covered by the existing cache-identity contract (the materialized output IS the cached output). No separate cache key surface; no `cache.layout` change required unless we want a helper for the new `images/` subdirectory.
-- [ ] Remove the H.r.1 runner guard (`MaterializeError "pending Story H.r.2"`). Remove the validator warning. Both surfaces flip to fully-supported.
-- [ ] Tests:
-  - [ ] `tests/unit/test_runner.py` (or sibling): end-to-end materialize with an aggressive `horizontal_flip` recipe produces sidecar PNGs at the expected paths; `train.jsonl` lines carry `image_path` not `image`.
-  - [ ] Round-trip: read a sidecar PNG back, assert byte-equality with the in-memory variant produced by the realizer.
-  - [ ] Determinism: re-running with the same recipe + seed produces byte-identical sidecar PNGs (FR-3 + FR-4 contract still holds).
-  - [ ] Lazy-only recipe: no sidecars written; existing behavior preserved.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-11: remove the "Status: pending H.r.2" subsection added in H.r.1. Document the sidecar PNG output, the `image_path` field, and the aggressive-vs-non-aggressive persistence distinction.
-  - [ ] `docs/specs/tech-spec.md` § Data layout (instance directory tree): document `dataset/<split>/images/<record_id>.png` for aggressive-mode instances.
-- [ ] Verify.
+- [x] Extend `pipeline.runner._write_dataset` (or add a sibling `_write_image_sidecars` helper invoked from the runner) to detect records carrying aggressive-mode metadata (`source_record_id` + `variant_index` + a numpy `uint8` `image` array). For those records, encode the image as PNG via Pillow and write to `dataset/<split>/images/<record_id>.png`. The runner replaces the `image` field with `image_path: str` (relative to the dataset dir) BEFORE the JSONL serialization runs, so `_coerce` no longer needs to drop the bytes.
+- [x] Non-aggressive records keep the existing "image bytes resolve via source `path`" behavior. Sidecars are aggressive-only — document the distinction in the writer's docstring.
+- [x] Cache layout: sidecars live under the materialized instance's dataset dir, so they're naturally covered by the existing cache-identity contract (the materialized output IS the cached output). No separate cache key surface; no `cache.layout` change required unless we want a helper for the new `images/` subdirectory.
+- [x] Remove the H.r.1 runner guard (`MaterializeError "pending Story H.r.2"`). Remove the validator warning. Both surfaces flip to fully-supported.
+- [x] Tests:
+  - [x] `tests/integration/test_runner.py`: end-to-end materialize with an aggressive `horizontal_flip` recipe produces sidecar PNGs at the expected paths; `train.jsonl` lines carry `image_path` not `image`.
+  - [x] Round-trip: read a sidecar PNG back, assert byte-equality with the in-memory variant produced by the realizer.
+  - [x] Determinism: re-running with the same recipe + seed produces byte-identical sidecar PNGs (FR-3 + FR-4 contract still holds).
+  - [x] Lazy-only recipe: no sidecars written; existing behavior preserved.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-11: remove the "Status: pending H.r.2" subsection added in H.r.1. Document the sidecar PNG output, the `image_path` field, and the aggressive-vs-non-aggressive persistence distinction.
+  - [x] `docs/specs/tech-spec.md` § Data layout (instance directory tree): document `dataset/<split>/images/<record_id>.png` for aggressive-mode instances.
+- [x] Verify.
 
 **Out of Scope**
 

@@ -454,36 +454,11 @@ def _aggressive_recipe() -> Recipe:
     )
 
 
-def test_runner_guards_aggressive_recipe_with_pending_persistence_error(
-    tmp_path: Path,
-) -> None:
-    """Story H.r.1: real recipes declaring aggressive must fail loud
-    with a clear pointer to Story H.r.2 (where persistence lands)."""
-    cache_root = tmp_path / "cache"
-    runner = PipelineRunner(
-        recipe=_aggressive_recipe(),
-        plugin=IMAGE_PLUGIN,
-        config=_config(cache_root),
-        seed=7,
-    )
-    temp = tmp_dir_for(cache_root, "run-1")
-    records = _records(12)
-    with pytest.raises(MaterializeError, match=r"pending Story H\.r\.2"):
-        runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
-
-
-def test_runner_aggressive_wiring_fans_out_train_split_when_guard_bypassed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Story H.r.1: when the H.r.2-pending guard is bypassed (via
-    monkeypatch — meant for tests, not production), the runner actually
-    invokes :func:`realize_aggressive_split` and the train split's
-    record count reflects the multiplicative expansion. This pins the
-    wiring itself, independent of the guard."""
-    from datarefinery.pipeline import runner as runner_mod
-
-    monkeypatch.setattr(runner_mod, "_AGGRESSIVE_GUARD_ACTIVE", False)
-
+def test_runner_aggressive_wiring_fans_out_train_split(tmp_path: Path) -> None:
+    """Story H.r.1 wired the runner; Story H.r.2 added image-bytes
+    persistence. The runner invokes :func:`realize_aggressive_split` for
+    the train split and the post-augmentation record count reflects the
+    multiplicative expansion."""
     cache_root = tmp_path / "cache"
     runner = PipelineRunner(
         recipe=_aggressive_recipe(),
@@ -534,3 +509,158 @@ def test_runner_lazy_only_augmentations_do_not_trigger_guard(tmp_path: Path) -> 
     # Should materialize cleanly — no guard for lazy.
     result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
     assert result.manifest.record_counts["train"] > 0
+
+
+# ---------------------------------------------------------------------------
+# H.r.2: aggressive-mode image-bytes persistence (sidecar PNGs)
+# ---------------------------------------------------------------------------
+
+
+def test_aggressive_materialize_writes_sidecar_pngs(tmp_path: Path) -> None:
+    """Story H.r.2: every aggressive variant gets a sidecar PNG at
+    ``dataset/<split>/images/<record_id>.png`` and the JSONL line
+    carries ``image_path`` instead of ``image``."""
+    cache_root = tmp_path / "cache"
+    runner = PipelineRunner(
+        recipe=_aggressive_recipe(),
+        plugin=IMAGE_PLUGIN,
+        config=_config(cache_root),
+        seed=7,
+    )
+    temp = tmp_dir_for(cache_root, "run-1")
+    records = _records(12)
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
+
+    ds = dataset_dir(result.instance_dir)
+    images_dir = ds / "train" / "images"
+    assert images_dir.is_dir()
+    png_files = sorted(images_dir.glob("*.png"))
+    assert len(png_files) > 0, "expected sidecar PNGs for aggressive variants"
+
+    import json as _json
+
+    train_jsonl = (ds / "train.jsonl").read_text()
+    lines = [_json.loads(line) for line in train_jsonl.strip().splitlines() if line]
+    assert len(lines) == len(png_files)
+    for line in lines:
+        assert "image" not in line  # bytes replaced by sidecar
+        assert "image_path" in line
+        rid = line["record_id"]
+        # image_path is relative to dataset_root.
+        assert line["image_path"] == f"train/images/{rid}.png"
+        # File exists at the indicated relative path.
+        assert (ds / line["image_path"]).is_file()
+
+
+def test_aggressive_sidecar_png_round_trips_to_realizer_output(tmp_path: Path) -> None:
+    """Reading a sidecar PNG back yields the same uint8 array as the
+    in-memory realizer would have produced. Validates the FR-3 +
+    FR-4 byte-identity contract extended over the sidecar layer."""
+    from datarefinery.plugins.image_classification.augmentations._realizer import (
+        emit_variants,
+    )
+    from datarefinery.plugins.image_classification.plugin import (
+        PLUGIN as PLUGIN_LOCAL,
+    )
+
+    cache_root = tmp_path / "cache"
+    seed = 7
+    runner = PipelineRunner(
+        recipe=_aggressive_recipe(),
+        plugin=IMAGE_PLUGIN,
+        config=_config(cache_root),
+        seed=seed,
+    )
+    temp = tmp_dir_for(cache_root, "run-1")
+    records = _records(12)
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
+
+    ds = dataset_dir(result.instance_dir)
+    import json as _json
+
+    from PIL import Image as _PIL
+
+    train_jsonl = (ds / "train.jsonl").read_text()
+    parsed = [_json.loads(line) for line in train_jsonl.strip().splitlines() if line]
+
+    # Build a {record_id: numpy_image} map from the original records — the
+    # Splits stage selects 60% of these for the train split deterministically
+    # (seed=7), and the realizer expansion=3 multiplies them.
+    rec_by_id = {r["record_id"]: r for r in records}
+
+    # For each persisted variant, regenerate the in-memory output via
+    # emit_variants and compare PNG bytes round-trip.
+    for variant in parsed:
+        source_rid = variant["source_record_id"]
+        vi = variant["variant_index"]
+        original = rec_by_id[source_rid]
+        emitted = emit_variants(
+            original,
+            op_id="horizontal_flip",
+            global_seed=seed,
+            expansion=3,
+            realize_fn=PLUGIN_LOCAL.augmentation_realizers["horizontal_flip"],
+            params={"p": 0.5},
+        )
+        [in_mem] = [v for v in emitted if v["variant_index"] == vi]
+        sidecar = _PIL.open(ds / variant["image_path"])
+        sidecar_arr = np.asarray(sidecar)
+        assert np.array_equal(sidecar_arr, in_mem["image"]), (
+            f"sidecar PNG bytes differ from realizer output for {source_rid} v={vi}"
+        )
+
+
+def test_aggressive_materialize_is_deterministic_across_runs(tmp_path: Path) -> None:
+    """Same recipe + seed + inputs across two fresh runs -> byte-identical
+    sidecar PNGs. The FR-3/FR-4 determinism contract extends to the
+    sidecar layer."""
+
+    def _materialize(cache_root: Path, run_name: str) -> Path:
+        r = PipelineRunner(
+            recipe=_aggressive_recipe(),
+            plugin=IMAGE_PLUGIN,
+            config=_config(cache_root),
+            seed=7,
+        )
+        temp = tmp_dir_for(cache_root, run_name)
+        records = _records(12)
+        result = r.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
+        return dataset_dir(result.instance_dir) / "train" / "images"
+
+    images_a = _materialize(tmp_path / "cache_a", "run-1")
+    images_b = _materialize(tmp_path / "cache_b", "run-2")
+
+    pngs_a = {p.name: p.read_bytes() for p in images_a.glob("*.png")}
+    pngs_b = {p.name: p.read_bytes() for p in images_b.glob("*.png")}
+    assert pngs_a.keys() == pngs_b.keys()
+    for name in pngs_a:
+        assert pngs_a[name] == pngs_b[name], f"sidecar PNG byte mismatch for {name}"
+
+
+def test_lazy_only_recipe_writes_no_sidecars(tmp_path: Path) -> None:
+    """A recipe with only lazy (or no) augmentations must NOT write any
+    sidecar PNG directory — the H.r.2 path is aggressive-only."""
+    recipe = _recipe(
+        augmentations=[
+            {
+                "name": "flip",
+                "op": "horizontal_flip",
+                "params": {"p": 0.5},
+                "splits": ["train"],
+                "seed": 1,
+            }
+        ]
+    )
+    cache_root = tmp_path / "cache"
+    runner = PipelineRunner(recipe=recipe, plugin=IMAGE_PLUGIN, config=_config(cache_root), seed=7)
+    temp = tmp_dir_for(cache_root, "run-1")
+    records = _records(12)
+    result = runner.run(temp, raw_records=records, raw_input_hashes=_input_hashes(records))
+
+    ds = dataset_dir(result.instance_dir)
+    assert not (ds / "train" / "images").exists()
+    # And the JSONL retains the pre-H.r.2 schema: no image_path field.
+    import json as _json
+
+    line = _json.loads((ds / "train.jsonl").read_text().splitlines()[0])
+    assert "image_path" not in line

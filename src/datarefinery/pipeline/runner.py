@@ -33,6 +33,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from datarefinery import __version__
 from datarefinery.cache.atomic import atomic_promote, mark_failed
 from datarefinery.cache.identity import compute_cache_key
@@ -87,14 +89,6 @@ from datarefinery.reporting.report import (
 
 Record = Mapping[str, Any]
 ProgressCallback = Callable[[str], None]
-
-#: Toggle for the temporary H.r.1 aggressive-mode guard. Real
-#: invocations fail loud (``MaterializeError``) when this is ``True``
-#: because image-bytes persistence is pending Story H.r.2. Tests that
-#: want to exercise the wiring directly flip this to ``False`` via
-#: :meth:`pytest.MonkeyPatch.setattr`. Removed in H.r.2 along with the
-#: guard itself and validator check 23.
-_AGGRESSIVE_GUARD_ACTIVE: bool = True
 
 #: Stage names accepted by the ``stop_after`` partial-run option, in
 #: execution order. The runner refuses any other value with
@@ -307,26 +301,17 @@ class PipelineRunner:
                 )
 
             _emit("Augmentations")
-            # H.r.1: aggressive-mode dispatch. The guard short-circuits
-            # real recipes with a fail-loud MaterializeError pointing at
-            # Story H.r.2 (which lands image-bytes persistence and
-            # removes this guard). Tests bypass the guard via
-            # monkeypatch on ``_AGGRESSIVE_GUARD_ACTIVE`` to validate
-            # the wiring itself; the realizer registry is sourced from
-            # the plugin (image_classification exposes
-            # ``augmentation_realizers``).
+            # FR-11 aggressive-mode dispatch (Story H.p framework +
+            # H.q/H.r ops + H.r.1 wiring + H.r.2 sidecar persistence).
+            # Aggressive ops fan out the train split into N x expansion
+            # variants via the plugin-registered realizer; image bytes
+            # for each variant land in
+            # ``dataset/<split>/images/<record_id>.png`` at write time
+            # (see :func:`_prepare_record_for_persistence`).
             aggressive_ops = [
                 op for op in self.recipe.Augmentations if op.materialization == "aggressive"
             ]
             if aggressive_ops:
-                if _AGGRESSIVE_GUARD_ACTIVE:
-                    names = [op.name for op in aggressive_ops]
-                    raise MaterializeError(
-                        f"aggressive-mode augmentation persistence pending "
-                        f"Story H.r.2; the recipe is accepted but cannot "
-                        f"materialize until persistence lands (declared "
-                        f"aggressive ops: {names})"
-                    )
                 realizer_registry = getattr(self.plugin, "augmentation_realizers", {})
                 train_records: list[Mapping[str, Any]] = list(split_map.get("train", []))
                 split_map["train"] = list(
@@ -485,20 +470,80 @@ def _read_manifest(final_dir: Path) -> Manifest:
 
 
 def _write_dataset(dataset_root: Path, splits: Mapping[str, list[Record]]) -> None:
-    """Write per-split JSON-lines summaries.
+    """Write per-split JSON-lines summaries and aggressive-variant sidecar PNGs.
 
     Each line is one record with non-JSON-native fields (numpy arrays,
-    bytes, Path) coerced to strings or dropped. v1 simplification:
-    image bytes are not persisted; downstream tools resolve image
-    content via the source ``path`` field.
+    bytes, Path) coerced to strings or dropped.
+
+    Two persistence modes for image content coexist:
+
+    - **Non-aggressive records** keep the existing "image bytes resolve
+      via source ``path``" behavior. The numpy ``image`` field is
+      dropped at JSONL serialization; downstream tools read the source
+      file referenced by ``path``.
+    - **Aggressive-variant records** (Story H.r.2) — detected by the
+      presence of both ``source_record_id`` and ``variant_index`` on the
+      record — get a sidecar PNG written to
+      ``dataset/<split>/images/<record_id>.png`` and the record's
+      ``image`` field replaced by ``image_path`` (a string relative to
+      ``dataset_root``) before JSONL serialization. This keeps the
+      materialized instance self-contained: a consumer reading the
+      JSONL can resolve every variant's image bytes without referring
+      back to the (now-augmented-away) source image.
     """
+    from PIL import Image as _PIL_Image
+
     dataset_root.mkdir(parents=True, exist_ok=True)
     for split_name, records in splits.items():
+        sidecar_dir = dataset_root / split_name / "images"
+        prepared: list[dict[str, Any]] = []
+        for r in records:
+            prepared.append(_prepare_record_for_persistence(r, split_name, sidecar_dir, _PIL_Image))
         path = dataset_root / f"{split_name}.jsonl"
         with path.open("w", encoding="utf-8") as fh:
-            for r in records:
-                fh.write(json.dumps(_serializable(r), sort_keys=True))
+            for r_prepared in prepared:
+                fh.write(json.dumps(_serializable(r_prepared), sort_keys=True))
                 fh.write("\n")
+
+
+def _is_aggressive_variant(record: Mapping[str, Any]) -> bool:
+    """Aggressive-variant detection rule (Story H.r.2).
+
+    A record is an aggressive variant iff it carries both
+    ``source_record_id`` and ``variant_index`` — the metadata fields
+    that :func:`...augmentations._realizer.emit_variants` stamps on
+    every realized variant. Plain (non-aggressive) records may have an
+    ``image`` field too, but they lack these metadata fields and so
+    keep the source-path resolution path.
+    """
+    return "source_record_id" in record and "variant_index" in record
+
+
+def _prepare_record_for_persistence(
+    record: Mapping[str, Any],
+    split_name: str,
+    sidecar_dir: Path,
+    pil_image_module: Any,
+) -> dict[str, Any]:
+    """Return a JSONL-ready copy of ``record``; for aggressive variants,
+    side-effect-write the PNG to ``sidecar_dir`` and replace ``image``
+    with ``image_path``."""
+    if not _is_aggressive_variant(record):
+        return dict(record)
+    img = record.get("image")
+    if not isinstance(img, np.ndarray) or img.dtype != np.uint8:
+        # No bytes to persist (or wrong dtype) — fall back to passthrough
+        # so legacy/non-image plugins aren't accidentally forced through
+        # the PNG path.
+        return dict(record)
+    sidecar_dir.mkdir(parents=True, exist_ok=True)
+    record_id = str(record["record_id"])
+    sidecar_path = sidecar_dir / f"{record_id}.png"
+    pil_image_module.fromarray(img).save(sidecar_path, format="PNG", optimize=False)
+    out = dict(record)
+    out.pop("image", None)
+    out["image_path"] = f"{split_name}/images/{record_id}.png"
+    return out
 
 
 def _serializable(record: Record) -> dict[str, Any]:
