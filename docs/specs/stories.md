@@ -763,22 +763,18 @@ Unversioned (phase-bundled; H.n.3 carries the v0.14.0 release).
 - End-to-end cross-recipe materialization tests — H.n.2.
 - Documentation updates (features.md / tech-spec.md / project-essentials.md / CHANGELOG) — H.n.3.
 
-### Story H.n.2: `StatsFromInstanceSpec` + `normalize` apply-path integration [Planned]
+### Story H.n.2: `StatsFromInstanceSpec` + `normalize` apply-path integration [Done]
 
 Second of three H.n child stories. Builds the recipe-surface and apply-path integration on top of H.n.1's resolver. Unversioned (phase-bundled).
 
 **Tasks:**
 
-- [ ] Add `StatsFromInstanceSpec` pydantic model in `src/datarefinery/recipe/models.py`: `recipe: str` (path-or-name; v1 accepts a filesystem path string), `op_id: str`. Frozen.
-- [ ] Validator check (new or extension of an existing one): a `normalize` op's `params["stats_from_instance"]` and the op's `fit_source` field are mutually exclusive; exactly one must be set when the op is `normalize`. Adding a new numbered check (22) following the existing v1 enumeration; update the `features.md` enumerated list count to 22 as part of H.n.3.
-- [ ] Modify `NormalizeOp` apply path in `src/datarefinery/plugins/image_classification/operations/transformations.py`: when `params["stats_from_instance"]` is present, instead of fitting locally, call `cache.sibling_stats.resolve_sibling_stats(...)` to load mean/std from the sibling instance, and run apply with those imported statistics.
-- [ ] Tests in `tests/plugins/image_classification/test_normalize_stats_from_instance.py`:
-  - End-to-end with two sibling recipes through `PipelineRunner`: train recipe normalizes locally (writes `fitted_statistics/norm/`); eval recipe imports via `stats_from_instance` pointing at the train recipe path. Eval output is byte-identical across repeated runs.
-  - Cross-recipe parity: imported-stats apply output equals what an in-recipe `fit_source: train` would have produced when given the same train data.
-  - All three resolver failure modes surface through the apply path with clear messages.
-  - Mutual-exclusion validator rejects a recipe declaring both `fit_source` and `stats_from_instance`.
-- [ ] No version bump (phase-bundled with H.n.3).
-- [ ] Verify: tests, lint, mypy.
+- [x] Add `StatsFromInstanceSpec` pydantic model in `src/datarefinery/recipe/models.py`: `recipe: str` (path-or-name; v1 accepts a filesystem path string), `op_id: str`. Frozen.
+- [x] Validator check (new or extension of an existing one): a `normalize` op's `params["stats_from_instance"]` and the op's `fit_source` field are mutually exclusive; exactly one must be set when the op is `normalize`. Added as numbered check 22 (`check_22_stats_from_instance_mutually_exclusive_with_fit_source`) and check 6 now short-circuits when `stats_from_instance` is set. *(Wired through to call sites: `tests/unit/test_validator.py`, `tests/integration/test_tabular_stub_smoke.py`, `tests/cli/test_validate_cmd.py`, and the three CLI-output integration tests bumped 21 → 22.)*
+- [x] Modify the apply path so `params["stats_from_instance"]` skips the local fit. *(Implemented in `src/datarefinery/pipeline/stages/transformations.py::apply_transformations` rather than inside `NormalizeOp` itself — keeps the dispatch generic so any future fit-on-train op picks it up automatically; threaded `cache_root` in from `PipelineRunner` and added `_load_sibling_fitted` to materialize the sibling's `fitted_statistics/<op_id>/` as a `FittedValues` for the op's apply phase. The op handle stays unchanged.)*
+- [x] Tests in `tests/plugins/image_classification/test_normalize_stats_from_instance.py` (7 tests): end-to-end eval recipe via `PipelineRunner` (sibling fit_stats persisted, no local fit on eval); byte-identical eval output across repeated runs; cross-recipe parity (imported-stats apply output matches a direct `normalize` apply with sibling-recorded mean/std); three resolver failure modes through the apply path (`SiblingInstanceNotFoundError`, `SiblingOpNotFoundError`, `SiblingStatsIncompatibleError`); mutual-exclusion validator rejects fit_source + stats_from_instance.
+- [x] No version bump (phase-bundled with H.n.3).
+- [x] Verify: 834/834 tests green (827 before H.n.2 + 7 new), ruff + ruff format + mypy clean.
 
 **Out of Scope (H.n.2 specifically)**
 

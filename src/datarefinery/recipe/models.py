@@ -258,6 +258,19 @@ class SplitsSection(_Frozen):
     applies_to: str | None = None
 
 
+class StatsFromInstanceSpec(_Frozen):
+    """FR-TRANS-1 spec for importing fitted statistics from a sibling instance.
+
+    `recipe` is a filesystem path (string) to the sibling recipe YAML; `op_id`
+    names the operation within the sibling whose `fitted_statistics/<op_id>/`
+    directory will be read. Mutually exclusive with `TransformationOp.fit_source`
+    (enforced by validator check 22).
+    """
+
+    recipe: str
+    op_id: str
+
+
 class TransformationOp(_Frozen):
     name: str
     op: str

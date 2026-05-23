@@ -166,6 +166,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
             parameters={
                 "mean": ParameterSpec(type="list[float]", required=False),
                 "std": ParameterSpec(type="list[float]", required=False),
+                "stats_from_instance": ParameterSpec(type="StatsFromInstanceSpec", required=False),
             },
             fit_on_train=True,
             applicable_sections=frozenset({"Transformations"}),

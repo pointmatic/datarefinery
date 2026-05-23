@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""FR-2 recipe validator framework + checks 1-21.
+"""FR-2 recipe validator framework + checks 1-22.
 
 Each enumerated check from features.md becomes a `check_NN_<descriptor>`
 function returning a `CheckResult`. `validate(recipe, plugin)` runs every
@@ -23,6 +23,7 @@ from datarefinery.recipe.models import (
     FeaturizationOp,
     FilterOp,
     Recipe,
+    StatsFromInstanceSpec,
     TransformationOp,
 )
 
@@ -191,6 +192,10 @@ def check_06_fit_on_train_uses_train_split(recipe: Recipe, plugin: Plugin) -> Ch
         spec = plugin.supported_operations.get(op.op)
         if spec is None:
             # Unknown operation — surfaced by check 18 in B.e.3.
+            continue
+        # `stats_from_instance` imports statistics from a sibling instance and
+        # skips the local fit entirely (check 22 enforces fit_source is unset).
+        if "stats_from_instance" in op.params:
             continue
         if spec.fit_on_train and op.fit_source != "train":
             issues.append(
@@ -948,6 +953,51 @@ def check_21_unlabeled_consistency(recipe: Recipe, plugin: Plugin) -> CheckResul
     )
 
 
+def check_22_stats_from_instance_mutually_exclusive_with_fit_source(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    """FR-TRANS-1: `stats_from_instance` and `fit_source` are mutually exclusive.
+
+    On a fit-on-train transformation, exactly one of the two must be set:
+    `fit_source` (local fit) or `stats_from_instance` (import from sibling
+    instance). Declaring both is contradictory; declaring neither leaves
+    the apply path without statistics. The `stats_from_instance` value is
+    additionally parsed against `StatsFromInstanceSpec` so a misshapen
+    spec surfaces here rather than at materialize time.
+    """
+    del plugin
+    descriptor = "stats_from_instance_mutually_exclusive_with_fit_source"
+    issues: list[str] = []
+    for op in recipe.Transformations:
+        raw = op.params.get("stats_from_instance")
+        if raw is None:
+            continue
+        if op.fit_source is not None:
+            issues.append(
+                f"Transformations[{op.name!r}]: declares both 'fit_source' and "
+                f"'stats_from_instance' (mutually exclusive — pick one)"
+            )
+        if not isinstance(raw, dict):
+            issues.append(
+                f"Transformations[{op.name!r}].params['stats_from_instance']: "
+                f"must be a mapping with 'recipe' and 'op_id' (got {type(raw).__name__})"
+            )
+            continue
+        try:
+            StatsFromInstanceSpec.model_validate(raw)
+        except Exception as exc:
+            issues.append(f"Transformations[{op.name!r}].params['stats_from_instance']: {exc}")
+    if not issues:
+        return _passed(22, descriptor)
+    return CheckResult(
+        check_id=22,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1017,6 +1067,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         21,
         "unlabeled_consistency",
         check_21_unlabeled_consistency,
+    ),
+    (
+        22,
+        "stats_from_instance_mutually_exclusive_with_fit_source",
+        check_22_stats_from_instance_mutually_exclusive_with_fit_source,
     ),
 )
 

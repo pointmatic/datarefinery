@@ -25,16 +25,19 @@ declared split.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 import pyarrow as pa
 
+from datarefinery.cache.sibling_stats import resolve_sibling_stats
 from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.plugins.base import Plugin
-from datarefinery.recipe.models import TransformationOp
+from datarefinery.recipe.models import StatsFromInstanceSpec, TransformationOp
 
 Record = Mapping[str, Any]
 
@@ -87,12 +90,18 @@ def apply_transformations(
     plugin: Plugin,
     fitted_stats: FittedStatistics,
     label_field: str | None = None,
+    cache_root: Path | None = None,
 ) -> TransformationsResult:
     """Run every declared transformation, fitting and persisting as needed.
 
     For each op, fit on ``fit_source`` (if any) before applying to the
     declared splits. The same fitted values are used across every split
     in ``op.splits`` to honor FR-10 #2.
+
+    When an op declares ``stats_from_instance`` in its params, the fit
+    phase is skipped: fitted statistics are imported from a sibling
+    instance under ``cache_root`` via
+    :func:`datarefinery.cache.sibling_stats.resolve_sibling_stats`.
     """
     out: dict[str, list[Record]] = {name: list(recs) for name, recs in splits.items()}
     fitted_op_ids: list[str] = []
@@ -106,7 +115,20 @@ def apply_transformations(
         handle: TransformationOpHandle = plugin.operation_factory("Transformations", op.op)
 
         fitted = FittedValues()
-        if spec.fit_on_train:
+        sib_raw = op.params.get("stats_from_instance")
+        if sib_raw is not None:
+            if cache_root is None:
+                raise MaterializeError(
+                    f"Transformations[{op.name!r}] declares 'stats_from_instance' "
+                    f"but no cache_root was provided to apply_transformations"
+                )
+            sib_spec = StatsFromInstanceSpec.model_validate(sib_raw)
+            fitted = _load_sibling_fitted(
+                op_name=op.name,
+                cache_root=cache_root,
+                spec=sib_spec,
+            )
+        elif spec.fit_on_train:
             if op.fit_source is None:
                 raise MaterializeError(
                     f"Transformations[{op.name!r}] is fit-on-train but no "
@@ -143,3 +165,47 @@ def _persist(fitted_stats: FittedStatistics, op_id: str, fitted: FittedValues) -
         fitted_stats.put_scalar(op_id, name, value)
     for name, table in fitted.vectors.items():
         fitted_stats.put_vector(op_id, name, table)
+
+
+def _load_sibling_fitted(
+    *,
+    op_name: str,
+    cache_root: Path,
+    spec: StatsFromInstanceSpec,
+) -> FittedValues:
+    """Resolve sibling fitted stats and materialize as ``FittedValues``.
+
+    All vectors and scalars under the sibling's ``fitted_statistics/<op_id>/``
+    directory are read in. The op-specific apply path picks the names it
+    needs (e.g. ``normalize`` reads ``mean`` and ``std``); names it does
+    not expect are ignored.
+    """
+    sibling_stats = resolve_sibling_stats(
+        cache_root=cache_root,
+        recipe_path=Path(spec.recipe),
+        op_id=spec.op_id,
+    )
+    op_dir = sibling_stats.root / spec.op_id
+
+    vectors: dict[str, pa.Table] = {}
+    for parquet_path in sorted(op_dir.glob("*.parquet")):
+        vectors[parquet_path.stem] = sibling_stats.get_vector(spec.op_id, parquet_path.stem)
+
+    scalars: dict[str, float | int | str | bool] = {}
+    scalars_json = op_dir / "scalars.json"
+    if scalars_json.is_file():
+        raw = json.loads(scalars_json.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise MaterializeError(
+                f"Transformations[{op_name!r}]: sibling scalars.json for op "
+                f"{spec.op_id!r} is not a JSON object"
+            )
+        for name, value in raw.items():
+            if not isinstance(value, (float, int, str, bool)):
+                raise MaterializeError(
+                    f"Transformations[{op_name!r}]: sibling scalar {name!r} for "
+                    f"op {spec.op_id!r} has non-scalar type {type(value).__name__}"
+                )
+            scalars[name] = value
+
+    return FittedValues(scalars=scalars, vectors=vectors)
