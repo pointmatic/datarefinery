@@ -1053,6 +1053,34 @@ No version bump (bundled in H.s).
 - A "preserve original" tag for aggressive records — currently aggressive replaces originals. If needed, separate story.
 - ModelFoundry consumption tests — H.s.
 
+### Story H.r.3: CI bugfix — mypy on `tests/` catches `Sequence` invariance + stale `type: ignore` comments [Done]
+
+Bugfix story documenting a CI failure caught after the H.r.2 approval gate. The CI pipeline runs `mypy src tests` (both directories); local verification during H.q, H.r, H.r.1, and H.r.2 was running only `pyve testenv run mypy src/`, which missed type errors at the call sites of `pipeline.stages.augmentations.realize_aggressive_split` across the new aggressive-mode test files.
+
+Two distinct issues, both surfaced as 38 mypy errors in the CI log:
+
+1. **List invariance (33 errors).** `realize_aggressive_split(records: list[Mapping[str, Any]], ...)` could not accept the `list[dict[str, Any]]` values built by every aggressive-mode test fixture. `list` is invariant in mypy, so `list[dict] ≠ list[Mapping]`. Fixed at the single signature point by widening `records` to `Sequence[Mapping[str, Any]]` (covariant), which accepts both `list[dict]` and `list[Mapping]` callers without per-test casts.
+2. **Unused `# type: ignore[arg-type]` comments (5 errors).** Five tests across `test_augmentation_op_model.py`, `test_augmentations_random_crop.py`, and `test_augmentations_color_jitter.py` carried bypasses that became unnecessary once the pydantic Literal narrowing was correctly typed. Mypy now reports them as `[unused-ignore]`.
+
+This is a CI/test-tooling bugfix only. Production code behavior is unchanged: `Sequence[Record]` is a strictly wider input contract than `list[Record]`, and removing unused bypass comments is a no-op.
+
+No version bump (bundled in H.s).
+
+**Tasks:**
+
+- [x] In `src/datarefinery/pipeline/stages/augmentations.py`: import `Sequence` from `collections.abc`; change `realize_aggressive_split`'s `records` parameter from `list[Record]` to `Sequence[Record]`. No behavior change.
+- [x] In `tests/recipe/test_augmentation_op_model.py:99`: drop the stale `# type: ignore[arg-type]` after `_op(materialization="ultra")`.
+- [x] In `tests/plugins/image_classification/test_augmentations_random_crop.py:73, 78`: drop the stale `# type: ignore[arg-type]` on the unknown-padding-mode and parametrized-padding-mode `RandomCropParams` constructions.
+- [x] In `tests/plugins/image_classification/test_augmentations_color_jitter.py:54, 60`: drop the stale `# type: ignore[arg-type]` on the parametrized BCS-bounds `ColorJitterParams` constructions.
+- [x] Verify: `pyve testenv run mypy src tests` clean (165 source files); `pyve test` 961 passed; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
+
+**Process note** (documented for future cycles): local verification in this mode must mirror CI exactly. CI runs `mypy src tests`; local should run the same, not `mypy src/` alone. The list-invariance class of error only surfaces at call sites and is missed by source-only mypy.
+
+**Out of Scope**
+
+- Lifting the `Sequence` widening elsewhere in the stages or pipeline modules. Apply this case-by-case as similar patterns surface; not a wholesale refactor.
+- Re-evaluating which other `# type: ignore[...]` comments across the repo might be stale. Out of scope.
+
 ### Story H.s: v0.15.0 AUG release — ModelFoundry dependency spec + cross-cutting docs sweep + release [Planned]
 
 Release story for the AUG bundle. Three deliverables: (a) create `docs/specs/modelfoundry/dependency-spec.md` (the cross-repo contract document ModelFoundry consumers bind against); (b) cross-cutting docs sweep across `features.md`, `tech-spec.md`, `README.md` for drift accumulated during H.p–H.r; (c) CHANGELOG, version bump to v0.15.0, Future-section cleanup.

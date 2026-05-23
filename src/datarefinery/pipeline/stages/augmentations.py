@@ -28,7 +28,7 @@ ModelFoundry might honor on val/test.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -129,7 +129,7 @@ def collect_augmentation_policies(
 
 
 def realize_aggressive_split(
-    records: list[Record],
+    records: Sequence[Record],
     augmentation_ops: list[AugmentationOp],
     *,
     global_seed: int,

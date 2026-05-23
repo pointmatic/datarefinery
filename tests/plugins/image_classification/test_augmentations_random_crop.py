@@ -70,12 +70,12 @@ def test_random_crop_params_rejects_negative_padding() -> None:
 
 def test_random_crop_params_rejects_unknown_padding_mode() -> None:
     with pytest.raises(ValidationError):
-        RandomCropParams(size=32, padding=1, padding_mode="zebra")  # type: ignore[arg-type]
+        RandomCropParams(size=32, padding=1, padding_mode="zebra")
 
 
 def test_random_crop_params_accepts_each_padding_mode() -> None:
     for mode in ("reflect", "replicate", "zero", "constant"):
-        p = RandomCropParams(size=4, padding=1, padding_mode=mode)  # type: ignore[arg-type]
+        p = RandomCropParams(size=4, padding=1, padding_mode=mode)
         assert p.padding_mode == mode
 
 

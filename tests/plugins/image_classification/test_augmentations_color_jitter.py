@@ -51,13 +51,13 @@ def test_color_jitter_params_accepts_bcs_at_bounds() -> None:
 @pytest.mark.parametrize("field", ["brightness", "contrast", "saturation"])
 def test_color_jitter_params_rejects_bcs_negative(field: str) -> None:
     with pytest.raises(ValidationError):
-        ColorJitterParams(**{field: -0.1})  # type: ignore[arg-type]
+        ColorJitterParams(**{field: -0.1})
 
 
 @pytest.mark.parametrize("field", ["brightness", "contrast", "saturation"])
 def test_color_jitter_params_rejects_bcs_above_one(field: str) -> None:
     with pytest.raises(ValidationError):
-        ColorJitterParams(**{field: 1.1})  # type: ignore[arg-type]
+        ColorJitterParams(**{field: 1.1})
 
 
 def test_color_jitter_params_rejects_hue_negative() -> None:

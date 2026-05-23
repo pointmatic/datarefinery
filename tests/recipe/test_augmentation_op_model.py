@@ -96,7 +96,7 @@ def test_aggressive_with_expansion_gt_one_accepted_high() -> None:
 
 def test_unknown_materialization_rejected() -> None:
     with pytest.raises(ValidationError):
-        _op(materialization="ultra")  # type: ignore[arg-type]
+        _op(materialization="ultra")
 
 
 # ---------------------------------------------------------------------------
