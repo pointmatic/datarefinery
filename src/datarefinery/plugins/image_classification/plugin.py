@@ -66,6 +66,9 @@ from datarefinery.plugins.image_classification.operations.visualizations import 
 from datarefinery.plugins.image_classification.visualizations.augmented_sample_grid import (
     AugmentedSampleGridOp,
 )
+from datarefinery.plugins.image_classification.visualizations.corruption_severity_grid import (
+    CorruptionSeverityGridOp,
+)
 from datarefinery.plugins.image_classification.visualizations.pixel_distribution import (
     PixelDistributionOp,
 )
@@ -107,6 +110,7 @@ _VISUALIZATION_OPS: dict[str, Operation] = {
     "mean_image_per_class": MeanImagePerClassOp(),
     "pixel_distribution": PixelDistributionOp(),
     "augmented_sample_grid": AugmentedSampleGridOp(realizers=_AUGMENTATION_REALIZERS),
+    "corruption_severity_grid": CorruptionSeverityGridOp(),
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -292,6 +296,14 @@ def _supported_operations() -> dict[str, OperationSpec]:
                 "n_base": ParameterSpec(type="int", required=True),
                 "n_variants": ParameterSpec(type="int", required=True),
                 "seed": ParameterSpec(type="int", required=False),
+            },
+            applicable_sections=frozenset({"Visualizations"}),
+        ),
+        "corruption_severity_grid": OperationSpec(
+            parameters={
+                "n_images": ParameterSpec(type="int", required=True),
+                "corruption_types": ParameterSpec(type="list[str]", required=True),
+                "severities": ParameterSpec(type="list[int]", required=True),
             },
             applicable_sections=frozenset({"Visualizations"}),
         ),

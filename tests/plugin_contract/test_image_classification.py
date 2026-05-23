@@ -39,6 +39,7 @@ EXPECTED_OPERATIONS = frozenset(
         "mean_image_per_class",
         "pixel_distribution",
         "augmented_sample_grid",
+        "corruption_severity_grid",
     }
 )
 

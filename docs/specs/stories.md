@@ -1195,7 +1195,7 @@ No version bump (bundled in H.x).
 - Variant-by-variant exploration UI. The grid is a snapshot.
 - Cross-op grids (e.g., `random_crop` and `color_jitter` chained on the same record). Each op gets its own grid; chained-augmentation visualization is a Future enhancement.
 
-### Story H.v: FR-VIZ-3 `corruption_severity_grid` [Planned]
+### Story H.v: FR-VIZ-3 `corruption_severity_grid` [Done]
 
 A K-corruption × L-severity grid showing the same set of base images under each (corruption, severity) combination. See FR-VIZ-3 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
@@ -1205,18 +1205,27 @@ Depends on the `[corruptions]` extras shipped in H.m. Uses the same lazy-import 
 
 No version bump (bundled in H.x).
 
+**Design notes** (agreed at gate before implementation):
+
+1. **Self-contained params** (not `recipe.Generation`-derived). `corruption_types` / `severities` / `n_images` come from the viz's own params, allowing the viz to render even for recipes that don't declare an `imagecorruptions_apply` op.
+2. **Single PNG return** (bytes), not the H.t multi-PNG protocol. Persisted as `<op.name>.png`.
+3. **Sampling from `splits["train"]`**, fixed (not a param). Train is the highest-cardinality, most-informative split for reporting; making it a param invites accidental low-quality renders against `val`/`test`.
+4. **Filename uses `<op.name>.png`** (e.g. `corr_grid.png`) preserving the FR-15 cross-repo contract. The story's `corruption_severity_grid.png` literal is taken as user-facing shorthand; the actual filename comes from `VisualizationOp.name`.
+5. **Deferred extras guard inside `render(...)`**, not at module import. Plugin loads fine without `[corruptions]`; failure surfaces only when the viz actually runs, matching the H.m.2 `imagecorruptions_apply` pattern. Recipe-time param validation works against the in-tree `CORRUPTION_NAMES_ALL` vocabulary without extras.
+6. **Per-(corruption, severity) RNG** seeded via SHA-256 of `"{corruption}|{severity}"`, not Python `hash()` (which randomizes strings per process and would break the FR-4 byte-determinism contract).
+
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/corruption_severity_grid.py` with Apache-2.0 header. Module-level guard raises `ImportError` with install-pointer (`pip install 'ml-datarefinery[corruptions]'`) when `cv2` or `imagecorruptions` is missing.
-- [ ] Pydantic `CorruptionSeverityGridParams`: `n_images: int` (positive), `corruption_types: list[str]` (non-empty), `severities: list[int]` (each in 1..5).
-- [ ] Implement: select `n_images` base records; apply each `(corruption_type, severity)` combination; render as `len(corruption_types)` × `len(severities)` grid. Output: `corruption_severity_grid.png`.
-- [ ] Recipe-validation hook: when extras importable, validate `corruption_types` against `imagecorruptions.get_corruption_names()`; defer with clear error at materialize time when extras absent.
-- [ ] Register op.
-- [ ] Tests with `pytest.importorskip("cv2", reason="...")` per the H.n.4 pattern: render with 2 corruptions × 3 severities × 4 images; verify grid layout.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-13: list this op; note `[corruptions]` extras requirement.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `corruption_severity_grid.py`.
-- [ ] Verify.
+- [x] Create `src/datarefinery/plugins/image_classification/visualizations/corruption_severity_grid.py` with Apache-2.0 header. Deferred guard (inside `render`) raises `ImportError` with install-pointer (`pip install 'ml-datarefinery[corruptions]'`) when `cv2` / vendored `_corruptions` is missing (Design note 5).
+- [x] Pydantic `CorruptionSeverityGridParams`: `n_images: int` (positive), `corruption_types: list[str]` (non-empty, vocabulary-checked, no duplicates), `severities: list[int]` (non-empty, each in 1..5).
+- [x] Implement: select `n_images` base records from `splits["train"]`; apply each `(corruption_type, severity)` combination via the lazy-loaded backend; render as `len(corruption_types) x len(severities)` matplotlib subplot grid, each subplot tiling the `n_images` corrupted records horizontally. Single PNG return; persisted as `<op.name>.png` (Design note 4).
+- [x] Recipe-validation hook: `corruption_types` validated against `_corruption_names.CORRUPTION_NAMES_ALL` in `CorruptionSeverityGridParams.model_validator` — works without the extras. Backend availability deferred to materialize-time (Design note 5).
+- [x] Register op (plugin `_VISUALIZATION_OPS` + `_supported_operations` + the contract test's `EXPECTED_OPERATIONS`).
+- [x] Tests with `pytest.importorskip("cv2", reason=...)` per the H.n.4 pattern: 14 tests covering params validation (positive n_images, non-empty corruption_types, unknown-name rejection, severity-range rejection, duplicate rejection, valid input), figure-shape helper, single-PNG return, train-too-small error, friendly-import-error mock, plugin registration, pipeline-stage end-to-end, determinism.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-13: list this op with params + `[corruptions]` extras requirement + friendly-error edge case.
+  - [x] `docs/specs/tech-spec.md` § Package Structure: add `corruption_severity_grid.py`.
+- [x] Verify.
 
 **Out of Scope**
 
