@@ -485,6 +485,7 @@ Render standard or bespoke views over any pipeline stage.
 - `pixel_distribution` (FR-VIZ-1) — per-channel R/G/B pixel-value histograms for each requested split, rendered as a 1×3 matplotlib figure. Params: `bins: int = 64`, `splits: list[str]` (required, non-empty). Returns one PNG per requested split; persisted as `<op.name>_<split>.png`.
 - `augmented_sample_grid` (FR-VIZ-2) — for each declared `AugmentationOp`, an `n_base × n_variants` grid showing the policy applied to a deterministic train-split sample. Mode-aware: aggressive ops group the materialized train split by `source_record_id` + `variant_index`; lazy ops realize variants inline via the plugin's realizer registry, seeded by `per_record_variant_seed(recipe.seed ^ (viz.seed or 0), record, vi, op_id=aug.name)`. Params: `n_base: int` (>0, required), `n_variants: int` (>0, required), `seed: int | None = None`. Returns one PNG per declared augmentation op; persisted as `<op.name>_<aug.name>.png`. Empty mapping (no PNGs written) when the recipe declares no augmentations.
 - `corruption_severity_grid` (FR-VIZ-3) — a single `K-corruption × L-severity` figure. Each subplot tiles the same `n_images` train-split records side-by-side under that `(corruption_type, severity)` combination. Self-contained: the op's params declare the corruption universe, not `recipe.Generation`. Params: `n_images: int` (>0, required), `corruption_types: list[str]` (non-empty, vocabulary checked against `_corruption_names.CORRUPTION_NAMES_ALL`, no duplicates, required), `severities: list[int]` (non-empty, each in `1..5`, required). Returns single PNG `bytes`; persisted as `<op.name>.png`. Requires the `[corruptions]` extras at materialize time; the plugin remains importable without them (lazy-import inside `render(...)` raises a friendly `ImportError` with the install pointer when missing).
+- `severity_ladder` (FR-VIZ-4) — single-corruption complement to `corruption_severity_grid`: renders `n_examples` train-split records across all five severities of one `corruption_type`, arranged as `n_examples × 5`. Params: `n_examples: int` (>0, required), `corruption_type: str` (non-empty, vocabulary-checked against `CORRUPTION_NAMES_ALL`, required). Single PNG `bytes`; persisted as `<op.name>.png`. Same `[corruptions]`-extras-required and deferred-extras-guard model as `corruption_severity_grid`.
 
 **Edge Cases:**
 - Visualization without an output mode -> caught by `validate` (check 11).
@@ -495,6 +496,8 @@ Render standard or bespoke views over any pipeline stage.
 - `augmented_sample_grid` against a train split smaller than `n_base` (or aggressive groups smaller than `n_variants`) -> hard error during materialization.
 - `corruption_severity_grid` against a train split smaller than `n_images` -> hard error during materialization.
 - `corruption_severity_grid` invoked without the `[corruptions]` extras -> `ImportError` with the `pip install 'ml-datarefinery[corruptions]'` pointer.
+- `severity_ladder` against a train split smaller than `n_examples` -> hard error during materialization.
+- `severity_ladder` invoked without the `[corruptions]` extras -> same friendly `ImportError`.
 
 ### FR-14: Variants
 

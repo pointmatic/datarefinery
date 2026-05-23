@@ -1232,7 +1232,7 @@ No version bump (bundled in H.x).
 - `severity_ladder` (H.w).
 - Combined grids spanning multiple base images and multiple corruption types as a single tiled figure.
 
-### Story H.w: FR-VIZ-4 `severity_ladder` [Planned]
+### Story H.w: FR-VIZ-4 `severity_ladder` [Done]
 
 `n_examples` example images, each rendered at every severity of a single corruption type, arranged as a ladder (one row per image, one column per severity). See FR-VIZ-4 in [phase-h-datarefinery-feature-recommendation.md](phase-h-datarefinery-feature-recommendation.md).
 
@@ -1242,18 +1242,27 @@ Depends on the `[corruptions]` extras (same as H.v).
 
 No version bump (bundled in H.x).
 
+**Design notes** (agreed at gate; inherit H.v conventions except where noted):
+
+1. **Self-contained params** (not `recipe.Generation`-derived). Same rationale as H.v.
+2. **All five severities, fixed.** No `severities` param — the ladder is by definition `1..5` for the chosen corruption.
+3. **Sampling from `splits["train"]`,** fixed (not a param). Same as H.v.
+4. **Filename `<op.name>.png`** (single PNG, bytes return), preserving the FR-15 cross-repo contract. The story's `severity_ladder_<corruption_type>.png` is shorthand; actual filename is `VisualizationOp.name`-driven.
+5. **Deferred extras guard inside `render(...)`** + recipe-time vocabulary validation via `CORRUPTION_NAMES_ALL`. Identical to H.v.
+6. **Per-severity RNG seeded via `sha256(f"{corruption_type}|{severity}")`** — identical to H.v's seeds. A `severity_ladder` and a `corruption_severity_grid` declared in the same recipe against the same corruption will therefore produce byte-identical noise samples at each severity — intentional cross-viz consistency.
+
 **Tasks:**
 
-- [ ] Create `src/datarefinery/plugins/image_classification/visualizations/severity_ladder.py` with Apache-2.0 header. Same extras-guard pattern as H.v.
-- [ ] Pydantic `SeverityLadderParams`: `n_examples: int` (positive), `corruption_type: str` (non-empty).
-- [ ] Implement: select `n_examples` base records; apply `corruption_type` at all 5 severities to each; render as `n_examples` rows × 5 columns. Output: `severity_ladder_<corruption_type>.png`.
-- [ ] Recipe-validation: validate `corruption_type` against the H-D vocabulary when extras installed; defer with clear error otherwise.
-- [ ] Register op.
-- [ ] Tests with `pytest.importorskip("cv2", reason="...")`: render with 4 example images × 5 severities of `gaussian_noise`.
-- [ ] Scoped doc updates:
-  - [ ] `docs/specs/features.md` § FR-13: list this op; note `[corruptions]` extras requirement.
-  - [ ] `docs/specs/tech-spec.md` § Package Structure: add `severity_ladder.py`.
-- [ ] Verify.
+- [x] Create `src/datarefinery/plugins/image_classification/visualizations/severity_ladder.py` with Apache-2.0 header. Same deferred extras-guard pattern as H.v.
+- [x] Pydantic `SeverityLadderParams`: `n_examples: int` (positive), `corruption_type: str` (non-empty, vocabulary-checked).
+- [x] Implement: select `n_examples` base records from `splits["train"]`; apply `corruption_type` at severities `1..5` to each; render as `n_examples` rows x 5 columns matplotlib subplot grid. Single PNG return; persisted as `<op.name>.png` (Design note 4).
+- [x] Recipe-validation: `corruption_type` validated against `_corruption_names.CORRUPTION_NAMES_ALL` in `SeverityLadderParams.model_validator` — works without the extras. Backend availability deferred to materialize-time.
+- [x] Register op (plugin `_VISUALIZATION_OPS` + `_supported_operations` + the contract test's `EXPECTED_OPERATIONS`).
+- [x] Tests with `pytest.importorskip("cv2", reason=...)`: 12 tests covering params validation (positive n_examples, non-empty corruption_type, unknown-name rejection, valid input), figure-shape helper, single-PNG return, train-too-small error, friendly-import-error mock, plugin registration, pipeline-stage end-to-end, determinism.
+- [x] Scoped doc updates:
+  - [x] `docs/specs/features.md` § FR-13: list this op with params + `[corruptions]` extras requirement + edge cases.
+  - [x] `docs/specs/tech-spec.md` § Package Structure: add `severity_ladder.py`.
+- [x] Verify.
 
 **Out of Scope**
 

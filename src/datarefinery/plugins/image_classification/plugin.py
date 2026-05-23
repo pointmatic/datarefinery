@@ -72,6 +72,9 @@ from datarefinery.plugins.image_classification.visualizations.corruption_severit
 from datarefinery.plugins.image_classification.visualizations.pixel_distribution import (
     PixelDistributionOp,
 )
+from datarefinery.plugins.image_classification.visualizations.severity_ladder import (
+    SeverityLadderOp,
+)
 
 _FILTER_OPS: dict[str, Operation] = {
     "filter_by_label": filter_by_label,
@@ -111,6 +114,7 @@ _VISUALIZATION_OPS: dict[str, Operation] = {
     "pixel_distribution": PixelDistributionOp(),
     "augmented_sample_grid": AugmentedSampleGridOp(realizers=_AUGMENTATION_REALIZERS),
     "corruption_severity_grid": CorruptionSeverityGridOp(),
+    "severity_ladder": SeverityLadderOp(),
 }
 
 SUPPORTED_SECTIONS = frozenset(
@@ -304,6 +308,13 @@ def _supported_operations() -> dict[str, OperationSpec]:
                 "n_images": ParameterSpec(type="int", required=True),
                 "corruption_types": ParameterSpec(type="list[str]", required=True),
                 "severities": ParameterSpec(type="list[int]", required=True),
+            },
+            applicable_sections=frozenset({"Visualizations"}),
+        ),
+        "severity_ladder": OperationSpec(
+            parameters={
+                "n_examples": ParameterSpec(type="int", required=True),
+                "corruption_type": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Visualizations"}),
         ),

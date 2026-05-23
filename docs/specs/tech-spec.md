@@ -164,6 +164,7 @@ src/datarefinery/
         pixel_distribution.py       # FR-VIZ-1 `pixel_distribution` op + PixelDistributionParams (Story H.t)
         augmented_sample_grid.py    # FR-VIZ-2 `augmented_sample_grid` op + AugmentedSampleGridParams (Story H.u)
         corruption_severity_grid.py # FR-VIZ-3 `corruption_severity_grid` op + CorruptionSeverityGridParams (Story H.v); lazy-imports [corruptions] backend
+        severity_ladder.py          # FR-VIZ-4 `severity_ladder` op + SeverityLadderParams (Story H.w); single-corruption complement to FR-VIZ-3
     tabular/
       __init__.py
       plugin.py              # stub: section list + operation outline only
