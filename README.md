@@ -161,7 +161,7 @@ my-dataset/
     img_001.png
     img_002.png
     ...
-  labels.csv         # filename,class
+  labels.csv         # id,class
 ```
 
 ```yaml
@@ -173,15 +173,15 @@ Input:
       label_from:
         path: ./my-dataset/labels.csv
         join: by_id
-        id_field: filename
-        label_field: class
+        id_field: id
+        label_field: label
 Labels:
   field: label
   source: { kind: direct }
 ```
 
 The loader joins each image's filename stem against the manifest's
-`filename` column and writes the matching `class` value into the
+`id` column and writes the matching `label` value into the
 record's `label` field at load time. `validate` enforces the join
 (check 19): missing ids, duplicate ids, and column-name typos are
 caught before `materialize` runs. See `docs/guides/recipe-authoring.md`
