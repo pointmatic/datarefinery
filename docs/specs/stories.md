@@ -26,9 +26,22 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
-## Phase I: Bug Fixes and Feature Gaps in v0.16.0
+## Phase I: Recipe-focused Bug Fixes and Feature Gaps in v0.16.0
 
-Phase I collects investigation and fix work surfaced by the consumer's cross-check against DataRefinery v0.16.0 (see [`docs/specs/dependency-gaps-v0.16.0.md`](dependency-gaps-v0.16.0.md), entries G1–G17 + DOC). Each gap entered Phase I as a candidate bug; debug-mode investigation determines whether each is a defect (closes here with a code fix) or a feature/architectural gap (a `[Planned]` story is captured here and handed off to `plan_phase` when the developer scopes the work).
+Phase I collects investigation and fix work surfaced by the consumer's cross-check against DataRefinery v0.16.0 (see [`docs/specs/dependency-gaps-v0.16.0.md`](dependency-gaps-v0.16.0.md), entries G1–G19 + DOC; G18 and G19 were captured after the initial gap doc was written) together with the intermediate-artifact persistence feature ("Sinks") scoped in [`docs/specs/phase-i-intermediate-artifact-persistence-spec.md`](phase-i-intermediate-artifact-persistence-spec.md) (closes the G18 surface symptom by making bit-identical stage-snapshot export structural). Each gap entered Phase I as a candidate bug; debug-mode investigation determines whether each is a defect (closes here with a code fix) or a feature/architectural gap (a `[Planned]` story is captured here and handed off to `plan_phase` when the developer scopes the work).
+
+Stories I.a–I.c (`[Done]`) closed three gaps in v0.16.0–v0.16.2. The remaining open items land as stories I.d–I.y across four release bundles. The Sinks bundle is highest priority and ships first:
+
+- **Bundle 1 (v0.17.0 minor, Sinks):** I.d, I.e, I.f, release I.g. Scoped in [`phase-i-intermediate-artifact-persistence-spec.md`](phase-i-intermediate-artifact-persistence-spec.md).
+- **Bundle 2 (v0.17.1 patch):** I.h, I.i, release I.j. Scoped in [`phase-i-recipe-focused-bug-fixes-plan.md`](phase-i-recipe-focused-bug-fixes-plan.md).
+- **Bundle 3 (v0.18.0 minor):** I.k–I.v, release I.w. Scoped in [`phase-i-recipe-focused-bug-fixes-plan.md`](phase-i-recipe-focused-bug-fixes-plan.md).
+- **Bundle 4 (v0.19.0 minor, schema_version 1→2):** I.x.1–I.x.3, release I.y. Scoped in [`phase-i-recipe-focused-bug-fixes-plan.md`](phase-i-recipe-focused-bug-fixes-plan.md).
+
+Story ID position in this file follows historical order of authoring (I.d–I.g appear after I.y even though they ship first). Release order is governed by the bundle list above, not by ID position.
+
+Within a bundle, work stories carry no version in their title; a dedicated release-ceremony story owns the version bump and the CHANGELOG entry.
+
+**Phase I story conventions.** Every Phase I story includes, in addition to its core code change: (a) `recipe-authoring.md` update per the DOC rule in [`dependency-gaps-v0.16.0.md` § DOC](dependency-gaps-v0.16.0.md); (b) gap-doc update (status block, priority summary, workarounds table); (c) cross-repo coordination check against [`docs/specs/modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md) per [`project-essentials.md` § "Recipe / manifest / report shape changes need a cross-repo coordination check"](project-essentials.md); (d) CI parity verification (`pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`). These are not re-enumerated in every story's task list below.
 
 ### Story I.a: G5 investigation — reclassify as G7 (no code fix) [Done]
 
@@ -40,7 +53,7 @@ Three candidate code fixes were considered and rejected:
 
 1. **Convert `TypeError` → actionable `RecipeError` at the viz layer.** Error-message quality only; the recipe still cannot use the viz post-normalize. Pure polish.
 2. **Make realizers float-tolerant.** Suppresses the crash, but the viz's `_tile` clip-casts z-score values ~[-2, 2] to uint8 [0, 255], producing mostly-black tiles. Silently wrong is worse than crashing.
-3. **Stage-aware viz dispatch (= G7).** The honest fix; out of scope for a debug cycle, captured as Story I.d below.
+3. **Stage-aware viz dispatch (= G7).** The honest fix; out of scope for a debug cycle, captured as Story I.h below.
 
 This story produces no code change. Its deliverable is the reclassification in the gap doc and the planned-story handoff to G7.
 
@@ -51,7 +64,7 @@ This story produces no code change. Its deliverable is the reclassification in t
 - [x] Document the investigation outcome in [`docs/specs/dependency-gaps-v0.16.0.md` § G5](dependency-gaps-v0.16.0.md): status block, severity reclassified to "Subsumed by G7," fix path "implement G7."
 - [x] Update the dependency-gaps priority summary table: G5 row severity → "Subsumed by G7."
 - [x] Update the dependency-gaps recipe-side workarounds table: G5 row → "(No G5-only recipe edit; when G7 lands, restore the viz with `stage: pre_transformations`)."
-- [x] Capture Story I.d in this file for G7 — the genuine fix path.
+- [x] Capture Story I.h in this file for G7 — the genuine fix path.
 
 **Prevention scan (no code changes needed for I.a, but captured for the G7 implementer):**
 
@@ -60,7 +73,7 @@ This story produces no code change. Its deliverable is the reclassification in t
 
 **Out of Scope**
 
-- Implementing G7 itself. That's Story I.d.
+- Implementing G7 itself. That's Story I.h.
 - Implementing options 1 or 2 above as a polish-only intermediate fix. Both were rejected during investigation; shipping polish doesn't move the consumer closer to the working viz they want.
 - Reclassifying other G entries (G6, G8, etc.) in the same pass. Each gets its own debug cycle.
 
@@ -148,42 +161,526 @@ The new check (number 23 of the FR-2 set) computes the loader-stamped field set 
 - Backporting the same shift-left pattern for the Augmentation-output / Transformation-output collision cases. The Augmentation contract is "in-place rewrite of `image`" (no new fields), and Transformations have a similar in-place semantic, so there's no symmetric collision class to shift left. Leave them as they are.
 - Renaming any of the loader-stamped fields. Out of scope and would be a breaking change requiring a `schema_version` bump.
 
-### Story I.d: G7 — Stage-aware visualization dispatch [Planned]
+---
 
-**Disposition: planned, not started.** Awaiting `plan_phase` scope or developer assignment. Captured here so the architectural commitment is recorded in the project's source of truth (`stories.md`), not just in the gap doc.
+### Story I.d: Sinks — schema, validator, materialize-time `png_per_record` writer [Done]
 
-Per [`dependency-gaps-v0.16.0.md` § G7](dependency-gaps-v0.16.0.md): all reporting-mode visualizations today run at `post_pipeline` only. The `VisualizationOp.stage` field is read by the model but not honored by the runtime — `apply_reporting_visualizations` ([`pipeline/stages/visualizations.py:97`](../../src/datarefinery/pipeline/stages/visualizations.py)) receives only the final post-pipeline splits. The bundled scaffolder writes `stage: post_pipeline` ([`scaffolder/init.py:193`](../../src/datarefinery/scaffolder/init.py)), confirming the de-facto contract.
+**Disposition: feature addition.** Part of Bundle 1 (v0.17.0 release, Sinks — highest priority).
 
-This story implements stage-aware dispatch: each declared `VisualizationOp.stage` selects which intermediate-stage split snapshot the viz renders against. With it, `augmented_sample_grid` runs at `stage: pre_transformations` and reads uint8 records (resolving G5 as a side effect); `sample_grid` can declare pre/post-normalize variants for the Module 2 learner-facing comparison.
+Per [`phase-i-intermediate-artifact-persistence-spec.md` §§ 3–4](phase-i-intermediate-artifact-persistence-spec.md): introduce a new top-level `Sinks` recipe section that captures stage-snapshot artifacts to disk at materialize time. v1 ships one writer (`png_per_record`) targeting any pipeline stage's record output via a closed `stage` vocabulary. Sinks participate in canonical recipe bytes (cache identity per spec § 4.1) and integrate with the temp-then-promote atomic write contract (FR-5 / spec § 4.2). Closes the G18 surface symptom — bit-identical export of pre-normalize stage outputs becomes structural rather than reachable only via consumer-side re-derivation.
 
-**Why this matters.** Two consumer flows are blocked today:
+**Tasks:**
 
-- G5 (`augmented_sample_grid` post-normalize) — see Story I.a.
-- The consumer phase plan's `sample_grid_pre_normalize` vs. `sample_grid_post_normalize` pedagogical comparison ([`docs/specs/dependency-gaps-v0.16.0.md` § G7](dependency-gaps-v0.16.0.md)).
+- [x] Add `SinkOp` pydantic model to [`recipe/models.py`](../../src/datarefinery/recipe/models.py) with fields per spec § 3.2: `name: str`, `stage: Literal[...]`, `splits: list[str] | None = None`, `field: str`, `format: Literal["png_per_record"]`, `path_template: str`.
+- [x] Add `Sinks: list[SinkOp] = []` to the `Recipe` model. Added to canonical bytes via the existing `to_canonical_bytes(recipe)` algorithm (default `[]` is part of `model_dump(mode="json")`) — pre-prod cache invalidation event; pinned canonical-hash fixture bumped in same change.
+- [x] Add the closed stage-name Literal enum per spec § 3.3 (`SinkStage` in `recipe/models.py`). Public-exported for future G7 (Story I.v) reuse on visualization-stage dispatch.
+- [x] Add validator check 24 (`sinks`) in [`recipe/validator.py`](../../src/datarefinery/recipe/validator.py): name uniqueness; template parseability; path-escape rejection (`..` or absolute); referenced `field` in the recipe's known-field universe (loader-stamped + `Output.record_schema` + Generation outputs + Featurization output fields); `splits` entries match defined splits. Stage / format are constrained by the pydantic `Literal[...]` so the validator delegates those.
+- [x] Implement the path-template grammar in [`pipeline/sinks/template.py`](../../src/datarefinery/pipeline/sinks/template.py): `{field}` / `{field|stem|lower|upper|str}` / `{split}`; `parse_template` for validate-time checks; `render_template` raises `MaterializeError` on missing fields at runtime; `template_escapes_root` for the validator's path-escape check.
+- [x] Implement the `png_per_record` writer in [`pipeline/sinks/writers.py`](../../src/datarefinery/pipeline/sinks/writers.py) using `PIL.Image.fromarray`. Required field shape: uint8 H×W×C (or H×W for grayscale). Non-uint8 / wrong ndim / missing field / non-ndarray each raise `MaterializeError` with an actionable message.
+- [x] Add the sink-execution hook in [`pipeline/sinks/runner.py`](../../src/datarefinery/pipeline/sinks/runner.py) (`execute_sinks(...)`) and wire it into [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py) after each named stage. Output writes under the existing temp dir; atomic temp-then-promote (FR-5) covers sink output for free, satisfying spec § 4.2.
+- [x] Manifest emission per spec § 4.3: new `Manifest.sinks: dict[str, SinkManifestEntry]` field carrying `stage`, `format`, `files_written`, `bytes_total`, `path_template_resolved_root`. Added `SinkCardinalityError` for expected-vs-actual file-count assertion (also covers per-record path collisions).
+- [x] Atomic write integration: sink output participates in the existing temp-then-promote rename. Failure path is exercised in `tests/integration/test_sinks.py::test_atomic_failure_leaves_no_sink_output_under_promoted_path` — pipeline fails, temp dir is flagged FAILED with sink output present, final promoted path never exists.
+- [x] Added `recipe-authoring.md § Sinks` initial subsection ([`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md)): fields, stage vocabulary, path template grammar, the `png_per_record` format, cache-identity / atomicity / manifest notes, and a where-to-place-the-sink tip.
+- [x] **Cross-repo coordination.** Updated [`dependency-spec.md`](modelfoundry/dependency-spec.md) with the `manifest.sinks` field shape (additive; no `schema_version` bump per spec § 7).
+- [x] Updated [`tech-spec.md`](tech-spec.md): added `Sinks: list[SinkOp]` to the `Recipe` model table, the `SinkOp` row in per-section models, the `Manifest.sinks` field, the sink-execution stage hook description, and the recipe sections recap.
+- [x] Unit tests: pydantic model validation (`tests/unit/test_sinks_model.py`); validator checks (`tests/unit/test_sinks_validator.py`); template grammar (`tests/unit/test_sinks_template.py`); writer round-trip vs. `Image.fromarray` baseline (`tests/unit/test_sinks_writers.py`); cache-identity participation (canonical-bytes shift for added sink and `path_template`-only change); sink-runner unit harness with collision / stage-mismatch / split-filter cases (`tests/unit/test_sinks_runner.py`).
+- [x] Integration test mirroring spec § 6: `tests/integration/test_sinks.py` materializes a recipe with `post_Filters` and `post_Generation` `png_per_record` sinks, asserts both file trees + both `manifest.sinks` entries; second test asserts atomicity on injected mid-pipeline failure.
 
-**Design sketch** (per gap doc; final design decided at story-start, not pinned here):
+**Out of Scope:**
 
-The localized option is **stage snapshots**. Each pipeline stage that materially changes records snapshots a reference to its outputs; `apply_reporting_visualizations` receives a `Mapping[str, Mapping[str, list[Record]]]` keyed by stage name then split name; each `VisualizationOp.stage` selects which snapshot. Less invasive than per-stage viz dispatch (which would require every stage to know about viz). `STAGE_NAMES` in [`pipeline/runner.py:96`](../../src/datarefinery/pipeline/runner.py#L96) already enumerates valid stages.
+- The `datarefinery export` verb and per-record-seed persistence — Stories I.e and I.f.
+- Additional formats (`npy_per_record`, `parquet`, `tar`) — deferred to `stories.md § Future` per spec § 8.
+- Cross-record sink formats (e.g., one tar per split) — Future per spec § 8.
+- Conditional sinks (capture-if-predicate) — Future per spec § 8.
+- Sink output validation beyond the cardinality check — Future per spec § 8.
 
-**Tasks (illustrative — refine at story-start):**
+---
 
-- [ ] Constrain `VisualizationOp.stage` from `str` to `Literal[<valid stage names>]` so unknown-stage typos fail at validate time rather than producing silent fall-through behavior. Add a validator check that the named stage produced output records at materialize time (i.e., not bypassed by an empty pipeline branch).
-- [ ] Extend `pipeline/runner.py` to snapshot per-stage split outputs (references, not copies — the records are immutable mappings by construction). Snapshot points: post-Input, post-Filters/pre_split, post-Splits, post-Filters/post_split, post-Transformations, post-Augmentations, post-Featurizations, post-pipeline.
-- [ ] Change `apply_reporting_visualizations` ([`pipeline/stages/visualizations.py`](../../src/datarefinery/pipeline/stages/visualizations.py)) to accept the snapshot mapping; dispatch each `VisualizationOp` against its declared stage's snapshot.
-- [ ] Update the bundled scaffolder ([`scaffolder/init.py`](../../src/datarefinery/scaffolder/init.py)) to write `stage: post_pipeline` as the default when no stage is declared, preserving today's behavior.
-- [ ] Test: a recipe with two `sample_grid` viz ops at `stage: post_filter` and `stage: post_transformations` materializes; both PNGs land in `report/visualizations/`; the pre-transformations PNG is visually recognizable as uint8 imagery, the post-transformations PNG shows the normalized representation.
-- [ ] Test: G5 closes — a recipe with `normalize` Transformation + `augmented_sample_grid` at `stage: pre_transformations` materializes successfully and produces a visually sensible PNG.
-- [ ] Remove the dead `_tile` clip-cast at [`augmented_sample_grid.py:144-145`](../../src/datarefinery/plugins/image_classification/visualizations/augmented_sample_grid.py#L144-L145) since the viz now reads uint8 by construction (or document why it remains as defense-in-depth).
-- [ ] Update [`docs/guides/recipe-authoring.md` § Visualizations](../guides/recipe-authoring.md#visualizations) with the `stage:` vocabulary, the mapping from stage name to "what records you see," and worked examples per the DOC rule in the gap doc.
-- [ ] Update [`docs/specs/modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md) if any manifest field or report subsection shape changes (the snapshot indirection is internal; per-stage report subsections may be a follow-up).
-- [ ] Close G5 and G7 in [`dependency-gaps-v0.16.0.md`](dependency-gaps-v0.16.0.md) priority summary table; remove G5 and G7 rows from the recipe-side workarounds table.
-- [ ] Version bump: minor (new capability — `VisualizationOp.stage` semantically functional for the first time). Per project-essentials cache-identity rules, evaluate whether the canonical-hash pinning test needs an update; constraining `VisualizationOp.stage` to a `Literal` doesn't perturb canonical bytes for recipes that already declared a valid stage value.
+### Story I.e: Per-record-seed persistence (prerequisite for `datarefinery export`) [Planned]
 
-**Out of Scope** (negotiable at story-start):
+**Disposition: feature addition.** Part of Bundle 1 (v0.17.0 release, Sinks).
 
-- Per-stage report subsections (one report.md heading per snapshotted stage). Out of scope unless the developer opts it in; the v1 deliverable is single-section report with per-viz `stage:` annotations.
-- Backfilling the FR-VIZ-1..4 visualizations to declare canonical stages (each already runs at `post_pipeline`; updating them to declare richer stages is a follow-up).
-- Resume-from-stage during materialization. Snapshots are in-memory references for viz dispatch only, not a persisted resume artifact.
+Per [`phase-i-intermediate-artifact-persistence-spec.md` § 5](phase-i-intermediate-artifact-persistence-spec.md): the `datarefinery export` verb (Story I.f) re-executes stage-internal logic against a cached instance to produce sink output post-hoc. That requires per-record stochastic seeds to be persistable so the export verb can reconstruct stage outputs without re-deriving from the master seed alone. This story stamps `<op_name>_seed` onto every record produced by a stochastic op in Generation and aggressive-mode Augmentations. Transformations and Filters are deterministic given `record_id` and need no seed sidecar.
+
+**Tasks:**
+
+- [ ] Identify the stochastic-op surface: `pipeline/stages/generation.py` (every `GenerationOp` derives a per-record seed today via `per_record_seed(master_seed, record_id, op_name)` from [`pipeline/workers.py`](../../src/datarefinery/pipeline/workers.py)); aggressive-mode `pipeline/stages/augmentations.py` (each realized variant derives its own per-record seed per Story H.r.2). Confirm no other stage consumes a per-record seed.
+- [ ] Define the persistence schema: `<op_name>_seed: int` on each record produced by a stochastic op. Width: 64-bit int (8 bytes), matching `per_record_seed`'s `digest()[:8]` output. The field rides through to cached JSONL (post-OutputExpectations) and is captured by any sink targeting `post_<stochastic_stage>`.
+- [ ] Update [`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py) to stamp `<op_name>_seed` onto each output record before yielding. Stamp value equals the seed actually consumed by the op's RNG.
+- [ ] Update [`pipeline/stages/augmentations.py`](../../src/datarefinery/pipeline/stages/augmentations.py) (aggressive mode) similarly. Lazy mode is unchanged (no per-record realization at this stage; seeds are derived on-the-fly at consume time).
+- [ ] Confirm `Output.record_schema` auto-derivation (or `output_schema: "matches_input"` expansion after Story I.x.2) carries the stamped seed fields through to the cached record schema.
+- [ ] Cache-identity note: the seed-stamp is a deterministic function of `(master_seed, record_id, op_name)`. Stamping does NOT perturb canonical recipe bytes (no recipe-shape change). It DOES change the cached **record bytes** — i.e., the JSONL contents change for any recipe with a stochastic op. This is a one-time pre-prod cache invalidation event at v0.17.0; documented in the release notes (handled in Story I.g) per `project-essentials.md § "Cache identity is the reproducibility contract"` (pre-prod rules).
+- [ ] Update [`tech-spec.md`](tech-spec.md) with the per-record-seed-persistence policy and the export-verb dependency.
+- [ ] Add a callout to `recipe-authoring.md § Generation` and § Augmentations: "Each stochastic op stamps `<op_name>_seed` onto its output records. Sinks at `post_<stage>` capture these fields automatically; `datarefinery export` uses them to reconstruct stage outputs without re-materialize."
+- [ ] **Cross-repo coordination required.** Update [`dependency-spec.md`](modelfoundry/dependency-spec.md) with the per-record-seed field convention so consumer tools can rely on the seed presence in cached JSONL.
+- [ ] Unit tests: same recipe + same master seed produces identical per-record seeds across runs (regression pin); per-record seed value is a deterministic function of `(master_seed, record_id, op_name)` (pinned); the stamped field appears on cached records and matches the seed used by the op's RNG (round-trip).
+- [ ] Integration test: a Recipe B-style fixture materializes; cached records each carry `imagecorruptions_apply_seed`; reading the cache + re-applying the corruption with the recorded seed reproduces the corrupted bytes bit-identically.
+
+**Out of Scope:**
+
+- The `datarefinery export` verb itself — Story I.f.
+- Per-record seeds for non-stochastic ops (Transformations, Filters) — those are deterministic given `record_id`.
+- Lazy-mode Augmentation seed stamping — lazy realization happens at consume time outside the pipeline; not a sink-target stage.
+
+---
+
+### Story I.f: `datarefinery export` verb + `recipe-authoring.md § Sinks` consolidation [Planned]
+
+**Disposition: feature addition.** Part of Bundle 1 (v0.17.0 release, Sinks).
+
+Per [`phase-i-intermediate-artifact-persistence-spec.md` § 5](phase-i-intermediate-artifact-persistence-spec.md): a new `datarefinery export` CLI verb (and library method) re-runs sinks against an already-materialized instance. Unblocks the workflow where a recipe author adds a sink to a recipe with a live cache and wants the sink output without invalidating the cache. v1 restriction: only sinks whose stage output is reconstructable from cached state + fitted statistics + per-record seeds (Story I.e's prerequisite); non-reconstructable stages refuse cleanly with a pointer to re-materialize.
+
+**Tasks:**
+
+- [ ] Add `datarefinery export <recipe> [--sink <name> ...]` CLI verb in [`cli/`](../../src/datarefinery/cli/). Default: re-run all sinks declared on the recipe. With `--sink <name>` (repeatable): re-run only the named sinks. Refuse with a clear error if a `--sink` name is not declared on the recipe.
+- [ ] Add `DataRefinery.export(sink_name: str | list[str] | None = None)` library method in [`core/datarefinery.py`](../../src/datarefinery/core/datarefinery.py).
+- [ ] Resolve the bound instance via the same path `datarefinery status` uses. Refuse cleanly if no matching cached instance exists (pointer: run `materialize` first).
+- [ ] Implement re-execution dispatch: for each requested sink, walk back from the sink's `stage` to the cached state, re-running only the necessary stage-internal logic against cached records. For `post_OutputExpectations` sinks, read JSONL directly (no re-run needed). For `post_Generation` sinks against `imagecorruptions_apply` (and similar stochastic ops), use the per-record `<op_name>_seed` (from Story I.e) to reconstruct stage bytes without re-deriving from master seed alone. For non-reconstructable stages (e.g., `post_Filters` once normalize has stomped uint8), refuse with a pointer to re-materialize.
+- [ ] Write sink output into the existing instance directory. The instance is already promoted; the export writes via per-file temp-then-move so partial-run failures don't leave half-written files under the promoted instance path.
+- [ ] Add the v1-reconstructability table next to the export-verb implementation: per-stage `reconstructable_from_cache: bool`. The table lives in one place; both the validator-time check and the runtime check consult it.
+- [ ] Consolidate `recipe-authoring.md § Sinks` with the full author guide — expand on the initial subsection from Story I.d with: the `export` verb usage, the per-record-seed dependency, the v1 reconstructability restriction, the path-template filters, and the worked example from spec § 6.
+- [ ] Update [`tech-spec.md`](tech-spec.md) with the export-verb dispatch table and the reconstructability rules.
+- [ ] Unit tests: export verb on a materialized instance produces files at the sink-declared paths; bytes are byte-identical to the materialize-time sink output (pinned); refuse-with-pointer for non-reconstructable stage; `--sink` selection filters correctly; bad `--sink <name>` (not declared on recipe) refused cleanly.
+- [ ] Integration test: materialize Recipe B without sinks → add a sink declaration → run `datarefinery export` → confirm the sink output appears in the existing instance directory without invalidating the cache. The recipe-hash mismatch (sink added) is the expected state; `export` deliberately bypasses the materialize gate by reading the bound instance directly.
+
+**Out of Scope:**
+
+- Sink output behavior under partial / `stop_after` materialize runs — open question per spec § 10 #3; deferred.
+- Conditional sinks — Future per spec § 8.
+- Cross-record sink formats — Future per spec § 8.
+
+---
+
+### Story I.g: Release v0.17.0 (Phase I bundle 1, Sinks) [Planned]
+
+**Disposition: release ceremony.** Minor bump (`v0.16.2 → v0.17.0`). Closes Bundle 1.
+
+Bundle 1 contents: I.d (sinks schema + materialize-time writer), I.e (per-record-seed persistence), I.f (`datarefinery export` verb + author guide). Additive — no `schema_version` bump. The cross-repo contract bound during this bundle is `manifest.sinks` + the per-record-seed field convention (both documented in `modelfoundry/dependency-spec.md` by Stories I.d and I.e).
+
+One cached-bytes change: Story I.e stamps `<op_name>_seed` onto cached records for any recipe with a stochastic op, changing JSONL contents. Pre-production rules apply per [`project-essentials.md` § "Cache identity is the reproducibility contract"](project-essentials.md): users re-materialize once at upgrade; documented in the release notes below.
+
+**Tasks:**
+
+- [ ] Bump `pyproject.toml` `version = "0.16.2"` → `"0.17.0"`.
+- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
+- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.17.0]`:
+   - **Added:** "Sinks — new top-level recipe section that captures stage-snapshot artifacts to disk at materialize time. v1 ships the `png_per_record` writer; full author guide in `recipe-authoring.md § Sinks` (Story I.d)."
+   - **Added:** "Per-record `<op_name>_seed` persistence on every record produced by a stochastic Generation or aggressive-mode Augmentation op (Story I.e)."
+   - **Added:** "`datarefinery export <recipe> [--sink <name> …]` CLI verb (and `DataRefinery.export()` library method) — re-runs sinks against an already-materialized instance without invalidating the cache (Story I.f)."
+   - **Notes:** "Cached JSONL records now include `<op_name>_seed` fields for stochastic ops. One-time pre-production cache invalidation event; re-materialize existing recipes once at upgrade. No `schema_version` bump (the change is record-byte-level, not recipe-shape-level)."
+- [ ] Cross-repo coordination: confirm `dependency-spec.md` was updated by I.d (`manifest.sinks` shape) and I.e (per-record-seed field convention).
+- [ ] Ensure the canonical-hash pinning test for representative recipes either (a) is unaffected (recipes without sinks AND without stochastic ops produce byte-identical canonical bytes) or (b) is updated alongside this bump with reviewer sign-off per `project-essentials.md`.
+
+---
+
+### Story I.h: Sanitize consumer-context leakage + renumber G7 placeholder [Planned]
+
+**Disposition: documentation-only.** Part of Bundle 2; no version bump (no code change).
+
+The gap doc and the existing Story I.h body (G7 placeholder) may carry residual references to the downstream consumer's project context. Phase I's expansion stories cite the gap doc by section; sanitizing first prevents that leakage from propagating into the new story bodies. This story also renumbers the existing I.h (G7) to its new slot at Story I.v per the Phase I plan and adds deferred items to `stories.md § Future`.
+
+**Tasks:**
+
+- [ ] Search [`docs/specs/dependency-gaps-v0.16.0.md`](dependency-gaps-v0.16.0.md) for residual consumer-context terms (course-specific identifiers, internal phase/module/recipe names from the consumer's project, dataset references, lesson framing). Replace each with generic equivalents ("a downstream consumer recipe", "an image-classification dataset", "a consumer pipeline", etc.).
+- [ ] Search [`docs/specs/stories.md`](stories.md) Story I.h body for the same; sanitize as part of the renumber to I.v below.
+- [x] Renumber the existing Story I.h (G7 stage-aware visualization dispatch) to Story I.v within Bundle 2. Per the [renumber pre-condition](../project-guide/go.md#inserting-a-new-story): verify I.h is `[Planned]` (yes) and that no references have accreted: `git log --all --grep='I\.d'` and `grep -RFn 'I.h' docs/ CHANGELOG.md --exclude=stories.md`. Both must come up empty or only reference docs updated in this story.
+- [ ] Verify no residual leakage anywhere in `docs/`, `src/`, `recipes/`. Run `grep -rni -E '<consumer-specific-pattern-set>'` and confirm only intentional generic mentions (e.g., "deep-learning curriculum" as a target-user description in `concept.md` / `features.md`) remain.
+- [x] Append the new Phase I stories I.i through I.y under the existing Phase I heading; insert before `## Future`.
+- [x] Append the following deferred items to `stories.md § Future` (per the Phase I plan's "Future-section addition" subsection): `stats_from_instance.variant: <name>` selector; `to_grayscale` Transformation op; plugin-pluggable validator-check reserved-set hook; per-stage report subsections; scaffolder v2 grand sweep; real `distributional` assertion kind; DR-side `class_balance` resampling.
+- [x] No code change, no test change. No version bump; bundled at I.j.
+
+**Out of Scope:**
+
+- Edits to "deep-learning curriculum" / "students and instructors" mentions in `concept.md`, `features.md`, `idea.md`, `idea-supplement.md`. Those describe the product's target-user type generically and are not consumer-specific.
+
+---
+
+### Story I.i: G19 — sibling-stats resolver strips variants [Planned]
+
+**Disposition: bug fix.** Part of Bundle 2 (v0.17.1 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G19](dependency-gaps-v0.16.0.md): `resolve_sibling_stats` ([`cache/sibling_stats.py:88`](../../src/datarefinery/cache/sibling_stats.py)) loads the sibling recipe and hashes it without stripping the variants block first. The materialize path always strips variants via `apply_variant(recipe, None)` before computing the cache key; the resolver diverges, producing a hash mismatch any time the sibling declares variants. The fix is a one-line addition mirroring the materialize path.
+
+**Tasks:**
+
+- [ ] Reproduce with a failing test in `tests/unit/test_sibling_stats.py`: a sibling recipe declaring `variants`, materialized once, then a consumer recipe with `stats_from_instance: { recipe: <sibling-path>, op_id: <op_name> }`. Materialize raises `SiblingInstanceNotFoundError` despite the sibling instance existing.
+- [ ] Apply the one-line fix in [`cache/sibling_stats.py`](../../src/datarefinery/cache/sibling_stats.py): wrap `load_recipe(recipe_path)` with `apply_variant(..., None)` before `to_canonical_bytes`. Import path mirrors `core/datarefinery.py:92`.
+- [ ] Add a regression test for the no-variant case (no regression).
+- [ ] DOC: add "FR-TRANS-1 across variants" subsection to [`recipe-authoring.md` § Transformations](../guides/recipe-authoring.md) documenting that `stats_from_instance` resolves the sibling's no-variant canonical instance.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G19](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.17.1"; workarounds row.
+
+**Out of Scope:**
+
+- `stats_from_instance.variant: <name>` selector — deferred to `stories.md § Future`.
+
+---
+
+### Story I.j: Release v0.17.1 (Phase I bundle 2) [Planned]
+
+**Disposition: release ceremony.** Patch bump (`v0.17.0 → v0.17.1`). Closes Bundle 2.
+
+Dedicated commit for the version bump so the release is identifiable in commit history rather than buried in the bug-fix commit. Bundle 2 contents: I.h (doc sanitize, no code) + I.i (G19 resolver fix). Ships after the Sinks bundle (v0.17.0).
+
+**Tasks:**
+
+- [ ] Bump `pyproject.toml` `version = "0.17.0"` → `"0.17.1"`.
+- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
+- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.17.1]`:
+   - **Fixed:** "G19 — `resolve_sibling_stats` now strips sibling variants before hashing, so `stats_from_instance` resolves correctly against any sibling recipe that declares variants (Story I.i)."
+   - **Docs:** "Sanitized residual consumer-context references in `dependency-gaps-v0.16.0.md`. Added deferred items to `stories.md § Future` (Story I.h)."
+- [ ] Cross-repo coordination: no change.
+
+---
+
+### Story I.k: G2 — `cast` Transformation [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G2](dependency-gaps-v0.16.0.md): `cast_dtype` is declared in `_supported_operations()` but missing from `_TRANSFORMATION_OPS` (`NotImplementedError` at materialize). This story registers the runtime factory under the canonical name `cast`, adds a `scale` parameter (for the common uint8 → float32-scaled-by-1/255 pattern), removes the unimplemented `cast_dtype` and `to_grayscale` OperationSpec entries.
+
+**Tasks:**
+
+- [ ] Add `CastOp` to [`plugins/image_classification/operations/transformations.py`](../../src/datarefinery/plugins/image_classification/operations/transformations.py): `target_dtype = np.dtype(params["dtype"])`, `scale = params.get("scale", 1.0)`, apply per record.
+- [ ] OperationSpec in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): rename `"cast_dtype"` → `"cast"`; add `scale: float, default=1.0`. Remove the `to_grayscale` entry.
+- [ ] Register `"cast": CastOp()` in `_TRANSFORMATION_OPS`.
+- [ ] Update [`tests/plugin_contract/test_image_classification.py`](../../tests/plugin_contract/test_image_classification.py): swap `"cast_dtype"` → `"cast"` in `EXPECTED_OPERATIONS`; remove the `NotImplementedError`-pinning assertion for `cast_dtype`.
+- [ ] Unit tests: cast uint8→float32 scale=1/255 → [0,1]; no-scale → dtype change only; cast on already-float32 input is dtype-no-op; old name `cast_dtype` is rejected cleanly by check 18.
+- [ ] DOC: add worked YAML example for `op: cast` (with `dtype` and `scale`) to [`recipe-authoring.md` § Transformations](../guides/recipe-authoring.md). Backfill `mean_subtract` and `resize` (DOC drift table — both already shipped, currently undocumented).
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G2](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+**Out of Scope:**
+
+- Real `to_grayscale` op implementation. Removed from OperationSpec; deferred to `stories.md § Future`.
+- Aliasing `cast_dtype` to `cast`. Old name removed (not aliased) to keep the surface single-named.
+
+---
+
+### Story I.l: G3 — `categorical_encode` Featurization [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G3](dependency-gaps-v0.16.0.md): a new Featurization op that derives an integer-encoded field from a categorical source. Two modes: recipe-declared `vocabulary` (deterministic, no fit phase) and fit-on-train (vocabulary derived from train split, persisted to `fitted_statistics/<op_name>/vocabulary.parquet`, replayed identically on val/test). The fit-on-train mode is FR-TRANS-1 transplanted to Featurizations.
+
+**Tasks:**
+
+- [ ] Add `CategoricalEncodeOp` class to [`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py).
+- [ ] OperationSpec parameters: `vocabulary: list[str], required=False`; `ordering: str, required=False, default="alphabetical"` (alternatives: `"first_seen"`); `output_dtype: str, required=False, default="int32"`. `fit_on_train=True` when `vocabulary` is unset.
+- [ ] Register `"categorical_encode": CategoricalEncodeOp()` in `_FEATURIZATION_OPS`.
+- [ ] Unit tests: recipe-declared vocabulary path; fit-on-train path persists vocabulary and reuses on val/test; FR-TRANS-1 sibling-stats path (`stats_from_instance: { op_id: <categorical_encode_op_name> }`); mismatch case (vocabulary doesn't cover all labels in train) reports the missing labels clearly.
+- [ ] DOC: add worked YAML example to [`recipe-authoring.md` § Featurizations](../guides/recipe-authoring.md) (both modes); backfill `image_size_stats` (DOC drift — already shipped, currently undocumented).
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G3](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+---
+
+### Story I.m: G9 — `flatten` Featurization [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G9](dependency-gaps-v0.16.0.md): a new Featurization op that reshapes a multi-dimensional field to a 1-D vector. Unblocks variants that want both the original tensor and a flattened view (e.g., MLP-shaped vs. CNN-shaped consumption from one recipe).
+
+**Tasks:**
+
+- [ ] Add `FlattenOp` class to [`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py). Implementation: `{**r, output_field: np.asarray(r[src]).reshape(-1)}` per record.
+- [ ] OperationSpec: no params; `applicable_sections=frozenset({"Featurizations"})`. Require exactly one entry in `inputs` (validator-side or op-side error).
+- [ ] Register `"flatten": FlattenOp()` in `_FEATURIZATION_OPS`.
+- [ ] Unit tests: 3-D image → 1-D vector with correct length and values; multi-input rejected; variant overlay resolves cleanly via `apply_variant`.
+- [ ] DOC: add worked YAML example to [`recipe-authoring.md` § Featurizations](../guides/recipe-authoring.md).
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G9](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+---
+
+### Story I.n: G11 — `seed_derive_from: master` on Filters and Generation [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G11](dependency-gaps-v0.16.0.md): a new `SeedDerivationSpec` schema accepts the literal `"master"` as an alternative to a fixed integer at every seeded-op site. Resolution at materialize time computes `derived_seed = sha256(recipe.seed.to_bytes(8, "big") + op_name_bytes).digest()[:8]`. The derivation participates in cache identity (via the master seed already being in canonical bytes) and is pinned by test.
+
+**Tasks:**
+
+- [ ] Add `SeedDerivationSpec` to [`recipe/models.py`](../../src/datarefinery/recipe/models.py) — pydantic model accepting `from: Literal["master"]`.
+- [ ] Widen the seed-accepting sites to `int | SeedDerivationSpec`: `FilterOp.predicate.seed` (via plugin OperationSpec); `GenerationOp.seed` (model field); `SplitsSection.seed` (model field); `AugmentationOp.seed` (already optional, add accepting form).
+- [ ] Implement derivation in a shared helper (e.g., `recipe/seeds.py`): `derive_seed(master_seed: int, op_name: str) -> int`. Pinned by canonical-derivation test.
+- [ ] Update each seed-consuming op site to resolve `SeedDerivationSpec` → concrete int via the helper before use.
+- [ ] Unit tests: same master seed + different op name → different derived seeds (no collision); changing master seed → all derived seeds change; same op name + same master → same derived seed; explicit int still works (regression).
+- [ ] DOC: new "Seeds and determinism" subsection in [`recipe-authoring.md`](../guides/recipe-authoring.md) covering the master-seed derivation policy, cache-identity implications, and the per-op-seed escape hatch.
+- [ ] Update [`tech-spec.md`](tech-spec.md) with the pinned derivation function (participates in cache identity).
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G11](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+---
+
+### Story I.o: G6 + G16b — per-split / per-class / structural assertion kinds [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G6](dependency-gaps-v0.16.0.md) and [§ G16b](dependency-gaps-v0.16.0.md): seven new assertion kinds land together (they share evaluator plumbing). The `evaluate_output_expectations` signature widens from `Iterable[Record]` to `Mapping[str, list[Record]]` keyed by split. `evaluate_input_contracts` keeps its flat form (contracts run pre-splits). The naming-rename pass for existing kinds (G16a) is separate; ships in Bundle 4.
+
+**New kinds:**
+
+- `split_record_counts` — `{counts: {<split>: <int>, …}}`
+- `per_class_count_per_split` — `{field: <label_field>, per_class: <int>}` (warning-severity tolerant of stratification rounding)
+- `count_by_field` — `{field: <name>, value_per_key: <int>}`
+- `count_by_fields` — `{fields: [<name1>, <name2>], value_per_combination: <int>}`
+- `shape_equals` — `{field: <name>, value: [<dim>, …]}` (asserts ndarray shape)
+- `value_in_set` — `{field: <name>, value: [<v>, <v>, …]}`
+- `per_class_count_equals` — `{field: <label_field>, value: <int>}` (single-split form)
+
+**Tasks:**
+
+- [ ] Widen `evaluate_output_expectations` signature to `Mapping[str, list[Record]]`; route single-split callers as a one-key mapping for backward compatibility.
+- [ ] Implement each new kind in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py); register in the dispatch table.
+- [ ] Unit tests per kind: positive case + at least one negative case with precise diff message ("split 'val' expected 300, got 350", etc.).
+- [ ] Integration test: a recipe declaring all seven kinds materializes; expectations pass on canonical fixture; mutating ratios / shapes / class counts produces precise failure messages.
+- [ ] DOC: extend the assertion-kinds table in [`recipe-authoring.md` § InputContracts](../guides/recipe-authoring.md) and § OutputExpectations with a row per new kind. Add a "Cross-split assertions" subsection explaining per-split semantics.
+- [ ] Update [`tech-spec.md`](tech-spec.md) assertion-kinds enumeration.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G6 + § G16b](dependency-gaps-v0.16.0.md): status blocks; priority summary → "Closed in v0.18.0"; workarounds rows.
+
+---
+
+### Story I.p: G17 — `class_distribution_histogram` accepts `group_by` [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G17](dependency-gaps-v0.16.0.md): a `group_by: str` optional param on the `class_distribution_histogram` viz selects the field to bucket on; default is `Labels.field` (current behavior). A validator check ensures `group_by` names a known field per `Output.record_schema` or a Generation-introduced tag field.
+
+**Tasks:**
+
+- [ ] OperationSpec update in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): add `group_by: str, required=False`.
+- [ ] Runtime: histogram on the named field when present; fall back to `Labels.field` when absent.
+- [ ] New validator check: `group_by` value resolves to a known field. Reject unknown-field references at validate time.
+- [ ] Unit tests: no-param case bucketed by Labels.field (current behavior, regression); `group_by: <new_field>` bucketed correctly; `group_by: nonexistent_field` rejected at validate time.
+- [ ] DOC: update [`recipe-authoring.md` § Visualizations](../guides/recipe-authoring.md) with the new param; backfill FR-VIZ-1..4 (DOC drift — `mean_image_per_class`, `pixel_distribution`, `augmented_sample_grid`, `corruption_severity_grid`, `severity_ladder`, all currently undocumented).
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G17](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+---
+
+### Story I.q: G18 — Generation `replace_input_records` [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G18](dependency-gaps-v0.16.0.md): a new `GenerationOp.replace_input_records: bool = False` field declares whether the op's output augments (current behavior, default) or replaces the input records. Default preserves backward compatibility; opt-in covers transformation-style Generation (e.g., on-the-fly corruption application) that produces N output records per input and doesn't want the originals tagged along.
+
+**Tasks:**
+
+- [ ] Add `replace_input_records: bool = False` to `GenerationOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py).
+- [ ] Update [`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py): branch on `op.replace_input_records` — `True` assigns `out[split_name] = list(new_records)`, `False` keeps current `.extend(...)`.
+- [ ] Unit tests: with `imagecorruptions_apply` op and `replace_input_records: true`, output count is `(n_corruptions × n_severities × n_base_records)`; with the field omitted (default `False`), output reproduces current 0.16.x behavior byte-identically (regression pin).
+- [ ] DOC: add "When to use `replace_input_records`" subsection to [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md) with the corruption-apply use case.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G18](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+**Out of Scope:**
+
+- Generation schema reshape (top-level `op:`, `splits:` rename, `output_schema: matches_input` shorthand). That's G12, Story I.x.2 (Bundle 4).
+
+---
+
+### Story I.r: G14 — SampleData `kind` + `splits` [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G14](dependency-gaps-v0.16.0.md): `SampleSelector` gains `kind: Literal["uniform", "per_class"] = "uniform"` and `splits: list[str] | None = None`. `kind: per_class` requires `Labels.field` populated (validator check); selects `n` records per class from the declared splits. `kind: uniform` (default) preserves current behavior.
+
+**Tasks:**
+
+- [ ] Widen `SampleSelector` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py).
+- [ ] Runtime: per-class branch in the sample-data selector.
+- [ ] New validator check: `kind: per_class` requires `Labels.field` and an available label source.
+- [ ] Unit tests: `kind: per_class, n: 1, splits: [train]` on a labeled fixture yields exactly N records, one per class, all from train; `kind: uniform` (default) regression; per_class on unlabeled source rejected at validate time.
+- [ ] DOC: rewrite [`recipe-authoring.md` § SampleData](../guides/recipe-authoring.md) with both kinds + the splits-selector example.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G14](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+---
+
+### Story I.s: G10 — `Splits.class_balance` dict shape (MF-binding hint) [Planned]
+
+**Disposition: feature addition + cross-repo contract.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G10](dependency-gaps-v0.16.0.md) and the plan_phase decision recorded in [`phase-i-recipe-focused-bug-fixes-plan.md`](phase-i-recipe-focused-bug-fixes-plan.md) (MF-side resampling): widen `SplitsSection.class_balance: str | None` to `str | dict[str, Any] | None`. The dict shape is `{strategy: <str>, applies_to: [<split>, …]}`. DataRefinery's runtime treats the field as a forward-declared training-time hint — **no resampling, no weight emission at the DR layer**. The strategy passes through verbatim to `SplitResult.class_balance` and `manifest.class_balance`; consumer tools (ModelFoundry) bind against the dict shape via `dependency-spec.md`.
+
+**Tasks:**
+
+- [ ] Widen `SplitsSection.class_balance` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py); add validator check that dict shape has required `strategy` + `applies_to` keys.
+- [ ] No runtime change in [`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py) — the field rides through `SplitResult.class_balance` as today.
+- [ ] Update `manifest.class_balance` emission to serialize the dict shape.
+- [ ] Unit tests: dict-shape validates with valid strategy names; bare-string shape still works (regression); manifest round-trips the dict shape.
+- [ ] DOC: rewrite [`recipe-authoring.md` § Filters vs Splits for class imbalance](../guides/recipe-authoring.md) to spell out the runtime-vs-training-time separation explicitly: DR does not resample; the strategy is a hint for the training tool. Reference dependency-spec.md as the binding contract.
+- [ ] **Cross-repo coordination required.** Update [`dependency-spec.md`](modelfoundry/dependency-spec.md) with the dict-shape contract: keys, allowed strategy values, applies_to semantics, MF's responsibility to honor the hint at training time. Document the strategy vocabulary v1 supports (e.g., `oversample_minority_to_majority`, `emit_inverse_frequency_weights`).
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G10](dependency-gaps-v0.16.0.md): status block recording the MF-side decision; priority summary → "Closed in v0.18.0"; workarounds row.
+
+**Out of Scope:**
+
+- DR-side resampling (Option 1 from the gap doc). Deferred to `stories.md § Future`.
+
+---
+
+### Story I.t: G1 — tag-driven `Splits.applies_to` [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G1](dependency-gaps-v0.16.0.md): validator check 20 (`partitions_consistent`) broadens to accept `applies_to` values that match a filter-emitted tag (the `label` parameter on `sample_per_class` / `sample_per_class_fractional`). The pipeline runner learns to partition only tagged records and pass through other-tagged records verbatim under their existing tag-driven partitions.
+
+**Tasks:**
+
+- [ ] Broaden check 20 in [`recipe/validator.py`](../../src/datarefinery/recipe/validator.py) to also accept `applies_to` matching `FilterOp.predicate.params.label` (where predicate op is in `{sample_per_class, sample_per_class_fractional}`).
+- [ ] Update [`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py) to learn the tag → partition pass-through: when `applies_to` names a tag, produce sub-splits per `ratios` for tagged records; emit untagged-or-other-tagged records as `<other_tag>` splits verbatim.
+- [ ] Unit + integration tests: two `sample_per_class` filters tagging `train_pool` and `test_pool` + `Splits.applies_to: train_pool` validates and materializes; counts match tag populations within stratification rounding; swapping filter order produces the same test-split membership (proving tag-driven determinism).
+- [ ] DOC: new "Sub-partitioning via tag" subsection in [`recipe-authoring.md` § Splits](../guides/recipe-authoring.md) paralleling the existing `InputSource.partition` subsection.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G1](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+---
+
+### Story I.u: G13 — `tag_fields` dict-rename form [Planned]
+
+**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+
+Per [`dependency-gaps-v0.16.0.md` § G13](dependency-gaps-v0.16.0.md): `ImageCorruptionsApplyParams.tag_fields: list[str] | dict[str, str]`. The list form (canonical names, current behavior) remains valid. The dict form maps the authored output field name → the canonical tag name the runtime understands (`corruption`, `severity`, `source_path`). Runtime asserts each dict value is in the canonical set at validate time.
+
+**Tasks:**
+
+- [ ] Widen `ImageCorruptionsApplyParams.tag_fields` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py) to `list[str] | dict[str, str]`.
+- [ ] Update [`generation_imagecorruptions.py`](../../src/datarefinery/plugins/image_classification/operations/generation_imagecorruptions.py) to walk the dict form: each value must be in `{corruption, severity, source_path}`; write each tag under the authored key.
+- [ ] Validator check: dict values are in the canonical set; reject unknown values with a clear message.
+- [ ] Unit tests: list form (subset selection, current behavior); dict form (output-field rename); dict form with unknown canonical tag rejected.
+- [ ] DOC: document both shapes in [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md).
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G13](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+
+---
+
+### Story I.v: G7 — Stage-aware visualization dispatch (closes G5) [Planned]
+
+**Disposition: feature addition (architectural).** Part of Bundle 3 (v0.18.0 release). Renumbered from the original Story I.h (G7 placeholder) per the I.h sanitize step. Closes G5 as a side effect.
+
+Per [`dependency-gaps-v0.16.0.md` § G7](dependency-gaps-v0.16.0.md): all reporting-mode visualizations today run at `post_pipeline` only. `VisualizationOp.stage` is read by the model but not honored by the runtime. This story implements stage-aware dispatch via stage snapshots: each pipeline stage that materially changes records snapshots a reference to its outputs; `apply_reporting_visualizations` receives a `Mapping[str, Mapping[str, list[Record]]]` keyed by stage then split; each `VisualizationOp.stage` selects which snapshot it renders against. `STAGE_NAMES` in [`pipeline/runner.py:96`](../../src/datarefinery/pipeline/runner.py) already enumerates valid stages.
+
+Closing G5: `augmented_sample_grid` runs at `stage: pre_transformations` and reads uint8 records by construction.
+
+**Tasks:**
+
+- [ ] Constrain `VisualizationOp.stage` from `str` to `Literal[<STAGE_NAMES>]`. Unknown-stage typos fail at validate time.
+- [ ] Add a validator check that the named stage produced output records (i.e., not bypassed by an empty pipeline branch).
+- [ ] Extend [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py) to snapshot per-stage split outputs (references, not copies). Snapshot points: post-Input, post-Filters/pre_split, post-Splits, post-Filters/post_split, post-Transformations, post-Augmentations, post-Featurizations, post-pipeline.
+- [ ] Change `apply_reporting_visualizations` in [`pipeline/stages/visualizations.py`](../../src/datarefinery/pipeline/stages/visualizations.py) to accept the snapshot mapping; dispatch each `VisualizationOp` against its declared stage's snapshot.
+- [ ] Update [`scaffolder/init.py`](../../src/datarefinery/scaffolder/init.py) to write `stage: post_pipeline` as the default when no stage is declared (preserves current behavior for unmigrated recipes).
+- [ ] Integration test: a recipe with two `sample_grid` ops at `stage: post_filter` and `stage: post_transformations` materializes; both PNGs land in `report/visualizations/`; pre-transformations PNG is uint8 / recognizable, post-transformations PNG shows the normalized representation.
+- [ ] G5 close-out test: a recipe with `normalize` Transformation + `augmented_sample_grid` at `stage: pre_transformations` materializes successfully and produces a visually sensible PNG.
+- [ ] Remove the dead `_tile` clip-cast at [`augmented_sample_grid.py:144-145`](../../src/datarefinery/plugins/image_classification/visualizations/augmented_sample_grid.py) (the viz now reads uint8 by construction), or document why it remains as defense-in-depth.
+- [ ] DOC: update [`recipe-authoring.md` § Visualizations](../guides/recipe-authoring.md) with the `stage:` vocabulary, the stage-to-records mapping, and worked examples.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G5 + § G7](dependency-gaps-v0.16.0.md): status blocks; priority summary → "Closed in v0.18.0"; workarounds rows.
+- [ ] Cross-repo coordination: minor — note in `dependency-spec.md` that per-stage report subsections remain a single section in v1; the snapshot indirection is internal.
+
+**Out of Scope:**
+
+- Per-stage report subsections (one `report.md` heading per snapshotted stage). Deferred to `stories.md § Future`.
+- Backfilling FR-VIZ-1..4 visualizations to declare richer stages (each already runs at `post_pipeline`; updating is a follow-up).
+- Resume-from-stage during materialization. Snapshots are in-memory references for viz dispatch only.
+
+---
+
+### Story I.w: Release v0.18.0 (Phase I bundle 3) [Planned]
+
+**Disposition: release ceremony.** Minor bump (`v0.17.1 → v0.18.0`). Closes Bundle 3.
+
+Twelve additive feature stories (I.k–I.v) ship as one minor bump because each is opt-in or backward-compatible (no canonical-bytes perturbation for existing recipes) and the capabilities are interrelated. Dedicated commit for the version bump.
+
+**Tasks:**
+
+- [ ] Bump `pyproject.toml` `version = "0.17.1"` → `"0.18.0"`.
+- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
+- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.18.0]` with subsections for each closed G:
+   - **Added:** G2 (`cast` Transformation), G3 (`categorical_encode`), G9 (`flatten`), G11 (`seed_derive_from: master`), G6+G16b (seven new assertion kinds), G17 (`group_by` histogram), G18 (`replace_input_records`), G14 (SampleData `kind`/`splits`), G10 (class_balance dict hint), G1 (tag-driven applies_to), G13 (tag_fields dict-rename), G7 (stage-aware viz, closes G5).
+   - **Removed:** `cast_dtype` and `to_grayscale` OperationSpec entries (formerly declared-but-unimplemented).
+   - **Docs:** DOC-rule backfill across Transformations, Featurizations, Filters, Generation, Visualizations, InputContracts, OutputExpectations, Splits, SampleData sections of `recipe-authoring.md`.
+- [ ] Cross-repo coordination: confirm `dependency-spec.md` was updated by I.s (class_balance dict contract) and I.v (per-stage subsections clarification).
+- [ ] No schema bump — all changes are additive / opt-in.
+
+---
+
+### Story I.x.1: G15 — Filters reshape + loader migration framework [Planned]
+
+**Disposition: schema reshape (canonical-bytes-perturbing).** Part of Bundle 4 (v0.19.0 release, schema_version 1 → 2). Sub-numbered story 1 of 3 in the schema-v2 cluster.
+
+Per [`dependency-gaps-v0.16.0.md` § G15](dependency-gaps-v0.16.0.md): `FilterOp` reshapes from `{name, predicate: {op, …rest}, stages, splits, seed}` to `{name, op, params, stages, splits, seed}` — matching every other section's top-level `op:` + `params:` shape. This story also stands up the v1→v2 migration framework in [`recipe/loader.py`](../../src/datarefinery/recipe/loader.py) that I.x.2 and I.x.3 will extend.
+
+**Tasks:**
+
+- [ ] Reshape `FilterOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py): replace `predicate: dict[str, Any]` with `op: str` + `params: dict[str, Any] = {}`.
+- [ ] Update `SUPPORTED_SCHEMA_VERSIONS` in [`recipe/loader.py`](../../src/datarefinery/recipe/loader.py): `{1}` → `{1, 2}`. Set default emit version to 2 for new authoring.
+- [ ] Add the v1→v2 migration registry: `migrations[(1, 2)] = compose(filters_reshape_v1_to_v2, …)`. I.x.2 and I.x.3 register more entries against `(1, 2)` later.
+- [ ] Implement `filters_reshape_v1_to_v2(recipe_dict) -> recipe_dict`: walks every `Filters[i].predicate`, lifts `op` to top level and renames the rest of the dict to `params`.
+- [ ] Update validator checks 21 and the predicate-shape inspections at [validator.py:928](../../src/datarefinery/recipe/validator.py) and similar sites: port `predicate.get("op") == "filter_by_label"` → `op == "filter_by_label"`.
+- [ ] DOC: rewrite [`recipe-authoring.md` § Filters](../guides/recipe-authoring.md) with the new flat shape. Backfill `sample_per_class`, `sample_per_class_fractional`, `drop_by_label` (DOC drift — shipped in v0.10.0–v0.12.0, currently undocumented).
+- [ ] Update [`tech-spec.md`](tech-spec.md) schema-version section to enumerate `{1, 2}` and the migration.
+- [ ] **Cross-repo coordination required.** Update [`dependency-spec.md`](modelfoundry/dependency-spec.md) with the recipe-model v2 reshape: name both old and new field names; deprecation horizon for v1 callers.
+- [ ] Migration round-trip test: a v1-shape Filters block migrates to v2 and produces canonical bytes byte-identical to a directly-authored v2 recipe.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G15](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.19.0"; workarounds row.
+
+---
+
+### Story I.x.2: G12 — Generation schema reshape [Planned]
+
+**Disposition: schema reshape (canonical-bytes-perturbing).** Part of Bundle 4 (v0.19.0 release). Sub-numbered story 2 of 3.
+
+Per [`dependency-gaps-v0.16.0.md` § G12](dependency-gaps-v0.16.0.md): `GenerationOp` reshapes — `op:` lifts to top level, `applies_at: list[str]` renames to `splits: list[str]`, `output_schema` accepts `dict[str, FieldSpec] | Literal["matches_input"]` (shorthand expands to input record schema + declared tag fields), `seed` accepts `int | SeedDerivationSpec` (from FR-I-5, Story I.n).
+
+**Tasks:**
+
+- [ ] Reshape `GenerationOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py).
+- [ ] Implement `generation_reshape_v1_to_v2` migration: `params.op` → top-level `op:`; `applies_at` → `splits`; preserve other fields; emit a default `output_schema` carryover (cannot inflate to `"matches_input"` without runtime context — leave concrete dicts as-is).
+- [ ] Register the migration in `migrations[(1, 2)]` alongside Filters reshape from I.x.1.
+- [ ] Implement runtime expansion of `output_schema: "matches_input"` in [`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py): copy input record shape + add declared `tag_fields` from the op's params.
+- [ ] Unit tests: v1-shape Generation block migrates to v2 cleanly; `output_schema: matches_input` expands to the correct dict at materialize time; explicit `output_schema: {…}` still works.
+- [ ] Migration round-trip test extends the v1→v2 fixture from I.x.1 to include Generation blocks.
+- [ ] DOC: rewrite [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md) with the new shape; worked `imagecorruptions_apply` example with `output_schema: matches_input`.
+- [ ] Cross-repo coordination: update `dependency-spec.md` Generation section for the v2 shape.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G12](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.19.0"; workarounds row.
+
+---
+
+### Story I.x.3: G16a — assertion `kind` naming pass [Planned]
+
+**Disposition: schema reshape (canonical-bytes-perturbing).** Part of Bundle 4 (v0.19.0 release). Sub-numbered story 3 of 3.
+
+Per [`dependency-gaps-v0.16.0.md` § G16a](dependency-gaps-v0.16.0.md): the contracts-evaluator naming convention shifts from bare verbs + struct-shape (`dtype: {expected: X}`, `range: {min, max}`) to predicate-sentence form (`dtype_equals: {value: X}`, `value_range: {min, max}`, `value_in_set: {value: […]}`, etc.). The five existing v1 kinds (`dtype`, `range`, `record_count`, `required_field`, `distributional`) each get a v2 canonical name; v1 names are removed (not aliased) and the migration entry rewrites them.
+
+**Mapping (v1 → v2):**
+
+- `dtype` → `dtype_equals`
+- `range` → `value_range`
+- `record_count` → `record_count_in_range`
+- `required_field` → unchanged (the verb form already reads as a sentence)
+- `distributional` → unchanged (placeholder; will gain real form post-Phase-I)
+
+**Tasks:**
+
+- [ ] Rename each evaluator in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py); update the dispatch table to the v2 names.
+- [ ] Implement `assertion_naming_v1_to_v2` migration: walks every `InputContracts[i].assertion` and `OutputExpectations[i].assertion`, rewrites `kind` per the mapping.
+- [ ] Register the migration in `migrations[(1, 2)]` alongside the prior two reshapes.
+- [ ] Migration round-trip test extends the v1→v2 fixture to include assertions.
+- [ ] Update the existing five-kind tests for the new names (matches v2 schema).
+- [ ] DOC: update the assertion-kinds tables in [`recipe-authoring.md` § InputContracts and § OutputExpectations](../guides/recipe-authoring.md) with v2 names; remove v1 names.
+- [ ] Update [`tech-spec.md`](tech-spec.md) assertion-kind enumeration.
+- [ ] Cross-repo coordination: update `dependency-spec.md` with v2 assertion-kind names.
+- [ ] Update [`dependency-gaps-v0.16.0.md` § G16a](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.19.0"; workarounds row.
+
+---
+
+### Story I.y: Release v0.19.0 (Phase I bundle 4, schema_version 1→2) [Planned]
+
+**Disposition: release ceremony + schema-bump ceremony.** Minor bump (`v0.18.0 → v0.19.0`). Closes Bundle 4 and Phase I.
+
+The schema-v2 migration is cache-invalidating per [`project-essentials.md` § "Cache identity is the reproducibility contract"](project-essentials.md). Pre-production rules apply: documented in release notes, announced as a one-time re-materialization cost, no post-production ceremony required (no `schema_version` re-pinning beyond the v1→v2 bump itself). This story performs the bump and the announcement.
+
+**Tasks:**
+
+- [ ] Bump `pyproject.toml` `version = "0.18.0"` → `"0.19.0"`.
+- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
+- [ ] Update the canonical-hash pinning test fixtures: confirm v2-shape canonical bytes for representative recipes; record the new pinned hashes. A reviewer must consciously sign off on the pinned hash change.
+- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.19.0]`:
+   - **Schema:** "Recipe `schema_version` bumped from 1 to 2. The v1→v2 migration is automatic via the recipe loader; recipes do not need manual rewriting. **Cache invalidation:** all existing materialized instances become stale and must be re-materialized. This is a one-time event per installation."
+   - **Changed:** G15 (Filters flat shape), G12 (Generation reshape), G16a (assertion naming pass).
+   - **Notes:** "Pre-production cache invalidation per `project-essentials.md`. See migration entries in `recipe.loader.migrations` for the precise reshape rules."
+- [ ] Ensure the v1→v2 migration is exercised by an integration test that loads a representative v1 recipe, applies the migration, and produces a canonical instance.
+- [ ] Cross-repo coordination: confirm `dependency-spec.md` is consistent across all three v2 reshapes (Filters, Generation, assertions).
+- [ ] Update `recipe-authoring.md`'s overall introduction (or the schema-version subsection) to enumerate `schema_version: 2` as the canonical recipe version.
 
 ---
 
@@ -212,3 +709,10 @@ The `archive_stories` mode preserves this section verbatim when archiving storie
   - FR-ARCH-1 tight coupling — sibling `recipe_hash` participating in the current recipe's cache identity, so re-materializing upstream auto-invalidates downstream. The Phase H sub-bundle shipped FR-TRANS-1 with loose coupling; tight coupling is the follow-up needed for multi-team or longitudinal workflows.
   - Generic record-tagging primitive — factor FR-FILTER-1's bespoke `label` / `exclude_already_labeled` params into a shared mechanism multiple filter ops can use.
 - **Default-change discipline tooling for cache-identity stability** — expand the canonical-hash pinning test suite to cover multiple fixture recipes with different default-coverage profiles, so any change to a pydantic field default (anywhere in the recipe model graph) trips at least one pin and forces the developer to either revert or bump `schema_version`. Add an optional pre-commit / CI hook that diffs pydantic field defaults against `main` and requires a `schema_version` bump or an explicit "non-semantic default change" acknowledgement in the commit message. End-state invariant: cache invalidations are always deliberate (acknowledged at change time, announced in release notes); never silent. Plan as production-readiness work.
+- **`stats_from_instance.variant: <name>` selector** — let a consumer recipe pin a specific sibling-variant's fitted statistics (e.g., normalize stats fit under a specific experimental overlay). The Phase I G19 fix closes the no-variant case; the variant-selector form is a follow-up. Added during Phase I planning (Story I.h).
+- **Real `to_grayscale` Transformation op** — Phase I removed the declared-but-unimplemented `to_grayscale` OperationSpec entry to keep the surface honest. A real implementation with a `method: average | luminance | …` parameter set is deferred until a recipe surfaces a concrete need. Added during Phase I planning (Story I.h).
+- **Plugin-pluggable validator-check reserved-set hook** — let plugins declare `Plugin.loader_stamped_fields(recipe) -> set[str]` so validator check 23 (Featurization `output_field` collision) can be applied to non-stub plugins when their loaders ship. Today the reserved-set is hardcoded for `image_classification`; tabular and text stubs don't stamp fields and don't need the hook yet. Originally noted in Story I.c's prevention notes; added during Phase I planning (Story I.h).
+- **Per-stage report subsections** — extend the snapshot-based stage-aware viz dispatch (Story I.v / G7) so the rendered `report.md` carries one heading per snapshotted stage. The v1 deliverable is one report section with per-viz `stage:` annotations; richer structure is a UX polish follow-up. Added during Phase I planning (Story I.h).
+- **Scaffolder v2 grand sweep** — refresh the bundled `init` scaffolder ([`scaffolder/init.py`](../../src/datarefinery/scaffolder/init.py)) to actively showcase v2 affordances in the scaffolded recipe (`seed_derive_from: master` on every seeded op, tag-driven `applies_to` example, `replace_input_records: true` demo, `value_in_set` instead of bare enum lists, etc.). Phase I's Bundle 4 ships the *minimal* scaffolder update (emit valid v2-shape recipes); the grand-sweep redesign of the scaffolded recipe as a teaching artifact is a follow-up. Added during Phase I planning (Story I.h).
+- **Real `distributional` assertion kind** — replace the v1 placeholder with a real evaluator (KS test, JS divergence, or similar). The current placeholder always passes; downstream drift tools (DataMachine) implement their own checks. Added during Phase I planning (Story I.h).
+- **DR-side `class_balance` resampling** — physically resample (oversample minority records into the cached train split, or emit per-record `class_weight`) at the Splits stage rather than passing the strategy through as an MF-binding hint. Phase I chose MF-side resampling (Story I.s / G10); revisit if downstream evidence accumulates that the materialized instance needs to be framework-agnostic and self-contained. Added during Phase I planning (Story I.h).

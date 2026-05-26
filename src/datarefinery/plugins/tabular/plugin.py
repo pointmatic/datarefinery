@@ -34,6 +34,7 @@ SUPPORTED_SECTIONS = frozenset(
         "Featurizations",
         "OutputExpectations",
         "Visualizations",
+        "Sinks",
     }
 )
 

@@ -56,8 +56,10 @@ from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import (
     Manifest,
     ManifestWarning,
+    SinkManifestEntry,
     write_manifest,
 )
+from datarefinery.pipeline.sinks import SinkResult, execute_sinks
 from datarefinery.pipeline.stages.augmentations import (
     collect_augmentation_policies,
     realize_aggressive_split,
@@ -184,6 +186,7 @@ class PipelineRunner:
         split_map: dict[str, list[Record]] = {}
         fitted_op_ids: list[str] = []
         records: list[Record] = list(raw_records)
+        sink_results: list[SinkResult] = []
 
         def _emit(stage: str) -> None:
             nonlocal current_stage
@@ -191,11 +194,24 @@ class PipelineRunner:
             if progress_callback is not None:
                 progress_callback(stage)
 
+        def _run_sinks(sink_stage: str, smap: Mapping[str, list[Record]]) -> None:
+            if not self.recipe.Sinks:
+                return
+            sink_results.extend(
+                execute_sinks(
+                    sinks=list(self.recipe.Sinks),
+                    stage=sink_stage,
+                    split_map=smap,
+                    instance_dir=temp_dir,
+                )
+            )
+
         try:
             _emit("InputContracts")
             ic = evaluate_input_contracts(raw_records, self.recipe.InputContracts)
             ic.raise_for_status()
             warnings.extend(_wrap(current_stage, (w.message for w in ic.warnings)))
+            _run_sinks("post_InputContracts", {"_records": records})
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -233,6 +249,7 @@ class PipelineRunner:
                         ),
                     )
                 )
+            _run_sinks("post_Splits", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -248,6 +265,7 @@ class PipelineRunner:
             for split_name, fr in post_filter.items():
                 split_map[split_name] = fr.records
                 warnings.extend(_wrap(current_stage, fr.warnings))
+            _run_sinks("post_Filters", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -263,6 +281,7 @@ class PipelineRunner:
             )
             split_map = dict(gen_result.splits)
             warnings.extend(_wrap(current_stage, gen_result.warnings))
+            _run_sinks("post_Generation", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -280,6 +299,7 @@ class PipelineRunner:
             )
             split_map = dict(tx_result.splits)
             fitted_op_ids = list(tx_result.fitted_op_ids)
+            _run_sinks("post_Transformations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -295,6 +315,7 @@ class PipelineRunner:
             )
             split_map = dict(feat_result.splits)
             fitted_op_ids.extend(feat_result.fitted_op_ids)
+            _run_sinks("post_Featurizations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -327,6 +348,7 @@ class PipelineRunner:
             # serialized block is recorded in the manifest's eventual
             # `augmentations` field via the runner's report writer
             # (Story C.n) - here we just defensively re-validate.
+            _run_sinks("post_Augmentations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -342,6 +364,7 @@ class PipelineRunner:
             )
             oe.raise_for_status()
             warnings.extend(_wrap(current_stage, (w.message for w in oe.warnings)))
+            _run_sinks("post_OutputExpectations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -357,6 +380,7 @@ class PipelineRunner:
                 label_field=label_field,
                 recipe=self.recipe,
             )
+            _run_sinks("post_Visualizations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir, cache_key, current_stage, split_map, warnings, start
@@ -384,6 +408,16 @@ class PipelineRunner:
                 elapsed_seconds=elapsed,
                 record_counts={name: len(records) for name, records in split_map.items()},
                 warnings=warnings,
+                sinks={
+                    r.name: SinkManifestEntry(
+                        stage=r.stage,
+                        format=r.format,
+                        files_written=r.files_written,
+                        bytes_total=r.bytes_total,
+                        path_template_resolved_root=r.path_template_resolved_root,
+                    )
+                    for r in sink_results
+                },
             )
             write_manifest(manifest_path(temp_dir), manifest)
 

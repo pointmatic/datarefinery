@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Sinks — schema, validator, materialize-time `png_per_record` writer
+  (Story I.d).** New top-level recipe section `Sinks` declares
+  disk-output artifacts captured at materialize time. v1 ships one
+  writer (`png_per_record`) targeting any pipeline stage's record
+  output via a closed `stage` vocabulary
+  (`post_InputContracts`...`post_Visualizations`). Sinks participate
+  in canonical recipe bytes (cache identity) and the existing
+  temp-then-promote atomic write (FR-5); pipeline failure leaves no
+  partial sink output under the promoted instance path. Per-sink
+  summaries land in a new `manifest.sinks[<name>]` map (`stage`,
+  `format`, `files_written`, `bytes_total`,
+  `path_template_resolved_root`). Closes the G18 surface symptom by
+  making bit-identical export of pre-normalize stage outputs
+  structural rather than reachable only via consumer-side
+  re-derivation. See
+  [`docs/specs/phase-i-intermediate-artifact-persistence-spec.md`](docs/specs/phase-i-intermediate-artifact-persistence-spec.md)
+  for the full design.
+
+  New validator check 24 (`sinks`): sink names unique within a recipe;
+  path templates parse cleanly; templates do not escape the instance
+  directory (`..` or absolute paths rejected); the referenced `field`
+  appears in the recipe's known-field universe; each `splits` entry
+  names a defined split. Total static checks: 23 → 24.
+
+  **Pre-production cache invalidation.** Adding the new `Sinks: []`
+  default to `Recipe` perturbs canonical recipe bytes for every
+  recipe that omits the section. Per `project-essentials.md` §
+  "Cache identity is the reproducibility contract" pre-prod rules,
+  this is acceptable and noted here; users re-materialize on
+  upgrade. The pinned canonical-hash fixture in
+  `tests/unit/test_canonical_hash_pin.py` was bumped in the same
+  commit as a deliberate sign-off.
+
+  **Cross-repo coordination.** `docs/specs/modelfoundry/dependency-spec.md`
+  updated with the `manifest.sinks` field shape so downstream tools
+  (ModelFoundry today; other tools tomorrow) can read sink-output
+  metadata without breakage. Additive section; no `schema_version`
+  bump.
+
 ## [0.16.2] - 2026-05-25
 
 ### Fixed

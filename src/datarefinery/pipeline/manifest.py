@@ -32,6 +32,24 @@ class ManifestWarning(BaseModel):
     message: str
 
 
+class SinkManifestEntry(BaseModel):
+    """Per-sink summary captured in ``manifest.sinks[<name>]`` (Story I.d).
+
+    Downstream tools (ModelFoundry today; the cross-repo contract is
+    pinned in ``docs/specs/modelfoundry/dependency-spec.md``) read
+    this entry to discover which sinks ran and where their output
+    lives.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    stage: str
+    format: str
+    files_written: int
+    bytes_total: int
+    path_template_resolved_root: str
+
+
 class Manifest(BaseModel):
     """Per-instance summary written to ``<instance>/manifest.json``."""
 
@@ -52,6 +70,7 @@ class Manifest(BaseModel):
     completed_through: str | None = None
     record_counts: dict[str, int] = Field(default_factory=dict)
     warnings: list[ManifestWarning] = Field(default_factory=list)
+    sinks: dict[str, SinkManifestEntry] = Field(default_factory=dict)
 
 
 def write_manifest(path: Path, manifest: Manifest) -> None:

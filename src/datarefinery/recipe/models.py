@@ -321,6 +321,44 @@ class VisualizationOp(_Frozen):
     mode: Literal["exploration", "reporting"]
 
 
+# Closed vocabulary for the `stage` field on sinks (and, in a later
+# story, visualizations — Story I.v / G7). The names are the
+# point-in-pipeline at which records are captured: each value names the
+# stage whose *output* the sink observes. See
+# `phase-i-intermediate-artifact-persistence-spec.md` § 3.3 for the
+# canonical mapping to `pipeline/runner.py:STAGE_NAMES`.
+SinkStage = Literal[
+    "post_InputContracts",
+    "post_Filters",
+    "post_Splits",
+    "post_Generation",
+    "post_Transformations",
+    "post_Featurizations",
+    "post_Augmentations",
+    "post_OutputExpectations",
+    "post_Visualizations",
+]
+
+
+class SinkOp(_Frozen):
+    """Disk-output declaration captured at materialize time.
+
+    `name` is the on-disk root segment and the manifest key (unique
+    within a recipe). `stage` selects the pipeline stage whose output
+    the sink observes (closed vocabulary; see :data:`SinkStage`).
+    `splits` defaults to None meaning *all splits known at the chosen
+    stage*; passing a list restricts capture. `path_template` is
+    interpreted relative to the cache instance directory.
+    """
+
+    name: str
+    stage: SinkStage
+    splits: list[str] | None = None
+    field: str
+    format: Literal["png_per_record"]
+    path_template: str
+
+
 class Recipe(_Frozen):
     schema_version: int
     plugin: str
@@ -338,4 +376,5 @@ class Recipe(_Frozen):
     Featurizations: list[FeaturizationOp] = Field(default_factory=list)
     OutputExpectations: list[Expectation] = Field(default_factory=list)
     Visualizations: list[VisualizationOp] = Field(default_factory=list)
+    Sinks: list[SinkOp] = Field(default_factory=list)
     variants: dict[str, dict[str, Any]] = Field(default_factory=dict)

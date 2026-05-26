@@ -177,6 +177,27 @@ metadata document. ModelFoundry-relevant fields:
 | `warnings`             | `list[ManifestWarning]`    | Non-fatal issues raised during the run; each has `stage` + `message`. |
 | `is_partial`           | `bool`                     | True when materialization stopped early via `--stop-after`. |
 | `failed_stage`         | `str | null`               | Stage at which a partial run stopped. |
+| `sinks`                | `dict[str, SinkManifestEntry]` | Per-sink summary of disk-output artifacts captured at materialize time (Story I.d). Empty dict when the recipe declares no `Sinks` section. |
+
+### `manifest.sinks` shape
+
+Added in DataRefinery v0.17.0 alongside the `Sinks` recipe section.
+Each declared sink in the recipe contributes one entry to this map,
+keyed by the sink's `name`.
+
+| Field                          | Type    | Meaning |
+|--------------------------------|---------|---------|
+| `stage`                        | `str`   | Pipeline stage whose output was captured (from the closed vocabulary documented in `recipe-authoring.md § Sinks`). |
+| `format`                       | `str`   | Serialization format. v1: `"png_per_record"`. |
+| `files_written`                | `int`   | Number of files the sink wrote. Matches the record count it visited (after the optional `splits` filter). |
+| `bytes_total`                  | `int`   | Total bytes written by this sink. |
+| `path_template_resolved_root`  | `str`   | Longest fixed prefix of the recipe's `path_template`, relative to the instance directory. Consumers point at this when locating the sink's output tree without walking the full recipe. |
+
+Sink output lives under `<instance>/<path_template_resolved_root>/...`
+inside the same atomic temp-then-promote unit as `dataset/`,
+`fitted_statistics/`, and `report/`. The format vocabulary is
+extensible (additional formats are planned in Future); consumers
+SHOULD ignore unknown `format` values rather than fail.
 
 `record_counts["train"]` reflects the **post-augmentation** count for
 aggressive recipes. ModelFoundry consumers reading the count to

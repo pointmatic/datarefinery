@@ -127,3 +127,19 @@ When `--workers > 1` (opt-in process pool), per-record operations are scheduled 
 - "Let's use the `as_completed` iteration pattern for `Future` objects." **Only if** the results are immediately reordered by `record_id` before crossing a stage boundary. The pattern is fine internally; the contract is at the boundary.
 
 The integration test suite includes a determinism check that runs the same fixture pipeline with `workers=1`, `workers=2`, and `workers=4`, asserting all three produce byte-identical instances. Any change to `pipeline/workers.py` must keep that test green; if it cannot, the change is a determinism regression and must be reverted or escalated.
+
+### DataRefinery does not resample at the Splits stage — `class_balance` is a training-time hint
+
+`SplitsSection.class_balance` is a **forward-declared hint** that DataRefinery passes through `SplitResult.class_balance` and `manifest.class_balance` to consumer tools. The consumer (ModelFoundry today; other tools tomorrow) honors the strategy at training time via standard framework primitives (`WeightedRandomSampler` in PyTorch, `class_weight=` in Keras, etc.). DataRefinery's runtime performs **no resampling and no weight emission** at the Splits stage. The behavior contract is in `features.md` FR-7 #4 ("a sampling strategy ModelFoundry honors"); this entry pins the prevention pattern.
+
+**Why:** the boundary keeps DataRefinery's "prepared dataset = materialized bytes" discipline coherent and avoids reimplementing framework primitives. Inflating the cached train split with oversampled records would multiply storage for every imbalance experiment; emitting a `class_weight` column on records would entangle DataRefinery's record schema with training-loop semantics. The decision was made deliberately during Phase I planning (Story I.o / G10) after considering the DR-side alternative; DR-side resampling lives in `stories.md § Future` as a deliberate revisit candidate, not an enhancement to be silently added.
+
+**How to apply:** when working in `pipeline/stages/splits.py` or anything that reads `SplitsSection.class_balance`, refuse the following tempting moves:
+
+- "Let's add an `oversample_minority_to_majority` branch in the Splits stage so the cached train split is balanced." **No.** That contradicts FR-7 #4 and the recipe-as-truth discipline; the strategy is a hint for the training tool, not a DR runtime behavior. The DR-side path is in Future for deliberate revisit if downstream evidence accumulates.
+- "Let's emit a `class_weight: float` column on every train record so the consumer doesn't need to compute weights." **No.** The strategy is declarative; consumers compute weights from per-class counts at training time. Adding a column entangles record schema with training-loop semantics.
+- "Let's add a `validate` warning when a recipe declares `class_balance` but ModelFoundry isn't installed." **No.** DataRefinery is independent of any specific consumer; the strategy is a contract surface for *any* training-time consumer (see `docs/specs/modelfoundry/dependency-spec.md` for the binding contract). Coupling validate behavior to a specific downstream tool inverts the dependency direction.
+
+(Note: changing `class_balance.strategy` does invalidate the cache, which is **correct** — `class_balance` is in canonical bytes, so the invalidation happens automatically. That is the intended behavior; no action needed.)
+
+The path forward for DR-side resampling is a story under the `stories.md § Future` "DR-side `class_balance` resampling" entry, not an in-band code change in `pipeline/stages/splits.py`. The precedent for "tempting upgrade documented in Future, not silently adopted" is the § "Sibling-instance dependencies are loose-coupled in v1" entry above.

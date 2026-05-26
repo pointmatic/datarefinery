@@ -732,6 +732,87 @@ Visualizations:
     mode: reporting
 ```
 
+### `Sinks` (optional)
+
+Disk-output declarations captured at materialize time. Each sink
+observes one named pipeline stage's record output and writes
+per-record artifacts (today: PNGs) under a path template, rooted in
+the cache instance directory. Sinks let downstream consumers (e.g. a
+training tool, a submission package, a manual sanity check) read
+bit-identical bytes from the stage at which they were produced — not
+a denormalized or otherwise reconstructed version.
+
+```yaml
+Sinks:
+  - name: corruption_pngs
+    stage: post_Generation       # after the Generation stage emits records
+    splits: [test]               # optional; defaults to all splits at the stage
+    field: image                 # record field to serialize
+    format: png_per_record       # v1: one PNG per record
+    path_template: "exports/cifar-10-c/{corruption}/sev{severity|str}/{label}/{source_path|stem}__sev{severity|str}.png"
+```
+
+**Fields:**
+
+- `name` — sink identifier; on-disk root segment and manifest key.
+  Must be unique within a recipe.
+- `stage` — closed vocabulary: `post_InputContracts`, `post_Filters`,
+  `post_Splits`, `post_Generation`, `post_Transformations`,
+  `post_Featurizations`, `post_Augmentations`,
+  `post_OutputExpectations`, `post_Visualizations`. Each value names
+  the stage whose *output* the sink observes.
+- `splits` — optional list of split names to restrict capture to. Omit
+  (or leave `null`) to capture every split known at the chosen stage.
+- `field` — record field whose value gets serialized. For
+  `png_per_record` this must carry a uint8 H×W×C (or H×W) numpy
+  array.
+- `format` — serialization format. v1 ships `png_per_record`.
+- `path_template` — per-record output path, interpreted relative to
+  the cache instance directory.
+
+**Path template grammar:**
+
+- `{field}` substitutes the record's value of `field` as a string.
+- `{field|filter}` applies one of `stem`, `lower`, `upper`, `str`.
+  - `|stem` — `Path.stem` of a string value
+    (e.g. `data/train/1234.png` → `1234`).
+  - `|lower`, `|upper` — case transforms.
+  - `|str` — explicit string coercion for integer fields.
+- `{split}` is a special variable resolved from the current split
+  name.
+- Templates that escape the instance directory (`..` segments or
+  absolute paths) are rejected at validate time.
+
+**Format vocabulary (v1):**
+
+| `format` | Required field shape | Output |
+|---|---|---|
+| `png_per_record` | uint8 H×W×C (or H×W for grayscale) on `field` | One PNG per record via `PIL.Image.fromarray`. |
+
+**Cache identity participation.** Sinks are part of canonical recipe
+bytes. Adding, removing, or modifying any sink field — including
+`path_template` alone — invalidates the cache. Downstream tools that
+bind against the path layout deserve the invalidation.
+
+**Atomicity.** Sink output lives under the same temp-then-promote
+contract as the cached JSONL, `fitted_statistics/`, and `report/`.
+Pipeline failure leaves the temp dir flagged `FAILED`; no partial
+sink output ever appears under the promoted instance path.
+
+**Manifest.** Each sink writes one entry to `manifest.sinks.<name>`:
+`stage`, `format`, `files_written`, `bytes_total`,
+`path_template_resolved_root` (the longest fixed prefix of the
+template). See the dependency contract for downstream consumers in
+[`modelfoundry/dependency-spec.md`](../specs/modelfoundry/dependency-spec.md).
+
+**Tip: where to put the sink.** For uint8 image exports, target the
+earliest stage at which the record carries the uint8 representation
+you want (typically `post_Filters` or `post_Generation`) —
+**before** any normalize-style Transformation rewrites `image` in
+place to float bytes. A sink at `post_Transformations` against a
+normalized `image` field will fail at materialize time with an
+actionable dtype error.
+
 ### `variants`
 
 Named overlays on any section, applied **before** canonicalization and

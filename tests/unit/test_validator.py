@@ -144,12 +144,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_twenty_three_checks() -> None:
+def test_valid_recipe_passes_all_twenty_four_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 23
-    assert {r.check_id for r in report.results} == set(range(1, 24))
+    assert len(report.results) == 24
+    assert {r.check_id for r in report.results} == set(range(1, 25))
     assert all(r.status == "pass" for r in report.results)
 
 

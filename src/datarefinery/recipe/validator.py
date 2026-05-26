@@ -74,6 +74,7 @@ _LIST_SECTIONS = (
     "Featurizations",
     "OutputExpectations",
     "Visualizations",
+    "Sinks",
 )
 
 
@@ -231,6 +232,7 @@ _VALID_VARIANT_OVERRIDE_KEYS: frozenset[str] = frozenset(
         "Featurizations",
         "OutputExpectations",
         "Visualizations",
+        "Sinks",
     }
 )
 
@@ -1066,6 +1068,93 @@ def check_23_featurization_output_field_loader_collision(
     )
 
 
+def check_24_sinks(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Sink-section validation (Story I.d).
+
+    Checks: sink names unique within the recipe; path templates parse
+    cleanly; templates do not escape the instance directory (`..` or
+    absolute paths rejected); the referenced `field` appears in the
+    recipe's known-field universe (loader-stamped fields + Output
+    record schema + Generation outputs + Featurization output fields);
+    each `splits` entry names a defined split.
+
+    Per spec § 8 (`phase-i-intermediate-artifact-persistence-spec.md`),
+    v1 does NOT enforce that the field exists *at the chosen stage* —
+    a `post_Filters` sink legitimately captures pre-normalize uint8
+    that's not in the final cached `Output.record_schema` shape. The
+    runtime path resolver and the writer raise `MaterializeError` if a
+    referenced field genuinely is missing at materialize time.
+    """
+    del plugin
+    descriptor = "sinks"
+    issues: list[str] = []
+    if not recipe.Sinks:
+        return _passed(24, descriptor)
+
+    # Local imports keep `recipe/` free of a `pipeline/` import cycle
+    # in the common case where this check is skipped.
+    from datarefinery.pipeline.sinks.template import (
+        parse_template,
+        template_escapes_root,
+    )
+
+    # Name uniqueness.
+    seen_names: dict[str, int] = {}
+    for sink in recipe.Sinks:
+        seen_names[sink.name] = seen_names.get(sink.name, 0) + 1
+    duplicates = sorted(name for name, count in seen_names.items() if count > 1)
+    if duplicates:
+        issues.append(f"duplicate sink names {duplicates!r} (must be unique within a recipe)")
+
+    # Field universe — loader-stamped + record schema + Generation outputs +
+    # Featurization output fields. Augmentations / Transformations don't
+    # introduce new fields (they mutate values on existing fields).
+    field_universe: set[str] = {"record_id", "image", "path", recipe.Labels.field}
+    if any(s.partition is not None for s in recipe.Input.sources):
+        field_universe.add("partition")
+    field_universe.update(recipe.Output.record_schema.keys())
+    for gen in recipe.Generation:
+        field_universe.update(gen.output_schema.keys())
+    for feat in recipe.Featurizations:
+        field_universe.add(feat.output_field)
+
+    defined_splits = _defined_split_names(recipe)
+
+    for sink in recipe.Sinks:
+        try:
+            parse_template(sink.path_template)
+        except ValueError as exc:
+            issues.append(f"Sinks[{sink.name!r}].path_template: {exc}")
+
+        if template_escapes_root(sink.path_template):
+            issues.append(
+                f"Sinks[{sink.name!r}].path_template {sink.path_template!r} "
+                f"escapes the instance directory (absolute path or '..' traversal)"
+            )
+
+        if sink.field not in field_universe:
+            issues.append(
+                f"Sinks[{sink.name!r}].field {sink.field!r} not in the recipe's "
+                f"known fields ({sorted(field_universe)}); rename, or add it "
+                f"to Output.record_schema / a Generation output / a Featurization output."
+            )
+
+        if sink.splits is not None:
+            bad = [s for s in sink.splits if s not in defined_splits]
+            if bad:
+                issues.append(f"Sinks[{sink.name!r}].splits references undefined splits {bad}")
+
+    if not issues:
+        return _passed(24, descriptor)
+    return CheckResult(
+        check_id=24,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1146,6 +1235,7 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         "featurization_output_field_loader_collision",
         check_23_featurization_output_field_loader_collision,
     ),
+    (24, "sinks", check_24_sinks),
 )
 
 

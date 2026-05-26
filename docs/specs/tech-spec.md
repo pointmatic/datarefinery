@@ -412,6 +412,15 @@ Stage sequence (recipe-declared order; default below):
 10. Render `Visualizations` declared `reporting` (FR-13) into the report.
 11. Write `manifest.json` (FR-3.7).
 
+After each named stage emits its records, the runner invokes
+`pipeline.sinks.execute_sinks(...)` (Story I.d) to dispatch any
+recipe-declared `Sinks` whose `stage` matches `post_<StageName>`.
+Sink output lands under the (temp) instance directory and therefore
+participates in the existing temp-then-promote atomic write (FR-5);
+the per-sink summary is captured into `manifest.sinks[<name>]`. The
+closed stage vocabulary mirrors `STAGE_NAMES` (with a `post_` prefix)
+and is shared with G7-era visualization-stage selection.
+
 Each stage uses `pipeline.workers.run_parallel(...)` when applicable and the runtime config opts in.
 
 ### `pipeline.workers` (FR-9)
@@ -533,6 +542,7 @@ class Recipe(pydantic.BaseModel):
     Featurizations: list[FeaturizationOp] = []
     OutputExpectations: list[Expectation] = []
     Visualizations: list[VisualizationOp] = []
+    Sinks: list[SinkOp] = []                       # Story I.d (disk-output declarations)
     variants: dict[str, dict[str, Any]] = {}       # FR-14
 ```
 
@@ -553,6 +563,7 @@ Per-section models (sketch; full field definitions land alongside the FR-1 imple
 | `AugmentationOp` | `name`, `op`, `params`, `splits` (validator rejects non-train), `seed`, `materialization: Literal["lazy", "aggressive"] = "lazy"`, `expansion: int = 1`. Model-level validator rejects `expansion < 1` and `expansion > 1 + materialization=lazy` — surfaced as `RecipeError` through the loader. Aggressive ops dispatch through a plugin-registered `Realizer` (see `plugins/image_classification/augmentations/_realizer.py`); per-variant seeding extends the FR-3 determinism contract with an `(op_id, variant_index)` coordinate. The `image_classification` plugin registers per-op pydantic param models — `RandomCropParams` (`size: int \| tuple[int, int]`, `padding: int = 0`, `padding_mode: Literal["reflect", "replicate", "zero", "constant"] = "reflect"`; Story H.q FR-AUG-1), `HorizontalFlipParams` (`p: float = 0.5` in `[0.0, 1.0]`; Story H.q FR-AUG-2), `ColorJitterParams` (`brightness`/`contrast`/`saturation` in `[0.0, 1.0]`, `hue` in `[0.0, 0.5]`; Story H.r FR-AUG-3), and `RandomErasingParams` (`p` in `[0.0, 1.0]`, `scale` and `ratio` as ordered float tuples; Story H.r FR-AUG-4) — validated inside each realizer via `model_validate(params)`. Recipe-level validation continues through the plugin's `OperationSpec` (check 18). |
 | `FeaturizationOp` | `name`, `inputs`, `output_field`, `op`, `params`, `splits`, `fit_source: str | None` |
 | `VisualizationOp` | `name`, `op`, `params`, `stage`, `mode: Literal["exploration", "reporting"]`. The plugin op handle's `render(...)` returns either `bytes` (single PNG, persisted as `<op.name>.png`) or `Mapping[str, bytes]` (one PNG per key, persisted as `<op.name>_<key>.png`); the runner / exploration renderer also pass an optional `recipe: Recipe \| None = None` kwarg consumed by policy-aware ops (introduced Stories H.t / H.u). The `image_classification` plugin registers per-op pydantic param models — `PixelDistributionParams` (`bins: int = 64`, `splits: list[str]`; Story H.t FR-VIZ-1), `AugmentedSampleGridParams` (`n_base: int`, `n_variants: int`, `seed: int \| None = None`; Story H.u FR-VIZ-2), `CorruptionSeverityGridParams` (`n_images: int`, `corruption_types: list[str]`, `severities: list[int]` each in `1..5`; Story H.v FR-VIZ-3), and `SeverityLadderParams` (`n_examples: int`, `corruption_type: str`; Story H.w FR-VIZ-4). Recipe-time vocabulary validation for the two corruption-aware ops uses the in-tree `_corruption_names.CORRUPTION_NAMES_ALL` (no `[corruptions]` extras required for validation; only for execution). |
+| `SinkOp` | `name`, `stage: Literal["post_InputContracts", "post_Filters", "post_Splits", "post_Generation", "post_Transformations", "post_Featurizations", "post_Augmentations", "post_OutputExpectations", "post_Visualizations"]`, `splits: list[str] \| None`, `field: str`, `format: Literal["png_per_record"]`, `path_template: str`. Story I.d disk-output declaration. The path-template grammar (`{field}`, `{field\|stem/lower/upper/str}`, `{split}`) is parsed at validate time; templates that escape the instance directory (absolute or `..` traversal) are rejected. v1 ships one writer — `png_per_record` requires uint8 H×W×C (or H×W) on the named field and writes via `PIL.Image.fromarray`. Sink output participates in canonical recipe bytes (cache identity) and the existing temp-then-promote atomic write (FR-5); per-sink summaries land in `manifest.sinks[<name>]`. |
 
 ### Manifest
 
@@ -572,6 +583,7 @@ class Manifest(pydantic.BaseModel):
     failed_stage: str | None
     record_counts: dict[str, int]      # split name -> count
     warnings: list[Warning]
+    sinks: dict[str, SinkManifestEntry] # Story I.d: per-sink stage/format/files_written/bytes_total/path_template_resolved_root
 ```
 
 ### Drift schema (FR-15 placeholder for v1)
@@ -606,7 +618,7 @@ CLI flags / env vars populate this object before `DataRefinery.from_recipe(...)`
 
 ### Recipe sections recap
 
-Required for every recipe: `schema_version`, `plugin`, `Input`, `Output`, `Labels`, `Splits`, `OutputExpectations`. Optional but commonly present: `InputContracts`, `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `Visualizations`, `SampleData`, `variants`.
+Required for every recipe: `schema_version`, `plugin`, `Input`, `Output`, `Labels`, `Splits`, `OutputExpectations`. Optional but commonly present: `InputContracts`, `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `Visualizations`, `Sinks`, `SampleData`, `variants`.
 
 Plugin-specific operation parameters live inside each operation's `params` field and are validated against the plugin's `OperationSpec` schemas (validator check 18).
 

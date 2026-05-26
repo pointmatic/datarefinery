@@ -32,6 +32,7 @@ _CANONICAL_RECIPE_SECTIONS = frozenset(
         "Featurizations",
         "OutputExpectations",
         "Visualizations",
+        "Sinks",
     }
 )
 
