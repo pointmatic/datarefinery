@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-05-26
+
+Phase I Bundle 1 (Sinks). Closes Story I.g. Additive cross-repo
+contract changes only — no `schema_version` bump. Brings the Sinks
+recipe section, the per-record-seed persistence contract, and the
+`datarefinery export` verb (Stories I.d, I.e, I.f, I.f.1).
+
 ### Added
 
 - **Announced-skip semantics for partial-run sinks (Story I.f.1).**
@@ -135,6 +142,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (ModelFoundry today; other tools tomorrow) can read sink-output
   metadata without breakage. Additive section; no `schema_version`
   bump.
+
+### Fixed
+
+- **`click` declared as an explicit runtime dependency (regression
+  from Story I.f).** [`cli/app.py`](src/datarefinery/cli/app.py)
+  began importing `click` directly in I.f (alongside the existing
+  `import typer`) so its exception-handling path could catch
+  `click.exceptions.Exit` cleanly, but `click` was not added to
+  `[project.dependencies]` at the same time. The package was still
+  pulled in transitively via `typer`, so `pyve test` passed locally
+  — but CI's `pip install -e ".[corruptions]"` path did not always
+  resolve the transitive in time and collected `ModuleNotFoundError:
+  No module named 'click'` on every CLI test. Pinning `click>=8` in
+  `[project.dependencies]` makes the contract explicit and matches
+  the `[[tool.mypy.overrides]]` entry that I.f had already added for
+  click stubs. Caught at the I.g release ceremony.
+
+### ⚠ Cache invalidation (pre-production)
+
+Two effects combine on upgrade from 0.16.x. Pre-prod rules apply per
+[`project-essentials.md` § "Cache identity is the reproducibility
+contract"](docs/specs/project-essentials.md); users re-materialize
+once. No `schema_version` bump — the changes are byte-level, not
+recipe-shape-level.
+
+- **Canonical recipe bytes shift (Story I.d).** Adding the
+  `Sinks: []` default to `Recipe` perturbs canonical bytes for every
+  recipe that omits the section, so every existing cache instance
+  resolves to a new directory after upgrade. The pinned canonical-hash
+  fixture in `tests/unit/test_canonical_hash_pin.py` was bumped in the
+  I.d commit as a deliberate sign-off.
+- **Cached JSONL record bytes shift (Story I.e).** Every record
+  produced by a stochastic Generation / aggressive-mode Augmentation
+  op now carries a `<op_name>_seed` field. Recipes without stochastic
+  ops are unaffected at the record level (still affected by the
+  canonical-bytes shift above).
 
 ## [0.16.2] - 2026-05-25
 

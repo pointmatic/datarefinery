@@ -276,7 +276,7 @@ When `materialize --stage <stop>` runs partially, sinks targeting stages later t
 
 ---
 
-### Story I.g: Release v0.17.0 (Phase I bundle 1, Sinks) [Planned]
+### Story I.g: Release v0.17.0 (Phase I bundle 1, Sinks) [Done]
 
 **Disposition: release ceremony.** Minor bump (`v0.16.2 → v0.17.0`). Closes Bundle 1.
 
@@ -286,15 +286,16 @@ One cached-bytes change: Story I.e stamps `<op_name>_seed` onto cached records f
 
 **Tasks:**
 
-- [ ] Bump `pyproject.toml` `version = "0.16.2"` → `"0.17.0"`.
-- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
-- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.17.0]`:
+- [x] Bump `pyproject.toml` `version = "0.16.2"` → `"0.17.0"`.
+- [x] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
+- [x] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.17.0]`:
    - **Added:** "Sinks — new top-level recipe section that captures stage-snapshot artifacts to disk at materialize time. v1 ships the `png_per_record` writer; full author guide in `recipe-authoring.md § Sinks` (Story I.d)."
    - **Added:** "Per-record `<op_name>_seed` persistence on every record produced by a stochastic Generation or aggressive-mode Augmentation op (Story I.e)."
    - **Added:** "`datarefinery export <recipe> [--sink <name> …]` CLI verb (and `DataRefinery.export()` library method) — re-runs sinks against an already-materialized instance without invalidating the cache (Story I.f)."
    - **Notes:** "Cached JSONL records now include `<op_name>_seed` fields for stochastic ops. One-time pre-production cache invalidation event; re-materialize existing recipes once at upgrade. No `schema_version` bump (the change is record-byte-level, not recipe-shape-level)."
-- [ ] Cross-repo coordination: confirm `dependency-spec.md` was updated by I.d (`manifest.sinks` shape) and I.e (per-record-seed field convention).
-- [ ] Ensure the canonical-hash pinning test for representative recipes either (a) is unaffected (recipes without sinks AND without stochastic ops produce byte-identical canonical bytes) or (b) is updated alongside this bump with reviewer sign-off per `project-essentials.md`.
+- [x] Cross-repo coordination: confirm `dependency-spec.md` was updated by I.d (`manifest.sinks` shape) and I.e (per-record-seed field convention).
+- [x] Ensure the canonical-hash pinning test for representative recipes either (a) is unaffected (recipes without sinks AND without stochastic ops produce byte-identical canonical bytes) or (b) is updated alongside this bump with reviewer sign-off per `project-essentials.md`.
+- [x] **Release-time fix — regression from Story I.f.** I.f added a direct `import click` to [`cli/app.py`](../../src/datarefinery/cli/app.py) without declaring `click` in `[project.dependencies]`; it was pulled in transitively via `typer`, so `pyve test` passed locally but CI's `pip install -e ".[corruptions]"` path collected `ModuleNotFoundError: No module named 'click'` on every CLI test at the I.g release ceremony. Added `click>=8` to `[project.dependencies]` and recorded the fix in the v0.17.0 CHANGELOG `Fixed` subsection.
 
 ---
 
