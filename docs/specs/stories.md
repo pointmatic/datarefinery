@@ -28,7 +28,7 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ## Phase I: Bug Fixes and Feature Gaps in v0.16.0
 
-Phase I collects investigation and fix work surfaced by the d802 consumer's cross-check against DataRefinery v0.16.0 (see [`docs/specs/dependency-gaps-v0.16.0.md`](dependency-gaps-v0.16.0.md), entries G1–G17 + DOC). Each gap entered Phase I as a candidate bug; debug-mode investigation determines whether each is a defect (closes here with a code fix) or a feature/architectural gap (a `[Planned]` story is captured here and handed off to `plan_phase` when the developer scopes the work).
+Phase I collects investigation and fix work surfaced by the consumer's cross-check against DataRefinery v0.16.0 (see [`docs/specs/dependency-gaps-v0.16.0.md`](dependency-gaps-v0.16.0.md), entries G1–G17 + DOC). Each gap entered Phase I as a candidate bug; debug-mode investigation determines whether each is a defect (closes here with a code fix) or a feature/architectural gap (a `[Planned]` story is captured here and handed off to `plan_phase` when the developer scopes the work).
 
 ### Story I.a: G5 investigation — reclassify as G7 (no code fix) [Done]
 
@@ -159,7 +159,7 @@ This story implements stage-aware dispatch: each declared `VisualizationOp.stage
 **Why this matters.** Two consumer flows are blocked today:
 
 - G5 (`augmented_sample_grid` post-normalize) — see Story I.a.
-- The d802 phase plan's `sample_grid_pre_normalize` vs. `sample_grid_post_normalize` pedagogical comparison ([`docs/specs/dependency-gaps-v0.16.0.md` § G7](dependency-gaps-v0.16.0.md)).
+- The consumer phase plan's `sample_grid_pre_normalize` vs. `sample_grid_post_normalize` pedagogical comparison ([`docs/specs/dependency-gaps-v0.16.0.md` § G7](dependency-gaps-v0.16.0.md)).
 
 **Design sketch** (per gap doc; final design decided at story-start, not pinned here):
 

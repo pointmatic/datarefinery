@@ -256,7 +256,7 @@ the canonical name `cast`:
 2. **`scale` is part of the op**, not just dtype conversion. The full
    semantic is "cast dtype, optionally with a multiplicative scale," and
    `cast` captures that better than the dtype-only `cast_dtype`.
-3. **It's what consumers reach for** — `op: cast` is what the d802 spec
+3. **It's what consumers reach for** — `op: cast` is what the consumer spec
    author wrote without consulting any documentation, which is the natural
    pull. Aligning the canonical name with that natural pull lowers the
    author-friction cost of using DataRefinery.
@@ -978,7 +978,7 @@ class GenerationOp(_Frozen):
 
 with pydantic `extra="forbid"`.
 
-**Current runtime behavior.** The d802 phase plan's Recipe B writes:
+**Current runtime behavior.** The consumer phase plan's Recipe B writes:
 
 ```yaml
 Generation:
@@ -1268,7 +1268,7 @@ Filters:
     stages: [pre_split]
 ```
 
-But consumer recipes — including the d802 spec — write the same shape
+But consumer recipes — including the consumer spec — write the same shape
 every **other** section uses (Transformations, Augmentations,
 Featurizations, Visualizations all have top-level `op:` and `params:`):
 
@@ -1282,7 +1282,7 @@ Filters:
     stages: [pre_split]
 ```
 
-The d802 spec's Filters block produces a pydantic ValidationError on
+The consumer spec's Filters block produces a pydantic ValidationError on
 every filter ("missing required field 'predicate'") before validate is
 reached.
 
@@ -1357,7 +1357,7 @@ InputContracts`):
 | `range` | `field`, `min`/`max` | Numeric field in bounds (scalar comparison only). |
 | `distributional` | `field`, kind-specific | v1 placeholder, always passes. |
 
-**What consumer recipes (and the d802 spec) write:**
+**What consumer recipes (and the consumer spec) write:**
 
 | Spec `kind` | DR has | Issue |
 |---|---|---|
@@ -1392,7 +1392,7 @@ they want exact-count semantics. Decide on a canonical naming convention
 and apply consistently. Options:
 
 - **`*_equals` + `*_range` + `*_in_set` etc.** — verb-style, reads as a
-  predicate sentence. The d802 spec author's natural pull.
+  predicate sentence. The consumer spec author's natural pull.
 - **Bare verbs + struct disambiguation** — current style. `dtype:
   {expected: uint8}` (equals) vs `dtype: {one_of: [uint8, float32]}` (set
   membership). Compact in YAML but requires authors to remember struct
@@ -1421,7 +1421,7 @@ Assertion kinds table.
 
 **Workaround in 0.16.0.** Drop all assertions except the five DR
 recognizes; rewrite those into the bare-verb shape with the right param
-keys (`expected:`, `min:`/`max:`). The d802 spec was authored against a
+keys (`expected:`, `min:`/`max:`). The consumer spec was authored against a
 mental model of what assertions *should* be available; reality is much
 sparser.
 

@@ -29,7 +29,7 @@ Reproducibility is a first-class concern: every stochastic operation is seeded, 
 
 A data category is defined by its native record shape and the operations that make sense on it — for example, image (2D arrays of pixels), text (token sequences), tabular (feature vectors with mixed types), and time-series (ordered tabular with temporal semantics). A plugin specializes DataRefinery for a single category and contributes the operations relevant to that type. Subdivisions within a category live as plugin-internal options, not separate plugins.
 
-The first plugin shipped is Image, scoped to classification, supporting the D802 deep learning curriculum. To keep the plugin interface honest, at least one additional category is sketched as a stub — minimally a recipe section list and operation outline for tabular, and ideally also for text — without implementation. The stubs exist to validate that category-agnostic abstractions are not "Image with extra steps" and to frame how future plugins would slot in.
+The first plugin shipped is Image, scoped to classification, supporting a consumer's machine learning curriculum. To keep the plugin interface honest, at least one additional category is sketched as a stub — minimally a recipe section list and operation outline for tabular, and ideally also for text — without implementation. The stubs exist to validate that category-agnostic abstractions are not "Image with extra steps" and to frame how future plugins would slot in.
 
 ## Reporting
 
