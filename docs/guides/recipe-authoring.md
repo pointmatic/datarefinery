@@ -455,12 +455,26 @@ Assertion kinds:
 |--------|---------------|---------------|-----------------|
 | `record_count` | one of `min`/`max` | — | Total record count is in bounds. |
 | `required_field` | `field` (on the contract) | — | Field is present and non-`None` in every record. |
-| `dtype` | `field`, `expected` (Python dtype tag like `int64`, `float32`, `str`) | — | Field values match the expected Python dtype. |
-| `range` | `field`, one of `min`/`max` | — | Numeric field values are within `[min, max]`. |
+| `dtype` | `field`, `expected` (dtype tag like `int64`, `float32`, `uint8`, `str`) | — | Field values match the expected dtype. Scalar fields are checked via Python `isinstance`; **ndarray fields** are checked via `v.dtype.name == expected`. |
+| `range` | `field`, one of `min`/`max` | — | Numeric field values are within `[min, max]`. Scalar fields are compared directly; **ndarray fields** pass when every element is in `[min, max]` (checked via `v.min()` / `v.max()` reductions). |
 | `distributional` | `field`, `kind: distributional`, plus distributional params | — | Distribution-shape checks (see `pipeline/contracts.py`). |
 
 `severity: warning` records the violation in the manifest but does not
 fail materialization; `severity: error` aborts.
+
+**Tensor fields example.** When the recipe's `Output.record_schema`
+declares a tensor field (e.g., `image: { dtype: uint8, shape: [32, 32, 3] }`),
+`dtype` and `range` assertions on that field apply element-wise:
+
+```yaml
+OutputExpectations:
+  - field: image
+    assertion: { kind: dtype, expected: uint8 }   # ndarray dtype, not element type
+    severity: error
+  - field: image
+    assertion: { kind: range, min: 0, max: 255 }  # every pixel in [0, 255]
+    severity: error
+```
 
 ### `Filters` (optional)
 

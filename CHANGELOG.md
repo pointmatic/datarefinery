@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2026-05-25
+
+### Fixed
+
+- **G8 — contracts evaluator now accepts ndarray field values for `dtype`
+  and `range` assertions (Story I.b).** Two unhandled-input bugs in
+  `pipeline/contracts.py` are fixed:
+  - `_eval_dtype` reported every record as the wrong type when the field
+    value was a numpy ndarray (e.g., `dtype: uint8` on an `image` field).
+    Root cause: `isinstance(v, accepted)` checked against Python scalar
+    types only. Now: ndarray fields are checked via
+    `v.dtype.name == expected`; scalar fields use the existing
+    `isinstance` path.
+  - `_eval_range` raised `ValueError: The truth value of an array with
+    more than one element is ambiguous` when the field value was an
+    ndarray. Root cause: `v < lo` on an ndarray returns an element-wise
+    boolean array. Now: ndarray fields are reduced via `v.min()` /
+    `v.max()` and compared as scalars; scalar fields use the existing
+    direct-comparison path.
+
+  No new assertion kinds are added; this fix relaxes existing evaluators
+  to accept inputs the schema already permits. Bundled in this patch
+  release; no schema bump. See
+  [`docs/specs/dependency-gaps-v0.16.0.md` § G8](docs/specs/dependency-gaps-v0.16.0.md)
+  for the full investigation record.
+
 ## [0.16.0] - 2026-05-23
 
 ### Added

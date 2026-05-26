@@ -395,3 +395,119 @@ def test_contract_result_is_frozen() -> None:
     cr = ContractResult(results=())
     with pytest.raises(FrozenInstanceError):
         cr.results = (None,)  # type: ignore[misc, assignment]
+
+
+# ---------------------------------------------------------------------------
+# G8 (dependency-gaps-v0.16.0.md): ndarray field handling
+#
+# The image_classification plugin produces records whose `image` field is a
+# numpy ndarray. The `Output.record_schema` permits tensor-shaped fields
+# (`shape: [H, W, C]`). The contracts evaluators should accept these fields
+# in `dtype` and `range` assertions — today they don't, in two distinct ways.
+# ---------------------------------------------------------------------------
+
+
+def test_g8_dtype_on_uint8_ndarray_field_passes() -> None:
+    """`dtype: uint8` on a tensor field should accept a uint8 ndarray.
+
+    Today: fails for every record because `_eval_dtype` uses
+    `isinstance(v, int)` where `accepted = _PY_DTYPE_TAGS["uint8"] = (int,)`;
+    a numpy ndarray is not an int.
+    """
+    import numpy as np
+
+    records: list[dict[str, Any]] = [
+        {"id": i, "image": np.zeros((4, 4, 3), dtype=np.uint8)} for i in range(3)
+    ]
+    contract = Contract(
+        field="image",
+        assertion={"kind": "dtype", "expected": "uint8"},
+    )
+    report = evaluate_input_contracts(records, [contract])
+    assert report.passed, (
+        f"expected pass on uint8 ndarrays, got failure: {report.results[0].message}"
+    )
+
+
+def test_g8_dtype_on_float32_ndarray_field_passes() -> None:
+    """`dtype: float32` on a tensor field should accept a float32 ndarray.
+
+    Today: fails — `isinstance(arr, (float, int))` is False for ndarrays.
+    """
+    import numpy as np
+
+    records: list[dict[str, Any]] = [
+        {"id": i, "image": np.zeros((4, 4, 3), dtype=np.float32)} for i in range(3)
+    ]
+    contract = Contract(
+        field="image",
+        assertion={"kind": "dtype", "expected": "float32"},
+    )
+    report = evaluate_input_contracts(records, [contract])
+    assert report.passed, report.results[0].message
+
+
+def test_g8_dtype_on_wrong_ndarray_dtype_fails_with_clear_message() -> None:
+    """`dtype: uint8` on a float64 ndarray field should fail with a clear
+    message identifying the actual ndarray dtype, not Python's `ndarray`
+    class name.
+    """
+    import numpy as np
+
+    records: list[dict[str, Any]] = [
+        {"id": i, "image": np.zeros((4, 4, 3), dtype=np.float64)} for i in range(3)
+    ]
+    contract = Contract(
+        field="image",
+        assertion={"kind": "dtype", "expected": "uint8"},
+    )
+    report = evaluate_input_contracts(records, [contract])
+    assert not report.passed
+    msg = report.failures[0].message
+    assert "float64" in msg, f"expected message to identify ndarray dtype 'float64', got: {msg!r}"
+
+
+def test_g8_range_on_tensor_field_does_not_raise() -> None:
+    """`range` on a tensor field should not raise. Today: raises
+    ``ValueError: The truth value of an array with more than one element
+    is ambiguous`` from the ``v < lo`` comparison producing an
+    element-wise boolean array.
+
+    The evaluator should treat ndarrays as bulk numeric values: pass when
+    all elements are within bounds, fail when any element is outside.
+    """
+    import numpy as np
+
+    records: list[dict[str, Any]] = [
+        {"id": i, "image": np.full((4, 4, 3), 0.5, dtype=np.float32)} for i in range(3)
+    ]
+    contract = Contract(
+        field="image",
+        assertion={"kind": "range", "min": 0.0, "max": 1.0},
+    )
+    # Today this raises ValueError inside the evaluator. After the fix the
+    # report passes (all values are in [0, 1]).
+    report = evaluate_input_contracts(records, [contract])
+    assert report.passed, report.results[0].message
+
+
+def test_g8_range_on_tensor_field_detects_out_of_bounds() -> None:
+    """`range` on a tensor field should fail when any element is outside
+    the declared bounds.
+    """
+    import numpy as np
+
+    bad = np.full((4, 4, 3), 0.5, dtype=np.float32)
+    bad[0, 0, 0] = 5.0
+    records: list[dict[str, Any]] = [
+        {"id": 0, "image": np.full((4, 4, 3), 0.5, dtype=np.float32)},
+        {"id": 1, "image": bad},
+    ]
+    contract = Contract(
+        field="image",
+        assertion={"kind": "range", "min": 0.0, "max": 1.0},
+    )
+    report = evaluate_input_contracts(records, [contract])
+    assert not report.passed
+    msg = report.failures[0].message
+    assert "5.0" in msg or "5" in msg, f"expected message to cite the bad value, got: {msg!r}"

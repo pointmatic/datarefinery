@@ -44,15 +44,18 @@ None of these require a `schema_version` bump.
 | G5 | `augmented_sample_grid` viz raises on post-normalize float images | **Subsumed by G7** (not a defect; surfaces missing stage-aware viz dispatch) | Plugin runtime interaction |
 | G6 | `OutputExpectations` only supports flat-record assertion kinds | Friction (out-of-band verification used) | Contracts evaluator |
 | G7 | All reporting visualizations run at `post_pipeline` only | Friction (pre/post-normalize merged) | Pipeline runner |
-| G8 | `tensor`-typed fields can't satisfy `dtype` / `range` assertions | Friction (assertions dropped) | Contracts evaluator |
+| G8 | `tensor`-typed fields can't satisfy `dtype` / `range` assertions | **Closed in v0.16.1** (Story I.b) | Contracts evaluator |
 | G9 | `flatten` Featurization missing from plugin | **Blocking for Phase D Module 3 (`mlp_flat`); deferred** | Plugin op registration |
 | G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Blocking for Phase D Module 9 `imbalanced_oversample` / `imbalanced_classweight` variants** | Schema + pipeline runner |
 | G11 | `seed_derive_from: master` not recognized on Filters / Generation | Friction (explicit ints used in spec workaround) | Schema |
-| G12 | `Generation` schema: flat `op` / `splits` / `output_schema_matches_input` / dict `tag_fields` | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
-| G13 | `SampleData.selector` lacks `kind` and `splits` | Friction (`SampleData` section dropped) | Schema |
-| G14 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Blocking (recipe doesn't parse)** | Schema |
-| G15 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
-| G16 | `class_distribution_histogram` lacks `group_by` param | Friction (viz dropped) | Plugin op param schema |
+| G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
+| G13 | `tag_fields` rename mapping for `imagecorruptions_apply` (`list[str]` vs `dict[str, str]`) | Friction (canonical names used) | Schema (param shape) |
+| G14 | `SampleData.selector` lacks `kind` and `splits` | Friction (`SampleData` section dropped) | Schema |
+| G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Blocking (recipe doesn't parse)** | Schema (cross-section consistency) |
+| G16 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
+| G17 | `class_distribution_histogram` lacks `group_by` param | Friction (viz dropped) | Plugin op param schema |
+| G18 | `Generation` stage extends each target split rather than replacing source records | **Blocking for Recipe B (`cifar10c_eval.yaml`)** — phase plan's 12,000-record test split becomes 13,000 | Pipeline runner |
+| G19 | `resolve_sibling_stats` doesn't strip variants before hashing the sibling recipe | **Blocking whenever the sibling declares variants** — `stats_from_instance` lookups fail with `SiblingInstanceNotFoundError` | Pipeline runner / sibling resolver |
 | **DOC** | recipe-authoring.md has not kept up with the implemented op surface | **Blocking the principle "no implementation without documentation"** | Documentation discipline |
 
 **Severity guide for consumer repo:**
@@ -631,7 +634,9 @@ constrain `VisualizationOp.stage` to that vocabulary (model-level
 
 ## G8 — `tensor`-typed fields can't satisfy `dtype` / `range` assertions
 
-**Severity:** Friction (sub-case of G6; Recipe A drops these assertions).
+**Status (Story I.b, v0.16.1):** **Closed.** Both `_eval_dtype` and `_eval_range` now accept ndarray field values. `dtype` compares `v.dtype.name` against the expected tag; `range` reduces via `v.min()`/`v.max()` and compares scalars. No new assertion kinds were added — the broader G16 work (tensor-aware kinds beyond `dtype`/`range`) remains open. Recipe A's `dtype: uint8` and `value_range: ±3` assertions on the `image` field can now be restored.
+
+**Severity:** Friction (sub-case of G6; Recipe A drops these assertions) → **Closed v0.16.1**.
 
 **Category:** Contracts evaluator.
 
@@ -1517,6 +1522,251 @@ viz ops (FR-VIZ-1..4).
 
 ---
 
+## G18 — `Generation` stage extends each target split rather than replacing source records
+
+**Severity:** Blocking for Recipe B (`cifar10c_eval.yaml`) — the phase
+plan's "single test split of exactly 12,000 records" is unachievable in
+0.16.0. Worked around by accepting 1,000 dead-weight untagged originals
+alongside the 12,000 corrupted records in the test split.
+
+**Category:** Pipeline runner.
+
+**Schema view.** `GenerationOp` ([`recipe/models.py:238`](file)) declares
+`applies_at: list[str]` (default `["train"]`). The schema implies "this
+op runs against records in these splits"; it doesn't say whether the
+source records survive or get replaced.
+
+**Current runtime behavior.** `apply_generation`
+([`pipeline/stages/generation.py:71`](file)) concatenates the op's output
+records onto the source split:
+
+```python
+new_records = _invoke_one(op, out[split_name], plugin, label_field)
+_validate_against_output_schema(op.name, split_name, new_records, output_fields)
+out[split_name].extend(new_records)   # ← extend, not replace
+```
+
+`imagecorruptions_apply` ([`generation_imagecorruptions.py:67`](file))
+calls this contract out explicitly in its docstring:
+
+> Returned records are the NEW outputs added by Generation; per the stage
+> contract they are concatenated onto the input split. The original input
+> records remain in the split untouched.
+
+For `imagecorruptions_apply` with `preserve_original: false`, the op
+returns just the corrupted variants (no untouched copies). But because
+the stage extends, the originals stay in the split anyway. Output is
+`<n_original_records> + (n_corruption_types × n_severities × n_records)`,
+not the `(n_corruption_types × n_severities × n_records)` the phase plan
+expected.
+
+**Why this matters for consumer repo.** Recipe B's phase-plan goal is a
+single test split of exactly 12,000 records: 1,000 base test images × 4
+corruptions × 3 severities. Under 0.16.0 the test split ends up at
+**13,000** = 1,000 untagged originals + 12,000 tagged corruptions.
+Downstream Module 11 evaluation code has to filter by presence of the
+`corruption` field to isolate the corrupted subset, and `OutputExpectations
+record_count=12000` becomes `record_count=15000` (1,700 train + 300 val +
+13,000 test) — measurably surprising for any author reading the recipe.
+
+**Workaround in 0.16.0 (Story B.d).** Recipe B sets `preserve_original:
+false` and accepts the dead-weight originals in the test split. The
+originals are identifiable by absence of the `corruption` field;
+downstream consumers filter when needed. `OutputExpectations` asserts the
+union total `record_count=15000`.
+
+**Suggested fix direction.**
+
+Add a per-op `replace_input_records: bool = False` field to
+`GenerationOp` declaring whether the op's output **augments** (current
+behavior, default) or **replaces** the input records. For an op that
+materially transforms each input record N ways (corruption × severity),
+`replace: true` is the natural ask — the consumer wanted "these records
+turned into those records," not "these records *plus* those records."
+
+Implementation sketch in `pipeline/stages/generation.py`:
+
+```python
+for op in generation_ops:
+    for split_name in op.applies_at:
+        new_records = _invoke_one(op, out[split_name], plugin, label_field)
+        _validate_against_output_schema(...)
+        if op.replace_input_records:
+            out[split_name] = list(new_records)
+        else:
+            out[split_name].extend(new_records)
+```
+
+Schema:
+
+```python
+class GenerationOp(_Frozen):
+    name: str
+    inputs: list[str]
+    output_schema: dict[str, FieldSpec]
+    seed: int
+    applies_at: list[str] = ["train"]
+    params: dict[str, Any] = {}
+    replace_input_records: bool = False   # ← new; backward-compatible default
+```
+
+The default `False` preserves current behavior, so this is additive —
+**no `schema_version` bump required**. Lands cleanly alongside G12 (the
+deeper Generation schema reshape) or independently.
+
+Per DOC: add a "When to use `replace_input_records`" subsection in
+`recipe-authoring.md § Generation` covering the corruption-apply use case
+explicitly (today's docs don't mention the extend-vs-replace question at
+all, so the natural author assumption — "Generation produces N output
+records per input" — silently disagrees with the runtime).
+
+**Tests that would prove the fix.**
+
+- Recipe with `imagecorruptions_apply` + `replace_input_records: true`
+  produces exactly `(n_corruption_types × n_severities × n_base_records)`
+  records in the target split; no untagged originals remain.
+- The same recipe with `replace_input_records: false` (or omitted)
+  reproduces the current 0.16.0 behavior.
+- Regression: a recipe authored against the current 0.16.0 (no
+  `replace_input_records` field) loads with the default `False` and
+  produces a byte-identical materialized instance to its pre-fix output.
+
+---
+
+## G19 — `resolve_sibling_stats` doesn't strip variants before hashing the sibling recipe
+
+**Severity:** Blocking whenever the sibling recipe declares any
+`variants` block — `stats_from_instance` lookups fail with
+`SiblingInstanceNotFoundError` even though the sibling is materialized
+and `datarefinery status` resolves it correctly.
+
+**Category:** Pipeline runner / sibling resolver.
+
+**Schema view.** `StatsFromInstanceSpec`
+([`recipe/models.py:261`](file)) — `recipe: str` + `op_id: str`. Schema
+permits any sibling-recipe path.
+
+**Symptom.** A consumer recipe with
+
+```yaml
+Transformations:
+  - name: normalize_per_channel
+    op: normalize
+    fit_source: train  # required by validator check 6 even with stats_from_instance
+    splits: [train, val, test]
+    params:
+      stats_from_instance:
+        recipe: recipes/cifar10-base.yaml
+        op_id: normalize_per_channel
+```
+
+raises at materialize time:
+
+```
+SiblingInstanceNotFoundError: sibling_stats: no promoted instance for
+recipe at recipes/cifar10-base.yaml (expected shard <X> not found)
+```
+
+…even though Recipe A is materialized and `datarefinery status
+recipes/cifar10-base.yaml` resolves the instance correctly. The shard
+`<X>` the resolver looks for is the canonical hash of the loaded sibling
+recipe **with variants present**, while the actual cached instance lives
+under the canonical hash with variants stripped.
+
+**Why it happens.** The CLI materialize path
+([`core/datarefinery.py:92`](file)) calls `apply_variant(recipe, variant)`
+to strip variants before computing the cache key — even when
+`variant=None`, `apply_variant` clears the `variants` block
+([`recipe/variants.py:44`](file): `base["variants"] = {}`). This is the
+documented design: variants participate in cache identity through the
+*selected overlay*, not by their mere declaration. Two materializations
+of the same recipe, one with no variant and one with `--variant
+no_augment`, produce different shards; switching variants is a cache
+miss the first time and a hit thereafter.
+
+But `resolve_sibling_stats` ([`cache/sibling_stats.py:88`](file)) loads
+the sibling recipe and passes it directly to `to_canonical_bytes`
+without calling `apply_variant(recipe, None)` first:
+
+```python
+sibling_recipe = load_recipe(recipe_path)
+sibling_hash = hashlib.sha256(to_canonical_bytes(sibling_recipe)).hexdigest()
+```
+
+So when the sibling declares variants, the resolver hashes a "with
+variants" canonical form while the materialize path cached under a
+"without variants" canonical form. The two diverge.
+
+Concrete example from the consumer repo:
+
+| Path | Hash[:16] |
+|---|---|
+| `datarefinery materialize recipes/cifar10-base.yaml` actually cached at | `8863ce9031b3f367` |
+| `to_canonical_bytes(load("recipes/cifar10-base.yaml"))` | `361d6a24c8572dd9` |
+
+**Why this matters for consumer repo.** Recipe B's whole point is to
+inherit Recipe A's normalize statistics via `stats_from_instance` (the
+FR-TRANS-1 loose-coupling contract). With G19 unfixed, the lookup fails
+for every recipe that declares variants — which Recipe A does, as the
+canonical contract for downstream Module 9 / Module 3 work. Any consumer
+project following the recipe-authoring guide's reference recipe (which
+declares a `no_augment` variant) hits this immediately.
+
+**Workaround in 0.16.0 (Story B.d).** Pin literal `mean` / `std` values
+in Recipe B's `normalize` params, copied from Recipe A's
+`fitted_statistics/normalize_per_channel/{mean,std}.parquet`. Loses the
+FR-TRANS-1 loose-coupling property — re-fitting Recipe A doesn't
+propagate automatically; the project must update the pinned values by
+hand. Keeps Recipe B materializable.
+
+**Suggested fix direction.**
+
+One-line fix in `resolve_sibling_stats`:
+
+```python
+- sibling_recipe = load_recipe(recipe_path)
++ sibling_recipe = apply_variant(load_recipe(recipe_path), None)
+```
+
+The `apply_variant(..., None)` call is the same no-op-but-strip-variants
+form the materialize path uses. After the fix, the sibling shard matches
+the cached shard for any recipe regardless of whether it declares
+variants.
+
+A future feature could let `stats_from_instance` name a specific variant
+of the sibling:
+
+```yaml
+stats_from_instance:
+  recipe: recipes/cifar10-base.yaml
+  variant: no_augment
+  op_id: normalize_per_channel
+```
+
+…so an evaluation recipe can import statistics fit under a specific
+experimental overlay. That's a v1.1+ enhancement; the minimum fix for
+G19 is the no-variant case (one line).
+
+Per DOC: add an "FR-TRANS-1 across variants" subsection to
+`recipe-authoring.md § Transformations` documenting that
+`stats_from_instance` resolves the sibling's no-variant canonical
+instance, with the future variant-selecting form noted as planned.
+
+**Tests that would prove the fix.**
+
+- A "sibling" recipe declaring a `variants` block, materialized once,
+  then referenced from a "consumer" recipe via `stats_from_instance`.
+  The consumer materializes successfully and the fitted statistics used
+  match the sibling's fitted statistics byte-identically.
+- `resolve_sibling_stats` continues to work for sibling recipes that
+  declare no variants (no regression).
+- After future variant-selector landing: a sibling materialized under a
+  non-default variant (`--variant no_augment`) is resolvable from a
+  consumer recipe with `stats_from_instance.variant: no_augment`,
+  separately from the no-variant instance.
+
+---
+
 ## Recipe-side workarounds in `recipes/cifar10-base.yaml`
 
 The actual workarounds for each gap above live in the inline header
@@ -1534,7 +1784,7 @@ corresponding deviation removed:
 | G5 | (No G5-only recipe edit; G5 is subsumed by G7. When G7 lands, restoring the `augmented_sample_grid` viz with `stage: pre_transformations` is the unblocked path.) |
 | G6 | Restore per-split + per-class OutputExpectations (paired with G15 for the missing assertion kinds). |
 | G7 | Split `sample_grid` into `pre_normalize` + `post_normalize` versions with appropriate `stage:` values. |
-| G8 | Restore `dtype: uint8` / `tensor_range` OutputExpectations on the `image` field. |
+| G8 | **Closed in v0.16.1 (Story I.b).** `dtype: uint8` and `range: {min, max}` on tensor fields now work. (`tensor_range` / `tensor_shape` as separate kinds remain G16.) |
 | G9 | Restore the `flatten` Featurization in the `mlp_flat` variant. |
 | G10 | Restore the `imbalanced_oversample` and `imbalanced_classweight` variants once the resampling design is decided (recipe-side shape depends on the decision). |
 | G11 | Restore `seed_derive_from: master` on every filter and on Recipe B's `apply_corruptions` Generation op. |
@@ -1544,6 +1794,8 @@ corresponding deviation removed:
 | G15 | Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. |
 | G16 | Rewrite every assertion in both recipes to use the new naming + the new kinds (`value_in_set`, `shape_equals`, `per_class_count_equals`, `*_equals` / `*_range` renames). |
 | G17 | Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
+| G18 | Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |
+| G19 | Replace Recipe B's pinned literal `params.mean` / `params.std` with the FR-TRANS-1 form: `params: { stats_from_instance: { recipe: recipes/cifar10-base.yaml, op_id: normalize_per_channel } }`. Remove the G19-workaround comment block from the recipe header. (Bonus: once the future variant-selector form lands, the consumer recipe can pin a specific sibling-variant of Recipe A's normalize stats — relevant for Module 9's imbalance variants whose normalize stats may legitimately differ.) |
 | DOC | Every G fix above lands its `recipe-authoring.md` section in the same story. Existing-feature documentation drift (the table in DOC) closes alongside the next op-registration story in each § — no separate doc-sweep story. |
 
 ---

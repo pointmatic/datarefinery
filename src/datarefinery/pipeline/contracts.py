@@ -30,6 +30,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+import numpy as np
+
 from datarefinery.core.errors import ContractError
 from datarefinery.recipe.models import Contract, Expectation, Severity
 
@@ -169,22 +171,27 @@ def _eval_dtype(
     # `bool` is a subclass of `int` in Python; for `int` checks we want to
     # reject bools since callers writing `dtype: int` mean numeric ints.
     reject_bool = expected.startswith(("int", "uint", "float"))
-    bad: list[tuple[int, type]] = []
+    bad: list[tuple[int, str]] = []
     for i, r in enumerate(records):
         v = r.get(field)
         if v is None:
             continue  # required-field check is a separate concern
+        # ndarray branch: compare against the array's own dtype name (e.g.,
+        # 'uint8', 'float32'). Tensor-shaped fields (image arrays, embeddings)
+        # never match the scalar `isinstance` branch below.
+        if isinstance(v, np.ndarray):
+            if v.dtype.name != expected:
+                bad.append((i, v.dtype.name))
+            continue
         if reject_bool and isinstance(v, bool):
-            bad.append((i, type(v)))
+            bad.append((i, type(v).__name__))
             continue
         if not isinstance(v, accepted):
-            bad.append((i, type(v)))
+            bad.append((i, type(v).__name__))
     if bad:
         i, t = bad[0]
         more = "" if len(bad) == 1 else f" (+{len(bad) - 1} more)"
-        return False, (
-            f"field {field!r} expected dtype {expected!r}; got {t.__name__} at record {i}{more}"
-        )
+        return False, (f"field {field!r} expected dtype {expected!r}; got {t} at record {i}{more}")
     return True, f"field {field!r} dtype matches {expected!r} in all records"
 
 
@@ -201,6 +208,19 @@ def _eval_range(
     for i, r in enumerate(records):
         v = r.get(field)
         if v is None:
+            continue
+        # ndarray branch: reduce over the array. The contract semantic
+        # "every value of `field` is in [lo, hi]" extends naturally to
+        # tensor fields as "every element of the tensor is in [lo, hi]";
+        # min/max are sufficient witnesses.
+        if isinstance(v, np.ndarray):
+            v_min = float(v.min())
+            v_max = float(v.max())
+            if lo is not None and v_min < lo:
+                bad.append((i, v_min))
+                continue
+            if hi is not None and v_max > hi:
+                bad.append((i, v_max))
             continue
         if lo is not None and v < lo:
             bad.append((i, v))

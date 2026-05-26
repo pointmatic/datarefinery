@@ -40,7 +40,7 @@ Three candidate code fixes were considered and rejected:
 
 1. **Convert `TypeError` → actionable `RecipeError` at the viz layer.** Error-message quality only; the recipe still cannot use the viz post-normalize. Pure polish.
 2. **Make realizers float-tolerant.** Suppresses the crash, but the viz's `_tile` clip-casts z-score values ~[-2, 2] to uint8 [0, 255], producing mostly-black tiles. Silently wrong is worse than crashing.
-3. **Stage-aware viz dispatch (= G7).** The honest fix; out of scope for a debug cycle, captured as Story I.b below.
+3. **Stage-aware viz dispatch (= G7).** The honest fix; out of scope for a debug cycle, captured as Story I.c below.
 
 This story produces no code change. Its deliverable is the reclassification in the gap doc and the planned-story handoff to G7.
 
@@ -51,7 +51,7 @@ This story produces no code change. Its deliverable is the reclassification in t
 - [x] Document the investigation outcome in [`docs/specs/dependency-gaps-v0.16.0.md` § G5](dependency-gaps-v0.16.0.md): status block, severity reclassified to "Subsumed by G7," fix path "implement G7."
 - [x] Update the dependency-gaps priority summary table: G5 row severity → "Subsumed by G7."
 - [x] Update the dependency-gaps recipe-side workarounds table: G5 row → "(No G5-only recipe edit; when G7 lands, restore the viz with `stage: pre_transformations`)."
-- [x] Capture Story I.b `[Planned]` in this file for G7 — the genuine fix path.
+- [x] Capture Story I.c in this file for G7 — the genuine fix path.
 
 **Prevention scan (no code changes needed for I.a, but captured for the G7 implementer):**
 
@@ -60,11 +60,51 @@ This story produces no code change. Its deliverable is the reclassification in t
 
 **Out of Scope**
 
-- Implementing G7 itself. That's Story I.b (`[Planned]`).
+- Implementing G7 itself. That's Story I.c.
 - Implementing options 1 or 2 above as a polish-only intermediate fix. Both were rejected during investigation; shipping polish doesn't move the consumer closer to the working viz they want.
 - Reclassifying other G entries (G6, G8, etc.) in the same pass. Each gets its own debug cycle.
 
-### Story I.b: G7 — Stage-aware visualization dispatch `[Planned]`
+### Story I.b: v0.16.1 G8 — contracts evaluator handles ndarray fields [Done]
+
+**Disposition: bug fix.** Patch bump (`v0.16.0 → v0.16.1`).
+
+Debug-mode investigation of [`dependency-gaps-v0.16.0.md` § G8](dependency-gaps-v0.16.0.md) confirmed two unhandled-input bugs in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py):
+
+1. **`_eval_dtype` on a tensor field** (e.g., `dtype: uint8` on an `image` ndarray) reported every record as the wrong type. Root cause: `isinstance(v, accepted)` where `accepted` is `(int,)` or `(float, int)` — Python scalar types. `np.ndarray` is not an `int` regardless of its element dtype.
+2. **`_eval_range` on a tensor field** (e.g., `value_range: [-3, 3]` on an `image` ndarray) raised `ValueError: The truth value of an array with more than one element is ambiguous`. Root cause: `v < lo` on an ndarray returns an element-wise boolean array; the `if` branch chokes.
+
+Both evaluators now accept ndarrays in the obvious way: `_eval_dtype` compares `v.dtype.name` against the expected tag; `_eval_range` reduces via `v.min()`/`v.max()` and compares scalars. Scalar-field semantics are unchanged. **No new assertion kinds are added** — the broader G16 work (`tensor_range`, `tensor_shape`, `value_in_set`, etc.) remains plan_phase scope.
+
+**Tasks:**
+
+- [x] Reproduce both failure modes with 5 unit tests in [`tests/unit/test_contracts.py`](../../tests/unit/test_contracts.py): dtype-on-uint8-ndarray passes; dtype-on-float32-ndarray passes; dtype-on-wrong-dtype-ndarray fails with a message that cites the actual dtype name; range-on-tensor-passes; range-on-tensor-out-of-bounds fails with a message that cites the bad value.
+- [x] Confirmed all 5 fail today (TypeError / "expected dtype X; got ndarray" / `ValueError: truth value ambiguous`).
+- [x] Add `import numpy as np` at module level in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py). (numpy is already a hard dep through the image_classification plugin; no new dependency.)
+- [x] Add an ndarray branch to `_eval_dtype` at [`contracts.py:182`](../../src/datarefinery/pipeline/contracts.py#L182): when `v` is an ndarray, compare `v.dtype.name` against `expected` and report the actual dtype name on failure. The scalar fall-through path is unchanged.
+- [x] Widen `bad: list[tuple[int, type]]` to `bad: list[tuple[int, str]]` and store `type(v).__name__` instead of `type(v)` in the scalar branch, so the error-message format string takes a single uniform `str` regardless of which branch produced the failure. Pure refactor — no behavior change to the scalar path.
+- [x] Add an ndarray branch to `_eval_range` at [`contracts.py:216`](../../src/datarefinery/pipeline/contracts.py#L216): when `v` is an ndarray, reduce via `float(v.min())` and `float(v.max())` and compare scalars. Bad-value reporting uses the out-of-range extremum.
+- [x] Prevention scan: search the pipeline package for similar `<`/`>` or `isinstance` comparisons on field values that could exhibit the same ndarray bug. Result: contracts evaluator was the only site.
+- [x] Verify CI parity locally: `pyve test` (1032 passed; +5 from this story), `pyve testenv run mypy src tests` (clean, 175 source files), `pyve testenv run ruff check src/ tests/` (clean), `pyve testenv run ruff format --check src/ tests/` (clean).
+- [x] Per the [`dependency-gaps-v0.16.0.md` DOC rule](dependency-gaps-v0.16.0.md): update [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § InputContracts assertion-kinds table — clarify that `dtype` and `range` accept ndarray fields with the documented semantics.
+- [x] Update [`dependency-gaps-v0.16.0.md` § G8](dependency-gaps-v0.16.0.md): status block at top documenting Story I.b outcome; severity in priority summary table updated to "Closed in v0.16.1"; entry in workarounds table updated to "(restored — `dtype` and `range` now work on tensor fields)."
+- [x] Update [`CHANGELOG.md`](../../CHANGELOG.md) with `## [0.16.1]` entry: "Fixed: G8 — contracts evaluator now accepts ndarray field values for `dtype` and `range` assertions."
+- [x] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.16.1`.
+- [x] Cross-repo coordination check ([`docs/specs/modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no change. The fix relaxes evaluator behavior to accept inputs the schema already permits; no field is renamed, no new kind is added, no manifest shape changes. ModelFoundry consumers see strictly more recipes validate successfully.
+
+**Prevention notes:**
+
+- The existing scalar tests (`test_dtype_match_passes`, `test_range_within_bounds_passes`, etc.) all pass unchanged — the scalar path was structurally untouched.
+- The ndarray test fixtures use plain `np.zeros((4, 4, 3), dtype=...)` and `np.full(...)`. Tensor-shape testing per se (`shape_equals`) is not added here — that's G15 / G16 territory.
+- The widening of `bad` from `tuple[int, type]` to `tuple[int, str]` is a pure refactor: callers downstream consume the second element only in the failure message format string, which now reads `{t}` instead of `{t.__name__}`. mypy validates the change.
+
+**Out of Scope**
+
+- Adding new assertion kinds (`tensor_range`, `tensor_shape`, `value_in_set`, `*_equals` renames). All G15/G16 plan_phase work.
+- Per-split assertion machinery (`split_record_counts`, `per_class_count_per_split`). G6 plan_phase work.
+- Numpy scalar handling (`np.int64(3)`, `np.float32(1.5)` as scalar field values, not ndarrays). The current `_PY_DTYPE_TAGS` aliases tolerate Python scalars; numpy 0-D scalars would need a separate audit and aren't surfaced by any consumer recipe today.
+- Empty-ndarray edge case (`arr.min()` raises on a 0-element array). Not surfaced by any consumer recipe; can be addressed when a real case appears.
+
+### Story I.c: G7 — Stage-aware visualization dispatch [Planned]
 
 **Disposition: planned, not started.** Awaiting `plan_phase` scope or developer assignment. Captured here so the architectural commitment is recorded in the project's source of truth (`stories.md`), not just in the gap doc.
 
