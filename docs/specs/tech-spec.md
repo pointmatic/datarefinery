@@ -421,6 +421,30 @@ the per-sink summary is captured into `manifest.sinks[<name>]`. The
 closed stage vocabulary mirrors `STAGE_NAMES` (with a `post_` prefix)
 and is shared with G7-era visualization-stage selection.
 
+**Per-record-seed persistence (Story I.e).** Every stochastic op
+that derives a per-record seed stamps that seed onto each output
+record under `<op_name>_seed`:
+
+- `Generation`: `imagecorruptions_apply` stamps
+  `<GenerationOp.name>_seed = per_record_seed(op.seed, input_record)`
+  on every corrupted (and preserved-original) output. The Generation
+  stage threads `op_name=op.name` through `_invoke_one` so the
+  plugin op knows the recipe-defined name. Ops whose stochasticity
+  is op-level (`duplicate_minority_class`) accept `op_name` for
+  contract uniformity but do not stamp.
+- `Augmentations` (aggressive mode): the realizer's `emit_variants`
+  takes a `stamp_field` kwarg; the stage passes
+  `stamp_field=f"{AugmentationOp.name}_seed"`. Each variant carries
+  the per-variant seed used by its realizer. Lazy mode is unchanged
+  (no per-record realization at this stage).
+
+The stamped seed is the value used by the op's RNG, enabling
+post-hoc reconstruction of stage outputs from the cached state
+(the future `datarefinery export` verb, Story I.f). Stamping does
+NOT perturb canonical recipe bytes — it perturbs only the cached
+record bytes for any recipe with a stochastic op. This is a
+one-time pre-prod cache invalidation event at v0.17.0.
+
 Each stage uses `pipeline.workers.run_parallel(...)` when applicable and the runtime config opts in.
 
 ### `pipeline.workers` (FR-9)

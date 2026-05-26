@@ -27,6 +27,7 @@ def duplicate_minority_class(
     output_schema: Mapping[str, FieldSpec],
     params: Mapping[str, Any],
     label_field: str | None,
+    op_name: str,
 ) -> list[Record]:
     """Sample-with-replacement from minority classes to match the majority.
 
@@ -37,8 +38,14 @@ def duplicate_minority_class(
     v1 simplification: target count is the majority class size (no
     user-tunable target). Class iteration is stably ordered so output is
     seed-deterministic across hash-randomization variants.
+
+    ``op_name`` is accepted to satisfy the Generation contract
+    extension introduced in Story I.e (per-record-seed persistence) but
+    is unused here — this op is op-level stochastic, not per-record;
+    duplicated records keep their source ``record_id`` and so already
+    carry an implicit pointer to the reconstructable input.
     """
-    del inputs, output_schema, params  # consumed via Output schema validation in stage
+    del inputs, output_schema, params, op_name  # consumed via Output schema validation in stage
     if label_field is None:
         raise PluginError("duplicate_minority_class requires Labels.field to be declared")
     by_class: dict[Any, list[Record]] = {}

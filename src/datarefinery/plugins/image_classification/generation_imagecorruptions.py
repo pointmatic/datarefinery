@@ -61,16 +61,24 @@ def imagecorruptions_apply(
     output_schema: Mapping[str, FieldSpec],
     params: Mapping[str, Any],
     label_field: str | None,
+    op_name: str,
 ) -> list[Record]:
     """Apply Hendrycks-Dietterich corruptions to each input record.
 
     Returned records are the NEW outputs added by Generation; per the
     stage contract they are concatenated onto the input split. The
     original input records remain in the split untouched.
+
+    ``op_name`` is the recipe's user-defined identifier for this
+    Generation entry (``GenerationOp.name``). It is the prefix of the
+    stamped seed field (``<op_name>_seed``) per Story I.e — keying by
+    the recipe-defined name lets two ops of the same kind coexist in
+    one recipe without colliding on a single seed column.
     """
     del inputs, output_schema, label_field  # consumed elsewhere
     parsed = ImageCorruptionsApplyParams.model_validate(dict(params))
     backend = _load_backend()
+    seed_field = f"{op_name}_seed"
 
     corruption_types = list(parsed.corruption_types)
     severities = list(parsed.severities)
@@ -107,6 +115,7 @@ def imagecorruptions_apply(
                 preserved["severity"] = 0
             if tag_source_path:
                 preserved["source_path"] = source_path
+            preserved[seed_field] = prs
             new_records.append(preserved)
 
         for corruption_name in corruption_types:
@@ -128,5 +137,6 @@ def imagecorruptions_apply(
                     out["severity"] = severity
                 if tag_source_path:
                     out["source_path"] = source_path
+                out[seed_field] = prs
                 new_records.append(out)
     return new_records

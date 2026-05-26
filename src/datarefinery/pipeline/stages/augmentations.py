@@ -198,6 +198,11 @@ def realize_aggressive_split(
         op_id = op.op
         expansion = op.expansion
         params = dict(op.params)
+        # Story I.e: stamp the per-variant seed under
+        # `<AugmentationOp.name>_seed`. Keying on `op.name` (recipe
+        # identifier), not `op.op` (op kind), so two ops of the same
+        # kind in one recipe never collide on the same column.
+        stamp_field = f"{op.name}_seed"
 
         if workers <= 1:
             packs = [
@@ -208,6 +213,7 @@ def realize_aggressive_split(
                     expansion=expansion,
                     realize_fn=realize_fn,
                     params=params,
+                    stamp_field=stamp_field,
                 )
                 for record in current
             ]
@@ -224,6 +230,7 @@ def realize_aggressive_split(
                         expansion=expansion,
                         realize_fn=realize_fn,
                         params=params,
+                        stamp_field=stamp_field,
                     )
                     for record in current
                 ]

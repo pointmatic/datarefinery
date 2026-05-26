@@ -273,8 +273,9 @@ class _DropFieldPlugin:
             output_schema: Mapping[str, Any],
             params: Mapping[str, Any],
             label_field: str | None,
+            op_name: str,
         ) -> list[Mapping[str, Any]]:
-            del records, seed, inputs, output_schema, params, label_field
+            del records, seed, inputs, output_schema, params, label_field, op_name
             return [{"image": 0}]  # missing 'label'
 
         return op

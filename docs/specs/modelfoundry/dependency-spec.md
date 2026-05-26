@@ -9,36 +9,19 @@
 
 ## Overview
 
-This document is the **cross-repo contract surface** between
-DataRefinery (data-pipeline producer) and ModelFoundry (downstream
-training consumer), and is the authoritative reference for any
-downstream tool that binds against a materialized DataRefinery
-instance.
+This document is the **cross-repo contract surface** between DataRefinery (data-pipeline producer) and ModelFoundry (downstream training consumer), and is the authoritative reference for any downstream tool that binds against a materialized DataRefinery instance.
 
-It enumerates exactly what DataRefinery emits — recipe-side fields,
-on-disk dataset layout, manifest keys, report subsections — that
-external consumers depend on, and the rules by which those surfaces
-may change. The intent is to let DataRefinery and ModelFoundry evolve
-on independent schedules: DataRefinery ships forward-declared
-contracts at release time; ModelFoundry adopts on its own schedule
-without requiring DataRefinery to wait.
+It enumerates exactly what DataRefinery emits — recipe-side fields, on-disk dataset layout, manifest keys, report subsections — that external consumers depend on, and the rules by which those surfaces may change. The intent is to let DataRefinery and ModelFoundry evolve on independent schedules: DataRefinery ships forward-declared contracts at release time; ModelFoundry adopts on its own schedule without requiring DataRefinery to wait.
 
-Out of scope here: ModelFoundry's training-time APIs (those live in
-ModelFoundry's repo) and DataRefinery's internal implementation
-details (those live in `tech-spec.md` and `features.md`).
+Out of scope here: ModelFoundry's training-time APIs (those live in ModelFoundry's repo) and DataRefinery's internal implementation details (those live in `tech-spec.md` and `features.md`).
 
 ## Recipe-side contract
 
-A recipe is a YAML document validated by `Recipe.model_validate(...)`
-in `src/datarefinery/recipe/models.py`. The full schema is documented
-in `tech-spec.md` § Data Models; this section calls out the
-augmentation surface (Story H.p–H.r.2) that ModelFoundry consumes
-directly.
+A recipe is a YAML document validated by `Recipe.model_validate(...)` in `src/datarefinery/recipe/models.py`. The full schema is documented in `tech-spec.md` § Data Models; this section calls out the augmentation surface (Story H.p–H.r.2) that ModelFoundry consumes directly.
 
 ### `Augmentations` section
 
-The `Augmentations:` top-level list contains zero or more
-`AugmentationOp` entries. Each entry has the following fields:
+The `Augmentations:` top-level list contains zero or more `AugmentationOp` entries. Each entry has the following fields:
 
 | Field             | Type                                                              | Default       | Notes |
 |-------------------|-------------------------------------------------------------------|---------------|-------|
@@ -52,33 +35,18 @@ The `Augmentations:` top-level list contains zero or more
 
 ### Materialization modes
 
-Two modes coexist per-op. A single `Augmentations:` block may mix lazy
-and aggressive ops.
+Two modes coexist per-op. A single `Augmentations:` block may mix lazy and aggressive ops.
 
-- **`materialization: lazy`** (default). The op is captured as a
-  manifest-bound `AugmentationPolicy` and emitted in the report's
-  augmentation summary. The materialized dataset is **unchanged** —
-  record count and image bytes are exactly what they would be without
-  the op. ModelFoundry's framework adapter reads the policy and
-  realizes augmented examples on-the-fly during training.
+- **`materialization: lazy`** (default). The op is captured as a manifest-bound `AugmentationPolicy` and emitted in the report's augmentation summary. The materialized dataset is **unchanged** — record count and image bytes are exactly what they would be without the op. ModelFoundry's framework adapter reads the policy and realizes augmented examples on-the-fly during training.
 
-- **`materialization: aggressive`**. At materialization time,
-  DataRefinery realizes `expansion` augmented variants per train
-  record via the plugin-registered `Realizer`. Variants become **peer
-  records** in the materialized dataset (record multiplication, see
-  on-disk layout below). The variant's image bytes are persisted as
-  per-record sidecar PNGs; ModelFoundry treats variants as
-  first-class records and does not re-realize them.
+- **`materialization: aggressive`**. At materialization time, DataRefinery realizes `expansion` augmented variants per train record via the plugin-registered `Realizer`. Variants become **peer records** in the materialized dataset (record multiplication, see on-disk layout below). The variant's image bytes are persisted as per-record sidecar PNGs; ModelFoundry treats variants as first-class records and does not re-realize them.
 
 ### Per-op param schemas
 
-Validated by the realizer's pydantic param model on first variant
-emission. The plugin's `OperationSpec` also enumerates the same
-parameters for the recipe validator's check 18.
+Validated by the realizer's pydantic param model on first variant emission. The plugin's `OperationSpec` also enumerates the same parameters for the recipe validator's check 18.
 
 - **`horizontal_flip`** (`HorizontalFlipParams`)
-  - `p: float = 0.5` in `[0.0, 1.0]` — probability of flipping per
-    variant.
+  - `p: float = 0.5` in `[0.0, 1.0]` — probability of flipping per variant.
 - **`random_crop`** (`RandomCropParams`)
   - `size: int | tuple[int, int]` — required; positive.
   - `padding: int = 0` — non-negative.
@@ -94,9 +62,7 @@ parameters for the recipe validator's check 18.
 
 ## Materialized dataset on-disk layout
 
-A materialized instance lives under
-`<cache-root>/instances/<recipe-hash16>/<input-hash16>/<seed>/`. Within
-that directory, the dataset block has the following shape:
+A materialized instance lives under `<cache-root>/instances/<recipe-hash16>/<input-hash16>/<seed>/`. Within that directory, the dataset block has the following shape:
 
 ```text
 dataset/
@@ -110,9 +76,7 @@ dataset/
 
 ### JSONL records
 
-Each JSONL line is a single record dict, serialized with sorted keys
-for byte-stability. Non-JSON-native fields (numpy arrays, bytes,
-custom objects) are dropped at serialization.
+Each JSONL line is a single record dict, serialized with sorted keys for byte-stability. Non-JSON-native fields (numpy arrays, bytes, custom objects) are dropped at serialization.
 
 **Common fields** present on every record:
 
@@ -121,46 +85,34 @@ custom objects) are dropped at serialization.
 
 **Source-resolution path** (non-aggressive records):
 
-- `path: str` — the source-image file path. Image bytes resolve via
-  the source filesystem. **The `image` numpy field is dropped at
-  serialization** — downstream consumers read pixels from `path`.
+- `path: str` — the source-image file path. Image bytes resolve via the source filesystem. **The `image` numpy field is dropped at serialization** — downstream consumers read pixels from `path`.
 
 **Aggressive-mode variants** (Story H.r.2):
 
-- `source_record_id: str` — record_id of the input that produced this
-  variant.
-- `variant_index: int` — zero-based index within the variant pack;
-  range `[0, expansion)`.
-- `image_path: str` — relative path under `dataset/` (e.g.
-  `"train/images/img_001__v002.png"`) pointing at the sidecar PNG.
-  ModelFoundry consumers MUST resolve variant pixels via
-  `image_path`; the source `path` field, if present on a variant, is
-  not authoritative.
+- `source_record_id: str` — record_id of the input that produced this variant.
+- `variant_index: int` — zero-based index within the variant pack; range `[0, expansion)`.
+- `image_path: str` — relative path under `dataset/` (e.g. `"train/images/img_001__v002.png"`) pointing at the sidecar PNG. ModelFoundry consumers MUST resolve variant pixels via `image_path`; the source `path` field, if present on a variant, is not authoritative.
+
+**Per-record-seed stamps** (Story I.e):
+
+- `<GenerationOp.name>_seed: int` — present on every record produced by a per-record-stochastic Generation op (today: `imagecorruptions_apply`). 8-byte unsigned integer, derived as `pipeline.workers.per_record_seed(GenerationOp.seed, input_record)`.
+- `<AugmentationOp.name>_seed: int` — present on every variant produced by an `aggressive`-materialization Augmentation. 8-byte unsigned integer, derived as `pipeline.workers.per_record_variant_seed(global_seed, input_record, variant_index, op_id=AugmentationOp.op)`.
+
+These seeds are the value used by the op's RNG. Consumers reconstructing stage output post-hoc (e.g., the future `datarefinery export` verb) replay the op with the recorded seed to reproduce the bytes the pipeline saw at that stage. Lazy-mode augmentations and ops whose stochasticity is op-level (`duplicate_minority_class`) do not stamp.
 
 ### Record-multiplication shape
 
-A recipe declaring `expansion=N` aggressive op against the train
-split produces `len(train_records_pre_aug) * N` JSONL lines and
-exactly the same number of sidecar PNGs. Two aggressive ops chained
-compose multiplicatively (`expansion=a` then `expansion=b` →
-`N × a × b` records).
+A recipe declaring `expansion=N` aggressive op against the train split produces `len(train_records_pre_aug) * N` JSONL lines and exactly the same number of sidecar PNGs. Two aggressive ops chained compose multiplicatively (`expansion=a` then `expansion=b` → `N × a × b` records).
 
-Variant `record_id`s are derived as
-`f"{source_record_id}__v{variant_index:03d}"` — unique, zero-padded
-for lex-order = numeric-order under standard sort.
+Variant `record_id`s are derived as `f"{source_record_id}__v{variant_index:03d}"` — unique, zero-padded for lex-order = numeric-order under standard sort.
 
 ### Sidecar PNG encoding
 
-Pillow `Image.save(path, format="PNG", optimize=False)`. Defaults
-verbatim — no quality/compression knobs. Determinism check: two runs
-of the same recipe + seed + inputs produce byte-identical sidecar
-files (validated by `tests/integration/test_runner.py` ::
-`test_aggressive_materialize_is_deterministic_across_runs`).
+Pillow `Image.save(path, format="PNG", optimize=False)`. Defaults verbatim — no quality/compression knobs. Determinism check: two runs of the same recipe + seed + inputs produce byte-identical sidecar files (validated by `tests/integration/test_runner.py` :: `test_aggressive_materialize_is_deterministic_across_runs`).
 
 ## Manifest fields ModelFoundry binds against
 
-The `manifest.json` at the instance root is the authoritative
-metadata document. ModelFoundry-relevant fields:
+The `manifest.json` at the instance root is the authoritative metadata document. ModelFoundry-relevant fields:
 
 | Field                  | Type                       | Meaning |
 |------------------------|----------------------------|---------|
@@ -181,9 +133,7 @@ metadata document. ModelFoundry-relevant fields:
 
 ### `manifest.sinks` shape
 
-Added in DataRefinery v0.17.0 alongside the `Sinks` recipe section.
-Each declared sink in the recipe contributes one entry to this map,
-keyed by the sink's `name`.
+Added in DataRefinery v0.17.0 alongside the `Sinks` recipe section. Each declared sink in the recipe contributes one entry to this map, keyed by the sink's `name`.
 
 | Field                          | Type    | Meaning |
 |--------------------------------|---------|---------|
@@ -193,133 +143,59 @@ keyed by the sink's `name`.
 | `bytes_total`                  | `int`   | Total bytes written by this sink. |
 | `path_template_resolved_root`  | `str`   | Longest fixed prefix of the recipe's `path_template`, relative to the instance directory. Consumers point at this when locating the sink's output tree without walking the full recipe. |
 
-Sink output lives under `<instance>/<path_template_resolved_root>/...`
-inside the same atomic temp-then-promote unit as `dataset/`,
-`fitted_statistics/`, and `report/`. The format vocabulary is
-extensible (additional formats are planned in Future); consumers
-SHOULD ignore unknown `format` values rather than fail.
+Sink output lives under `<instance>/<path_template_resolved_root>/...` inside the same atomic temp-then-promote unit as `dataset/`, `fitted_statistics/`, and `report/`. The format vocabulary is extensible (additional formats are planned in Future); consumers SHOULD ignore unknown `format` values rather than fail.
 
-`record_counts["train"]` reflects the **post-augmentation** count for
-aggressive recipes. ModelFoundry consumers reading the count to
-estimate training duration should not double-count by applying
-expansion themselves.
+`record_counts["train"]` reflects the **post-augmentation** count for aggressive recipes. ModelFoundry consumers reading the count to estimate training duration should not double-count by applying expansion themselves.
 
 ## Report subsections
 
 The `report/` directory holds the human-readable summary:
 
-- **`report/report.md`** — markdown summary of the recipe, splits,
-  operations applied (filters, generation, transformations,
-  featurizations, augmentations, visualizations), fitted statistics,
-  and warnings. Each augmentation op renders mode-aware:
+- **`report/report.md`** — markdown summary of the recipe, splits, operations applied (filters, generation, transformations, featurizations, augmentations, visualizations), fitted statistics, and warnings. Each augmentation op renders mode-aware:
   `op_name (\`op_kind\`, materialization=lazy)` or
   `op_name (\`op_kind\`, materialization=aggressive, expansion=N)`.
-- **`report/drift.json`** — drift-relevant subsection of the report,
-  emitted as structured JSON. **Pre-production its schema is
-  unstable**; ModelFoundry consumers should treat it as informational
-  until v1.0. See FR-15 in `features.md` for the current shape.
-- **`report/visualizations/<viz_name>.png`** — persisted reporting-mode
-  visualization images (FR-13).
+- **`report/drift.json`** — drift-relevant subsection of the report, emitted as structured JSON. **Pre-production its schema is unstable**; ModelFoundry consumers should treat it as informational until v1.0. See FR-15 in `features.md` for the current shape.
+- **`report/visualizations/<viz_name>.png`** — persisted reporting-mode visualization images (FR-13).
 
 ## Cache-identity contract
 
-The cache key (instance directory path) is
-`SHA-256(canonical_recipe_bytes) ⊕ SHA-256(raw_input_bytes) ⊕ seed`,
-truncated to 16 hex chars per component for the path (`<recipe-hash16>/<input-hash16>/<seed>`).
-The **full** digests live in `manifest.json` for audit.
+The cache key (instance directory path) is `SHA-256(canonical_recipe_bytes) ⊕ SHA-256(raw_input_bytes) ⊕ seed`, truncated to 16 hex chars per component for the path (`<recipe-hash16>/<input-hash16>/<seed>`). The **full** digests live in `manifest.json` for audit.
 
-The canonical bytes are produced by
-`pydantic_model.model_dump(mode="json")` followed by
-`json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
-**Every pydantic field default participates in canonical bytes** —
-adding a field with a default value, changing a default value, or
-reordering a field all perturb the canonical hash for recipes that
-overlap the change.
+The canonical bytes are produced by `pydantic_model.model_dump(mode="json")` followed by `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)`. **Every pydantic field default participates in canonical bytes** — adding a field with a default value, changing a default value, or reordering a field all perturb the canonical hash for recipes that overlap the change.
 
-Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s
-`SUPPORTED_SCHEMA_VERSIONS`) is the deliberate invalidation lever.
-Non-bumped DataRefinery releases preserve cache identity. Releases
-that DO invalidate carry a prominent CHANGELOG callout (see v0.15.0
-for the H.p–H.r.2 example: adding `AugmentationOp.materialization` and
-`expansion` defaults perturbed canonical bytes for any recipe with
-`Augmentations`).
+Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SCHEMA_VERSIONS`) is the deliberate invalidation lever. Non-bumped DataRefinery releases preserve cache identity. Releases that DO invalidate carry a prominent CHANGELOG callout (see v0.15.0 for the H.p–H.r.2 example: adding `AugmentationOp.materialization` and `expansion` defaults perturbed canonical bytes for any recipe with `Augmentations`).
 
 ## Schema-version coordination policy
 
-ModelFoundry SHOULD track DataRefinery's current
-`SUPPORTED_SCHEMA_VERSIONS` set (importable as
-`datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS`). When consuming
-a recipe whose `schema_version` is **outside** ModelFoundry's known
-support range:
+ModelFoundry SHOULD track DataRefinery's current `SUPPORTED_SCHEMA_VERSIONS` set (importable as `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS`). When consuming a recipe whose `schema_version` is **outside** ModelFoundry's known support range:
 
-- If the recipe's `schema_version` is **higher** than anything
-  ModelFoundry knows about → **hard error** on ModelFoundry's side,
-  with an error message naming the recipe's version and ModelFoundry's
-  highest-supported version. Do not attempt to coerce, downgrade, or
-  guess.
-- If the recipe's `schema_version` is **lower** than ModelFoundry's
-  lowest known → ModelFoundry's choice (typically a forward-migration
-  in DataRefinery's `recipe.loader.migrations` already handled the
-  shape; ModelFoundry can rely on the loader-emitted shape).
+- If the recipe's `schema_version` is **higher** than anything ModelFoundry knows about → **hard error** on ModelFoundry's side, with an error message naming the recipe's version and ModelFoundry's highest-supported version. Do not attempt to coerce, downgrade, or guess.
+- If the recipe's `schema_version` is **lower** than ModelFoundry's lowest known → ModelFoundry's choice (typically a forward-migration in DataRefinery's `recipe.loader.migrations` already handled the shape; ModelFoundry can rely on the loader-emitted shape).
 
-ModelFoundry adopting a newer DataRefinery `schema_version` requires
-updating ModelFoundry's tracked set and re-running its own contract
-tests against the new manifest/recipe shapes.
+ModelFoundry adopting a newer DataRefinery `schema_version` requires updating ModelFoundry's tracked set and re-running its own contract tests against the new manifest/recipe shapes.
 
 ## Forward-compatibility expectations
 
-- **Unknown ops in `Augmentations`** (post-prod): ModelFoundry SHOULD
-  detect any `AugmentationOp.op` it does not recognize and fail with
-  a clear `"unknown augmentation op '<name>'; supported: [...]"`
-  error. Silent fallback to a no-op augmentation is forbidden.
-- **Unknown fields in `AugmentationOp`** (post-prod): ModelFoundry
-  SHOULD reject recipes with unrecognized AugmentationOp fields.
-  DataRefinery enforces `extra="forbid"` on its own side; ModelFoundry
-  should mirror.
-- **Unknown manifest keys** (pre-prod): ModelFoundry consumers SHOULD
-  log-and-continue rather than hard-fail, to allow DataRefinery to add
-  informational fields without breaking adopters mid-stream. Post-prod
-  this softens further: unknown keys are stable forward-compat.
+- **Unknown ops in `Augmentations`** (post-prod): ModelFoundry SHOULD detect any `AugmentationOp.op` it does not recognize and fail with a clear `"unknown augmentation op '<name>'; supported: [...]"` error. Silent fallback to a no-op augmentation is forbidden.
+- **Unknown fields in `AugmentationOp`** (post-prod): ModelFoundry SHOULD reject recipes with unrecognized AugmentationOp fields. DataRefinery enforces `extra="forbid"` on its own side; ModelFoundry should mirror.
+- **Unknown manifest keys** (pre-prod): ModelFoundry consumers SHOULD log-and-continue rather than hard-fail, to allow DataRefinery to add informational fields without breaking adopters mid-stream. Post-prod this softens further: unknown keys are stable forward-compat.
 
 ## Failure modes ModelFoundry SHOULD detect
 
-A trained-but-broken handoff is worse than a refusal. ModelFoundry's
-adapter should detect at least these conditions before training
-begins:
+A trained-but-broken handoff is worse than a refusal. ModelFoundry's adapter should detect at least these conditions before training begins:
 
-- **Stale fitted statistics**: `manifest.recipe_hash` does not match
-  the on-disk recipe's canonical hash → the instance was rendered
-  against an older recipe shape; do not train on it. (`drift.json`'s
-  `recipe_hash` field aligns with `manifest.recipe_hash`; mismatch is
-  ipso facto a stale instance.)
-- **Missing required fields**: a manifest absent any of `plugin`,
-  `plugin_version`, `recipe_hash`, `record_counts`, or `seed` is
-  malformed; refuse to consume.
+- **Stale fitted statistics**: `manifest.recipe_hash` does not match the on-disk recipe's canonical hash → the instance was rendered against an older recipe shape; do not train on it. (`drift.json`'s `recipe_hash` field aligns with `manifest.recipe_hash`; mismatch is ipso facto a stale instance.)
+- **Missing required fields**: a manifest absent any of `plugin`, `plugin_version`, `recipe_hash`, `record_counts`, or `seed` is malformed; refuse to consume.
 - **Schema-version mismatch**: see § Schema-version coordination policy.
-- **Aggressive variant sidecar missing**: a JSONL line declares
-  `image_path: "<rel>"` but the sidecar at `<rel>` doesn't exist on
-  disk → instance is corrupt; refuse to consume.
-- **Plugin missing**: `manifest.plugin` is not an installed plugin in
-  ModelFoundry's environment → cannot resolve the plugin's runtime
-  schema; refuse to consume.
+- **Aggressive variant sidecar missing**: a JSONL line declares `image_path: "<rel>"` but the sidecar at `<rel>` doesn't exist on disk → instance is corrupt; refuse to consume.
+- **Plugin missing**: `manifest.plugin` is not an installed plugin in ModelFoundry's environment → cannot resolve the plugin's runtime schema; refuse to consume.
 
 ## Versioning and adoption
 
-- DataRefinery ships **forward-declared contracts** at release time:
-  each release's CHANGELOG enumerates contract changes (recipe shape,
-  manifest, report, on-disk layout). ModelFoundry tracks but does not
-  block DataRefinery releases.
-- ModelFoundry adopts **on its own schedule**. A DataRefinery
-  consumer using the in-repo `datarefinery` library directly is the
-  no-mediation case; ModelFoundry sits one degree away and benefits
-  from forward-declaration.
-- **Pre-production (v < 1.0)**: this document may change without a
-  schema-version bump if no recipe/manifest/report bytes change.
-  Documenting an existing surface in this file is not a contract
-  change.
-- **Post-production (v >= 1.0)**: this document becomes a stability
-  contract. Changes to any contract surface go through the
-  schema-version-bump + migration ceremony.
+- DataRefinery ships **forward-declared contracts** at release time: each release's CHANGELOG enumerates contract changes (recipe shape, manifest, report, on-disk layout). ModelFoundry tracks but does not block DataRefinery releases.
+- ModelFoundry adopts **on its own schedule**. A DataRefinery consumer using the in-repo `datarefinery` library directly is the no-mediation case; ModelFoundry sits one degree away and benefits from forward-declaration.
+- **Pre-production (v < 1.0)**: this document may change without a schema-version bump if no recipe/manifest/report bytes change. Documenting an existing surface in this file is not a contract change.
+- **Post-production (v >= 1.0)**: this document becomes a stability contract. Changes to any contract surface go through the schema-version-bump + migration ceremony.
 
 Cross-references:
 

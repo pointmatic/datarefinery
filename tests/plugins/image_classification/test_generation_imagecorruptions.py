@@ -101,6 +101,7 @@ def test_output_count_matches_inputs_times_types_times_severities() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     assert len(new) == 3 * 2 * 2  # inputs * types * severities
 
@@ -119,6 +120,7 @@ def test_preserve_original_adds_one_extra_per_input() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     # 3 inputs * 1 type * 1 severity + 3 preserved-originals.
     assert len(new) == 3 + 3
@@ -143,6 +145,7 @@ def test_tag_fields_default_written_on_each_output() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     for r in new:
         assert r["corruption"] == "gaussian_noise"
@@ -164,6 +167,7 @@ def test_tag_fields_subset_only_writes_named() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     assert new[0]["corruption"] == "gaussian_noise"
     assert "severity" not in new[0]
@@ -180,6 +184,7 @@ def test_output_record_ids_are_unique_across_corruption_sweep() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     ids = [r["record_id"] for r in new]
     assert len(set(ids)) == len(ids)  # all unique
@@ -209,6 +214,7 @@ def test_same_seed_yields_byte_identical_outputs() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     b = imagecorruptions_apply(
         records,
@@ -217,6 +223,7 @@ def test_same_seed_yields_byte_identical_outputs() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     assert _hash_corrupted_outputs(a) == _hash_corrupted_outputs(b)
 
@@ -232,6 +239,7 @@ def test_different_seeds_change_outputs() -> None:
         output_schema=op_a.output_schema,
         params=dict(op_a.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     b = imagecorruptions_apply(
         records,
@@ -240,6 +248,7 @@ def test_different_seeds_change_outputs() -> None:
         output_schema=op_b.output_schema,
         params=dict(op_b.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     assert _hash_corrupted_outputs(a) != _hash_corrupted_outputs(b)
 
@@ -268,6 +277,7 @@ def test_workers_byte_identical_after_imagecorruptions_apply() -> None:
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=None,
+        op_name="imagecorruptions_apply",
     )
     # workers downstream needs each record to carry record_id; the op
     # already assigns unique IDs.
@@ -357,6 +367,7 @@ def test_record_missing_image_field_raises() -> None:
             output_schema=op.output_schema,
             params=dict(op.params),
             label_field=None,
+            op_name="imagecorruptions_apply",
         )
 
 
@@ -372,6 +383,7 @@ def test_record_with_non_uint8_image_raises() -> None:
             output_schema=op.output_schema,
             params=dict(op.params),
             label_field=None,
+            op_name="imagecorruptions_apply",
         )
 
 
@@ -410,6 +422,7 @@ def test_friendly_import_error_when_backend_missing(monkeypatch: pytest.MonkeyPa
                 output_schema=op.output_schema,
                 params=dict(op.params),
                 label_field=None,
+                op_name="imagecorruptions_apply",
             )
 
 

@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-record-seed persistence on stochastic ops (Story I.e).**
+  Every stochastic Generation / Augmentation op now stamps
+  `<op_name>_seed` (8-byte unsigned int) onto each record it
+  produces. The stamp value equals the seed actually consumed by the
+  op's RNG — `per_record_seed(GenerationOp.seed, input_record)` for
+  `imagecorruptions_apply`; `per_record_variant_seed(global_seed,
+  input_record, variant_index, op_id=AugmentationOp.op)` for every
+  variant emitted by `aggressive`-materialization Augmentations. The
+  stamp rides through to cached JSONL and is captured automatically
+  by any Sink targeting `post_<stage>`. Prerequisite for the future
+  `datarefinery export` verb (Story I.f): consumers can replay the op
+  with the recorded seed to reconstruct stage outputs bit-identically
+  without re-materializing. Ops whose stochasticity is op-level
+  (`duplicate_minority_class`) do not stamp; the op-level seed
+  already lives in `recipe.json` and the duplicate's `record_id`
+  points back at the source. Lazy-mode augmentations do not stamp
+  (variants are realized at training time, outside the pipeline).
+
+  **Generation op contract extension.** The Generation op signature
+  now requires an `op_name: str` kwarg so the op can key its stamp
+  field on the recipe-defined identifier (in-tree plugins updated;
+  any out-of-tree plugin needs the new kwarg).
+
+  **Aggressive realizer extension.** `emit_variants(...)` accepts an
+  optional `stamp_field` kwarg (default `None`, meaning don't stamp);
+  `pipeline.stages.augmentations.realize_aggressive_split` always
+  supplies `stamp_field=f"{AugmentationOp.name}_seed"`.
+
+  **Pre-production cache invalidation.** Stamping changes the cached
+  *record* bytes (JSONL contents) for any recipe with a stochastic
+  op — not the canonical recipe bytes (which depend only on shape).
+  Pre-prod rules apply; users re-materialize on upgrade. The pinned
+  canonical-hash fixture is unaffected (canonical bytes unchanged).
+
+  **Cross-repo coordination.** `docs/specs/modelfoundry/dependency-spec.md`
+  updated with the per-record-seed field convention so downstream
+  consumers can rely on the seed presence in cached JSONL.
+
 - **Sinks — schema, validator, materialize-time `png_per_record` writer
   (Story I.d).** New top-level recipe section `Sinks` declares
   disk-output artifacts captured at materialize time. v1 ships one

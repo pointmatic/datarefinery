@@ -68,6 +68,7 @@ def emit_variants(
     realize_fn: Realizer,
     params: Mapping[str, Any] | None = None,
     record_id_field: str = "record_id",
+    stamp_field: str | None = None,
 ) -> list[dict[str, Any]]:
     """Realize one input record into ``expansion`` augmented variants.
 
@@ -79,6 +80,12 @@ def emit_variants(
       they take no params).
     - Gets ``source_record_id`` and ``variant_index`` metadata.
     - Has its ``record_id`` rewritten via :func:`derive_variant_record_id`.
+
+    When ``stamp_field`` is supplied (Story I.e), each variant also
+    gets the per-variant seed stamped under that key so the cached
+    record carries the seed used by its realizer. The pipeline stage
+    passes ``stamp_field=f"{AugmentationOp.name}_seed"``; tests and ad
+    hoc callers may omit it.
 
     The output list is in variant-index order. Callers that need a fully
     flat, sort-stable sequence across many records must collect outputs
@@ -106,5 +113,7 @@ def emit_variants(
         merged["record_id"] = derive_variant_record_id(source_record_id, vi)
         merged["source_record_id"] = source_record_id
         merged["variant_index"] = vi
+        if stamp_field is not None:
+            merged[stamp_field] = seed
         out.append(merged)
     return out

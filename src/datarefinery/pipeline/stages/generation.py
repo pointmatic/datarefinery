@@ -13,7 +13,13 @@ Operation signature (Generation section):
            inputs: list[str],
            output_schema: Mapping[str, FieldSpec],
            params: Mapping[str, Any],
-           label_field: str | None) -> list[Record]
+           label_field: str | None,
+           op_name: str) -> list[Record]
+
+``op_name`` is the recipe's ``GenerationOp.name`` — passed through so
+per-record-stochastic ops can stamp a ``<op_name>_seed`` column on
+each output record (Story I.e), keyed on the recipe identifier so two
+ops of the same op kind never collide on a single seed column.
 
 Operations return only the *new* records to add; the stage concatenates
 them onto the split's existing records and validates each against
@@ -113,6 +119,7 @@ def _invoke_one(
         output_schema=op.output_schema,
         params=dict(op.params),
         label_field=label_field,
+        op_name=op.name,
     )
 
 
