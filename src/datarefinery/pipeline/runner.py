@@ -187,6 +187,7 @@ class PipelineRunner:
         fitted_op_ids: list[str] = []
         records: list[Record] = list(raw_records)
         sink_results: list[SinkResult] = []
+        reached_sink_stages: set[str] = set()
 
         def _emit(stage: str) -> None:
             nonlocal current_stage
@@ -195,6 +196,10 @@ class PipelineRunner:
                 progress_callback(stage)
 
         def _run_sinks(sink_stage: str, smap: Mapping[str, list[Record]]) -> None:
+            # Track that this sink stage was reached even when no sink
+            # matches; the set drives the partial manifest's
+            # `sinks_skipped` map (Story I.f.1).
+            reached_sink_stages.add(sink_stage)
             if not self.recipe.Sinks:
                 return
             sink_results.extend(
@@ -214,7 +219,14 @@ class PipelineRunner:
             _run_sinks("post_InputContracts", {"_records": records})
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Filters/pre_split")
@@ -228,7 +240,14 @@ class PipelineRunner:
             records = pre_filter.records
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Splits")
@@ -252,7 +271,14 @@ class PipelineRunner:
             _run_sinks("post_Splits", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Filters/post_split")
@@ -268,7 +294,14 @@ class PipelineRunner:
             _run_sinks("post_Filters", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Generation")
@@ -284,7 +317,14 @@ class PipelineRunner:
             _run_sinks("post_Generation", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Transformations")
@@ -302,7 +342,14 @@ class PipelineRunner:
             _run_sinks("post_Transformations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Featurizations")
@@ -318,7 +365,14 @@ class PipelineRunner:
             _run_sinks("post_Featurizations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Augmentations")
@@ -351,7 +405,14 @@ class PipelineRunner:
             _run_sinks("post_Augmentations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("OutputExpectations")
@@ -367,7 +428,14 @@ class PipelineRunner:
             _run_sinks("post_OutputExpectations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             _emit("Visualizations")
@@ -383,7 +451,14 @@ class PipelineRunner:
             _run_sinks("post_Visualizations", split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
-                    temp_dir, cache_key, current_stage, split_map, warnings, start
+                    temp_dir,
+                    cache_key,
+                    current_stage,
+                    split_map,
+                    warnings,
+                    start,
+                    sink_results=sink_results,
+                    reached_sink_stages=reached_sink_stages,
                 )
 
             current_stage = "Dataset"
@@ -450,6 +525,9 @@ class PipelineRunner:
         split_map: Mapping[str, list[Record]],
         warnings: list[ManifestWarning],
         start: float,
+        *,
+        sink_results: list[SinkResult],
+        reached_sink_stages: set[str],
     ) -> RunnerResult:
         """Write a partial manifest and return without promoting.
 
@@ -457,9 +535,29 @@ class PipelineRunner:
         in place so callers can inspect the partially-materialized
         artifacts; ``RunnerResult.is_partial`` is set so the CLI can
         surface the partial status.
+
+        ``sink_results`` carries every sink that fired up to the stop
+        point; ``reached_sink_stages`` is the set of sink-stage names
+        whose host runner stage executed. The latter drives
+        ``manifest.sinks_skipped``: any sink declared on the recipe
+        whose stage is *not* in ``reached_sink_stages`` is recorded as
+        announced-skipped (Story I.f.1).
         """
         elapsed = time.monotonic() - start
         record_counts = {name: len(rs) for name, rs in split_map.items()} if split_map else {}
+        sinks_map = {
+            r.name: SinkManifestEntry(
+                stage=r.stage,
+                format=r.format,
+                files_written=r.files_written,
+                bytes_total=r.bytes_total,
+                path_template_resolved_root=r.path_template_resolved_root,
+            )
+            for r in sink_results
+        }
+        sinks_skipped = {
+            s.name: s.stage for s in self.recipe.Sinks if s.stage not in reached_sink_stages
+        }
         manifest = Manifest(
             datarefinery_version=__version__,
             plugin=self.plugin.name,
@@ -474,6 +572,8 @@ class PipelineRunner:
             completed_through=completed_through,
             record_counts=record_counts,
             warnings=warnings,
+            sinks=sinks_map,
+            sinks_skipped=sinks_skipped,
         )
         # Persist enough state to make the temp dir inspectable. We
         # write the recipe so `Instance.load` can reconstruct it; the

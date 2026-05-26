@@ -72,6 +72,8 @@ def _render_instance_path(console: Console, instance_path: Path) -> None:
     console.print(_record_counts_table(instance.manifest))
     if instance.manifest.warnings:
         console.print(_warnings_table(instance.manifest))
+    if instance.manifest.sinks_skipped:
+        console.print(_sinks_skipped_table(instance.manifest))
 
 
 def _render_recipe_path(
@@ -155,6 +157,21 @@ def _record_counts_table(manifest: Manifest) -> Table:
     else:
         for split, count in sorted(manifest.record_counts.items()):
             table.add_row(split, str(count))
+    return table
+
+
+def _sinks_skipped_table(manifest: Manifest) -> Table:
+    """Render the announced-skip list (Story I.f.1).
+
+    Sinks declared on the recipe whose host stage never executed
+    under ``--stage``. Informational — uses a neutral border so it
+    doesn't read as a warning.
+    """
+    table = Table(title="Sinks skipped (host stage not reached)", expand=False, border_style="cyan")
+    table.add_column("sink", style="bold")
+    table.add_column("declared stage")
+    for name in sorted(manifest.sinks_skipped):
+        table.add_row(name, manifest.sinks_skipped[name])
     return table
 
 

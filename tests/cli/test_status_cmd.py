@@ -146,3 +146,59 @@ def test_status_corrupt_instance_reports_corrupt(tmp_path: Path) -> None:
     # The note suggests `datarefinery clean`; rich may wrap the long
     # note text across terminal widths, so check for the verb token.
     assert "clean" in result.stdout
+
+
+def test_status_renders_sinks_skipped_table_on_partial_run(tmp_path: Path) -> None:
+    """Story I.f.1: ``status`` against a partial-run temp dir with
+    sinks declared at later stages renders the "Sinks skipped" table."""
+    images = _build_image_folder(tmp_path / "data")
+    cache = tmp_path / "cache"
+
+    payload = {
+        "schema_version": 1,
+        "plugin": "image_classification",
+        "seed": 7,
+        "Input": {"sources": [{"name": "train", "type": "image_folder", "path": str(images)}]},
+        "Output": {
+            "record_schema": {
+                "image": {"dtype": "uint8", "shape": [8, 8, 3]},
+                "label": {"dtype": "str"},
+                "path": {"dtype": "str"},
+            }
+        },
+        "Labels": {"field": "label", "source": {"kind": "direct"}},
+        "Splits": {
+            "ratios": {"train": 0.6, "val": 0.2, "test": 0.2},
+            "seed": 11,
+            "stratify_by": "label",
+        },
+        "Sinks": [
+            {
+                "name": "viz_pngs",
+                "stage": "post_Visualizations",
+                "field": "image",
+                "format": "png_per_record",
+                "path_template": "viz/{record_id}.png",
+            },
+        ],
+    }
+    recipe = tmp_path / "recipe.yaml"
+    recipe.write_text(yaml.safe_dump(payload), encoding="utf-8")
+
+    res = runner.invoke(
+        app,
+        ["--cache-root", str(cache), "materialize", str(recipe), "--stage", "Splits"],
+    )
+    assert res.exit_code == 0, res.stdout
+
+    # Find the partial temp dir under instances/.tmp/.
+    temp_dirs = list((cache / "instances" / ".tmp").iterdir())
+    assert len(temp_dirs) == 1
+    partial = temp_dirs[0]
+
+    res = runner.invoke(app, ["--cache-root", str(cache), "status", str(partial)])
+    assert res.exit_code == 0, res.stdout
+    assert "partial" in res.stdout
+    assert "Sinks skipped" in res.stdout
+    assert "viz_pngs" in res.stdout
+    assert "post_Visualizations" in res.stdout

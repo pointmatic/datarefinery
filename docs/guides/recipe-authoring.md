@@ -609,6 +609,27 @@ Sinks:
 
 **Tip: where to put the sink.** For uint8 image exports, target the earliest stage at which the record carries the uint8 representation you want (typically `post_Filters` or `post_Generation`) — **before** any normalize-style Transformation rewrites `image` in place to float bytes. A sink at `post_Transformations` against a normalized `image` field will fail at materialize time with an actionable dtype error.
 
+**Re-running sinks after the fact: `datarefinery export` (Story I.f).** A recipe author who added a sink to an already-materialized recipe can produce the sink output without re-running the full pipeline:
+
+```bash
+datarefinery export <recipe>                  # re-run every sink on the recipe
+datarefinery export <recipe> --sink corrupted # re-run only the named sink
+```
+
+The verb locates the bound cache instance via a *sinks-stripped* cache key — adding a sink to a recipe perturbs canonical bytes, but the instance you already materialized (without the sink) is still the one the export reads from. Output bytes are byte-identical to what a materialize-with-the-sink would have produced.
+
+**v1 reconstructability table.** The export verb walks back from each sink's stage to the cached state by re-running the minimum stage logic needed. The supported stages:
+
+| Sink `stage` | Reconstruction strategy |
+|---|---|
+| `post_OutputExpectations` / `post_Visualizations` | Reads cached JSONL directly (records are already at this state in the cache). Sinks targeting `image` on image-classification recipes will fail because the numpy `image` field is dropped at JSONL serialization for non-aggressive records — target an earlier stage instead. |
+| `post_Generation` | Re-loads source images (via the recipe's `Input` sources) and re-runs the recipe's `Generation` ops against the subset that produced the cached records. Per-record-seed stamps (Story I.e) make this byte-identical to the original materialize. |
+| `post_InputContracts`, `post_Filters`, `post_Splits`, `post_Transformations`, `post_Featurizations`, `post_Augmentations` | **Not reconstructable in v1.** Refuse with a pointer to re-materialize (`datarefinery materialize`) — the cached state has moved past these intermediate forms and v1 doesn't carry enough metadata to replay them. |
+
+The dispatch table will expand as more ops adopt the per-record-seed contract.
+
+**When to prefer `materialize` over `export`.** When the recipe is *new* (no cached instance yet), or when the cached recipe and the new recipe differ in anything other than the `Sinks` section, or when a sink targets a non-reconstructable stage. Materialize is the safe default; export is an optimization for the "add a sink, keep the cache" workflow.
+
 ### `variants`
 
 Named overlays on any section, applied **before** canonicalization and hashing so the cache identity reflects the selected variant.

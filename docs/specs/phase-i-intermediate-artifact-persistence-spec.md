@@ -519,20 +519,59 @@ need a cross-repo coordination check", the implementing story must:
 
 ---
 
-## 10. Open questions
+## 10. Q&A (was Open Questions)
 
 1. **Field-derived nested directories.** Should the path template
    accept arbitrary nesting via `{field/subfield}` for records with
-   nested mappings? v1 assumes flat field access only.
+   nested mappings? **Resolved (declined for v1+).** Path templates
+   require flat field names. Today every loader-, Generation-,
+   Featurization-, and Augmentation-stamped record field is a flat
+   scalar, and `Output.record_schema` is `dict[str, FieldSpec]` — flat
+   by design. Adding `{a/b}` access would create a mismatch where the
+   record shape declared in the schema is flat but the template
+   grammar imagines structured access, and would open follow-ons
+   (list indexing, missing-subfield behavior, leaf-type coercion).
+   Recipes that want grouped metadata in sink paths should expose
+   the relevant leaf as a top-level field via a Featurization,
+   keeping `Output.record_schema` and the validator's field-universe
+   check consistent. Revisit only if a downstream consumer surfaces a
+   real case (e.g. multi-modal records) where the Featurization
+   escape hatch is unworkable.
 2. **Conflict resolution under variants.** A recipe variant overlay
    may override `Sinks: []` to disable sinks. Should the empty
-   override clear sinks entirely, or should variants merge? v1
-   matches the existing variant semantics (full-section replacement),
-   so `Sinks: []` clears.
+   override clear sinks entirely, or should variants merge?
+   **Resolved (confirmed for v1+).** Variant overlays apply to
+   `Sinks` with the same wholesale-replacement semantics as every
+   other list-valued section. `Sinks: []` in a variant clears the
+   section; `Sinks: [<new>]` replaces the base list. Authors who want
+   to add a sink to a variant duplicate the base entries. The cost is
+   recipe verbosity in one scenario (base-plus-one-extra); the benefit
+   is architectural uniformity with the eight peer list sections
+   (`Filters`, `Generation`, `Transformations`, `Augmentations`,
+   `Featurizations`, `OutputExpectations`, `Visualizations`,
+   `InputContracts`) and a simple clear idiom that mirrors the
+   already-in-use `Augmentations: []`. Revisit only if real-world
+   recipe corpora make the duplication friction load-bearing; a
+   non-breaking opt-in merge mode (e.g. `Sinks_extend: [...]`) is the
+   expansion path.
 3. **Sink output under partial / `stop_after` runs.** When materialize
    is invoked with `stop_after=<stage>`, do sinks targeting later
-   stages silently skip, or do they fail? v1: silent skip (partial
-   runs already have explicit `is_partial=True` manifest semantics).
+   stages silently skip, or do they fail? **Resolved (confirmed for
+   v1+, announced-skip variant).** Sinks targeting stages later than
+   the `--stage` stop point are *announced-skipped*: their host
+   stage doesn't execute, the sink doesn't fire, and the partial
+   manifest records the skip under a new
+   `manifest.sinks_skipped: dict[str, str]` field (sink name →
+   declared stage). Sinks at stages at or before the stop point fire
+   normally and appear in `manifest.sinks` as in a full run, with
+   the partial-manifest path now threading the in-progress
+   `sink_results` through `_partial_finish` so the inspection story
+   is complete. The `--stage` flag remains a debugging surface
+   (`is_partial=True` flags the instance as non-authoritative
+   regardless); failing the run for a sink-vs-stop-point mismatch
+   would be surprise, not safety. The skip is transparent: the user
+   sees in the partial summary that more sinks would run without
+   `--stage`, without it being framed as an error.
 
 ---
 

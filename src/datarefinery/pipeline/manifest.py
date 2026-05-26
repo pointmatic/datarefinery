@@ -71,6 +71,10 @@ class Manifest(BaseModel):
     record_counts: dict[str, int] = Field(default_factory=dict)
     warnings: list[ManifestWarning] = Field(default_factory=list)
     sinks: dict[str, SinkManifestEntry] = Field(default_factory=dict)
+    # Sinks declared on the recipe whose host stage was not reached
+    # under a `--stage` partial run. Maps sink name -> declared stage.
+    # Empty on full materializes. Story I.f.1.
+    sinks_skipped: dict[str, str] = Field(default_factory=dict)
 
 
 def write_manifest(path: Path, manifest: Manifest) -> None:

@@ -224,7 +224,7 @@ Per [`phase-i-intermediate-artifact-persistence-spec.md` § 5](phase-i-intermedi
 
 ---
 
-### Story I.f: `datarefinery export` verb + `recipe-authoring.md § Sinks` consolidation [Planned]
+### Story I.f: `datarefinery export` verb + `recipe-authoring.md § Sinks` consolidation [Done]
 
 **Disposition: feature addition.** Part of Bundle 1 (v0.17.0 release, Sinks).
 
@@ -232,22 +232,47 @@ Per [`phase-i-intermediate-artifact-persistence-spec.md` § 5](phase-i-intermedi
 
 **Tasks:**
 
-- [ ] Add `datarefinery export <recipe> [--sink <name> ...]` CLI verb in [`cli/`](../../src/datarefinery/cli/). Default: re-run all sinks declared on the recipe. With `--sink <name>` (repeatable): re-run only the named sinks. Refuse with a clear error if a `--sink` name is not declared on the recipe.
-- [ ] Add `DataRefinery.export(sink_name: str | list[str] | None = None)` library method in [`core/datarefinery.py`](../../src/datarefinery/core/datarefinery.py).
-- [ ] Resolve the bound instance via the same path `datarefinery status` uses. Refuse cleanly if no matching cached instance exists (pointer: run `materialize` first).
-- [ ] Implement re-execution dispatch: for each requested sink, walk back from the sink's `stage` to the cached state, re-running only the necessary stage-internal logic against cached records. For `post_OutputExpectations` sinks, read JSONL directly (no re-run needed). For `post_Generation` sinks against `imagecorruptions_apply` (and similar stochastic ops), use the per-record `<op_name>_seed` (from Story I.e) to reconstruct stage bytes without re-deriving from master seed alone. For non-reconstructable stages (e.g., `post_Filters` once normalize has stomped uint8), refuse with a pointer to re-materialize.
-- [ ] Write sink output into the existing instance directory. The instance is already promoted; the export writes via per-file temp-then-move so partial-run failures don't leave half-written files under the promoted instance path.
-- [ ] Add the v1-reconstructability table next to the export-verb implementation: per-stage `reconstructable_from_cache: bool`. The table lives in one place; both the validator-time check and the runtime check consult it.
-- [ ] Consolidate `recipe-authoring.md § Sinks` with the full author guide — expand on the initial subsection from Story I.d with: the `export` verb usage, the per-record-seed dependency, the v1 reconstructability restriction, the path-template filters, and the worked example from spec § 6.
-- [ ] Update [`tech-spec.md`](tech-spec.md) with the export-verb dispatch table and the reconstructability rules.
-- [ ] Unit tests: export verb on a materialized instance produces files at the sink-declared paths; bytes are byte-identical to the materialize-time sink output (pinned); refuse-with-pointer for non-reconstructable stage; `--sink` selection filters correctly; bad `--sink <name>` (not declared on recipe) refused cleanly.
-- [ ] Integration test: materialize Recipe B without sinks → add a sink declaration → run `datarefinery export` → confirm the sink output appears in the existing instance directory without invalidating the cache. The recipe-hash mismatch (sink added) is the expected state; `export` deliberately bypasses the materialize gate by reading the bound instance directly.
+- [x] Added `datarefinery export <recipe> [--sink <name> ...]` CLI verb in [`cli/commands/export_cmd.py`](../../src/datarefinery/cli/commands/export_cmd.py) wired into [`cli/app.py`](../../src/datarefinery/cli/app.py). Default: re-run all sinks declared on the recipe. `--sink <name>` (repeatable): filter to the named sinks. Unknown `--sink` name → `MaterializeError` listing the declared names.
+- [x] Added `DataRefinery.export(sink_names=..., raw_input_hashes=..., raw_records=...)` in [`core/datarefinery.py`](../../src/datarefinery/core/datarefinery.py). The optional `raw_records` / `raw_input_hashes` kwargs mirror the materialize library API so library callers using synthetic records (not the disk loader) can still resolve the bound instance.
+- [x] Resolved the bound instance via a sinks-stripped cache-key lookup — adding a sink to a recipe perturbs canonical bytes but the previously-materialized instance is the relevant one to read from. Refuses cleanly with a pointer to `datarefinery materialize` when no matching instance exists.
+- [x] Implemented re-execution dispatch in [`pipeline/sinks/export.py`](../../src/datarefinery/pipeline/sinks/export.py). `post_OutputExpectations` / `post_Visualizations` read cached JSONL directly. `post_Generation` reconstructs by re-loading the input subset, re-running the recipe's `Generation` ops over it, and matching outputs to cached records by `record_id` (byte-identical because Story I.e's per-record seeds pin the stochastic outputs). All other stages refuse with a pointer to re-materialize.
+- [x] Per-file atomic writes: each sink stages output under `.export_tmp_<uuid>/` and `os.replace`s onto the final layout. An interrupted export never leaves a half-written file under the promoted path.
+- [x] v1 reconstructability table lives in `pipeline/sinks/export.py` (`_TRIVIAL_STAGES` / `_GENERATION_STAGE` / `_RECONSTRUCTABLE_STAGES`); both validate-time and runtime checks consult the same constants.
+- [x] Consolidated [`recipe-authoring.md § Sinks`](../guides/recipe-authoring.md): added the `datarefinery export` usage block, the full v1 reconstructability table, a "when to prefer materialize over export" callout, and the per-record-seed dependency from Story I.e.
+- [x] Updated [`tech-spec.md`](tech-spec.md): added the export-verb dispatch table to the `pipeline.runner` section and a row in the CLI Subcommands table.
+- [x] Unit + CLI tests: `tests/integration/test_export_verb.py` covers parity vs. re-materialize (byte-identical sink output), `--sink` selection, unknown-sink refusal, no-bound-instance refusal, and non-reconstructable-stage refusal. `tests/cli/test_export_cmd.py` exercises the Typer surface end-to-end through `CliRunner`.
+- [x] Integration parity test: materialize the recipe without sinks → run `datarefinery export` with a sink-added recipe → confirm the export output is byte-identical to a fresh materialize-with-the-sink. The recipe-hash mismatch is the expected state; export bypasses the materialize gate via the sinks-stripped cache-key lookup.
+- [x] **Latent issues closed alongside.** Added `"Sinks"` to `recipe.loader.KNOWN_TOP_LEVEL_KEYS` (Story I.d shipped the model + validator but missed the loader's forward-compat key set). Added a `[[tool.mypy.overrides]]` entry suppressing the `click` missing-stub error so CI mypy passes against environments without `types-click` (click v8+ ships its own typing; the override is a no-op locally and silences CI on older clients).
 
 **Out of Scope:**
 
-- Sink output behavior under partial / `stop_after` materialize runs — open question per spec § 10 #3; deferred.
+- Sink output behavior under partial / `stop_after` materialize runs — open question per spec § 10 #3; deferred to Story I.f.1.
 - Conditional sinks — Future per spec § 8.
 - Cross-record sink formats — Future per spec § 8.
+
+---
+
+### Story I.f.1: Announced-skip for partial-run sinks [Done]
+
+**Disposition: feature follow-on.** Part of Bundle 1 (v0.17.0 release, Sinks). Closes spec open question § 10 #3 ([`phase-i-intermediate-artifact-persistence-spec.md`](phase-i-intermediate-artifact-persistence-spec.md)).
+
+When `materialize --stage <stop>` runs partially, sinks targeting stages later than `<stop>` never fire. Today the partial manifest doesn't mention them at all (silent skip). This story changes that to **announced skip**: the partial manifest records skipped sinks under a new `manifest.sinks_skipped: dict[str, str]` field (sink name → declared stage), and also threads the in-progress `sink_results` into `_partial_finish` so sinks that DID fire appear in `manifest.sinks` (today's `_partial_finish` ignored them — a small inconsistency with `is_partial=True` semantics where the manifest is supposed to reflect what completed).
+
+**Tasks:**
+
+- [x] Added `Manifest.sinks_skipped: dict[str, str]` in [`pipeline/manifest.py`](../../src/datarefinery/pipeline/manifest.py). Default empty dict; structured map kept separate from `Manifest.sinks` so fired-vs-skipped is unambiguous for downstream consumers.
+- [x] Track reached sink stages in [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py): `_run_sinks(stage, ...)` adds the stage to a `reached_sink_stages: set[str]` on every invocation (including when the recipe declares no sinks at that stage). `_partial_finish` computes `sinks_skipped = {s.name: s.stage for s in recipe.Sinks if s.stage not in reached_sink_stages}`.
+- [x] Threaded `sink_results` into `_partial_finish` as a keyword-only arg so the partial manifest's `sinks` map reflects every sink that fired before the stop point. Closes the latent gap noted during the open-question discussion.
+- [x] CLI: extended [`cli/commands/status_cmd.py`](../../src/datarefinery/cli/commands/status_cmd.py) with `_sinks_skipped_table`; renders only when `manifest.sinks_skipped` is non-empty, neutral cyan border (informational, not warning-styled).
+- [x] **Cross-repo coordination.** Added the `sinks_skipped` row to the manifest-fields table in [`dependency-spec.md`](modelfoundry/dependency-spec.md). Additive; no `schema_version` bump.
+- [x] Unit test [`tests/integration/test_sinks_partial_run.py`](../../tests/integration/test_sinks_partial_run.py): runner pass with `stop_after="Filters/post_split"` and sinks declared at `post_Filters`, `post_Generation`, `post_Visualizations` produces a partial manifest with the post_Filters sink in `sinks` and the other two in `sinks_skipped`. Companion tests pin the full-run case (`sinks_skipped == {}`) and the no-sinks case.
+- [x] CLI test in [`tests/cli/test_status_cmd.py`](../../tests/cli/test_status_cmd.py): `datarefinery status` against the partial instance shows the "Sinks skipped" table with the declared stage names.
+- [x] CHANGELOG entry under `[Unreleased]`.
+
+**Out of Scope:**
+
+- Changing `--stage` to fail when sinks are declared at later stages — confirmed declined per the spec resolution.
+- Surfacing the skip list in the `materialize` CLI summary output — `status` is the canonical inspection surface for partial instances; adding a second site would risk drift.
 
 ---
 

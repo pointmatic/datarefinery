@@ -83,6 +83,15 @@ mypy_path = "src"
 namespace_packages = true
 explicit_package_bases = true
 
+# click ships without `py.typed`; its public API is consumed by
+# `cli/app.py` for exit-handling and exception classes. The stubs
+# package (`types-click`) is no longer maintained as click ships its
+# own typing as of v8.2 — but mypy still flags missing stubs when CI
+# uses an older click. Suppress at the module level.
+[[tool.mypy.overrides]]
+module = ["click", "click.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

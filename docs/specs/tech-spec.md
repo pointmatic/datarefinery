@@ -421,6 +421,26 @@ the per-sink summary is captured into `manifest.sinks[<name>]`. The
 closed stage vocabulary mirrors `STAGE_NAMES` (with a `post_` prefix)
 and is shared with G7-era visualization-stage selection.
 
+**`datarefinery export` dispatch table (Story I.f).** Out-of-band
+sink execution against an already-materialized instance. The verb
+locates the bound cache via a sinks-stripped recipe-hash lookup so a
+user adding a sink to an existing recipe still resolves to the
+original instance. Per-stage reconstruction:
+
+| Sink `stage` | Strategy | Notes |
+|---|---|---|
+| `post_OutputExpectations`, `post_Visualizations` | Read cached JSONL directly. | Trivial — cached state equals sink-visible state. |
+| `post_Generation` | Re-load input subset from disk; re-run the recipe's `Generation` ops over it; match outputs to cached records by `record_id`; stamp uint8 `image` back onto each cached record. | Byte-identical to the materialize-time sink output because per-record seeds (Story I.e) make Generation deterministic. |
+| every other `post_<stage>` | Refuse with a pointer to re-materialize. | The cached state has moved past these intermediate forms; reconstructing them deterministically requires more metadata than v1 carries. |
+
+Writes are atomic per file (temp-then-`os.replace`) so an
+interrupted export leaves at most one ``.export_tmp_*`` directory
+behind, never a half-written sink artifact under the promoted
+instance path. The bound instance's `manifest.json` is left
+unmodified — re-running sinks does NOT update `manifest.sinks`
+entries, since the bound instance was materialized without the new
+sink declarations.
+
 **Per-record-seed persistence (Story I.e).** Every stochastic op
 that derives a per-record seed stamps that seed onto each output
 record under `<op_name>_seed`:
@@ -712,6 +732,7 @@ Single console script `datarefinery`, defined as a typer `Typer` instance at `da
 | `report` | Re-render report from existing instance (FR-15) | `Instance.render_report()` |
 | `inspect` | Read-only views (FR-20) | `DataRefinery.inspect()` |
 | `clean` | Cache management (FR-21) | `DataRefinery.clean()` |
+| `export` | Re-run sinks against an existing instance (Story I.f) | `DataRefinery.export()` |
 
 ### Shared options
 

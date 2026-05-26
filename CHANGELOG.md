@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Announced-skip semantics for partial-run sinks (Story I.f.1).**
+  Resolves spec open question § 10 #3 in
+  [`phase-i-intermediate-artifact-persistence-spec.md`](docs/specs/phase-i-intermediate-artifact-persistence-spec.md).
+  When `materialize --stage <stop>` halts early, sinks targeting
+  stages later than `<stop>` are now *announced-skipped*: the
+  partial manifest records them under a new
+  `manifest.sinks_skipped: dict[str, str]` field (sink name →
+  declared stage), and `datarefinery status` renders a "Sinks
+  skipped" table when that field is non-empty. Closes a small
+  inconsistency in the partial-finish path: sinks that DID fire
+  before the stop point now also appear in `manifest.sinks` (the
+  prior path silently dropped them). The CLI behaviour for
+  `--stage` is unchanged otherwise — no run is failed because of a
+  sink declaration mismatch. **Cross-repo coordination:** added
+  the `sinks_skipped` row to
+  [`docs/specs/modelfoundry/dependency-spec.md`](docs/specs/modelfoundry/dependency-spec.md).
+
+- **`datarefinery export` verb — re-run sinks against an existing
+  instance (Story I.f).** New CLI verb and `DataRefinery.export()`
+  library method that re-runs recipe-declared sinks against an
+  already-materialized cache instance, without re-running the full
+  pipeline. The bound instance is located via a sinks-stripped
+  cache-key lookup so a user who adds a sink to an existing recipe
+  still resolves to the original cache. Output bytes are
+  byte-identical to a materialize-with-the-sink (pinned by the
+  parity test in `tests/integration/test_export_verb.py`).
+
+  **v1 reconstructability table:**
+  - `post_OutputExpectations` / `post_Visualizations` — read cached
+    JSONL directly.
+  - `post_Generation` — re-load input subset from disk, re-run the
+    recipe's Generation ops over it, match outputs to cached records
+    by `record_id`. Byte-identical reconstruction relies on the
+    per-record-seed stamps from Story I.e.
+  - Every other stage — refuses cleanly with a pointer to
+    `datarefinery materialize`. The table will expand as more ops
+    adopt the per-record-seed contract.
+
+  **Per-file atomicity.** Each sink file is staged in
+  `.export_tmp_<uuid>/` and `os.replace`-d onto its final path; an
+  interrupted export never leaves a half-written file under the
+  promoted instance directory.
+
+  **Latent issues closed alongside.** `Sinks` is now registered in
+  `recipe.loader.KNOWN_TOP_LEVEL_KEYS` (the loader was silently
+  warning on recipes that declared the section). A `[[tool.mypy.overrides]]`
+  entry suppresses the click missing-stub error in `cli/app.py`
+  (click v8+ ships its own typing; the override silences mypy on
+  CI environments running older click).
+
 - **Per-record-seed persistence on stochastic ops (Story I.e).**
   Every stochastic Generation / Augmentation op now stamps
   `<op_name>_seed` (8-byte unsigned int) onto each record it

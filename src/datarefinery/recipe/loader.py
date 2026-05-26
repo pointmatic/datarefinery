@@ -47,6 +47,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "Featurizations",
         "OutputExpectations",
         "Visualizations",
+        "Sinks",
         "variants",
     }
 )

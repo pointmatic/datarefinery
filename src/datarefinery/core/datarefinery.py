@@ -36,6 +36,7 @@ from datarefinery.core.instance import Instance
 from datarefinery.core.status import StatusReport, resolve_status
 from datarefinery.pipeline.inputs import hash_inputs, load_raw_records
 from datarefinery.pipeline.runner import PipelineRunner, RunnerResult
+from datarefinery.pipeline.sinks.export import ExportResult, export_sinks
 from datarefinery.plugins.base import Plugin
 from datarefinery.plugins.discovery import discover_plugins
 from datarefinery.recipe.loader import load as load_recipe
@@ -223,6 +224,38 @@ class DataRefinery:
     def clean(self, selector: CleanSelector, *, force: bool = False) -> CleanReport:
         """Remove cache entries matching ``selector`` (FR-21)."""
         return clean(self._config.cache_root, selector, force=force)
+
+    def export(
+        self,
+        *,
+        sink_names: Sequence[str] | None = None,
+        raw_input_hashes: Mapping[str, str] | None = None,
+        raw_records: Sequence[Record] | None = None,
+    ) -> ExportResult:
+        """Re-run sinks declared in the recipe against the bound instance.
+
+        ``sink_names``: optional filter; each must be declared on the
+        recipe. ``raw_input_hashes``: if the recipe was originally
+        materialized via library-supplied hashes (not the disk loader),
+        supply the same hashes here so the cache key resolves. The CLI
+        verb leaves this ``None`` (disk loader recomputes hashes).
+
+        Story I.f. The recipe's `Sinks` section is intentionally
+        stripped from the cache-key lookup so a user who adds a sink to
+        an already-materialized recipe still finds the original
+        instance instead of getting a spurious "no bound instance"
+        refusal.
+        """
+        return export_sinks(
+            self._recipe,
+            plugin=self._plugin,
+            config=self._config,
+            seed=self._seed,
+            sink_names=sink_names,
+            variant=self._variant,
+            raw_input_hashes=raw_input_hashes,
+            raw_records=raw_records,
+        )
 
     def status(self) -> StatusReport:
         """Resolve cache identity from disk inputs and report instance state (FR-19).

@@ -130,6 +130,7 @@ The `manifest.json` at the instance root is the authoritative metadata document.
 | `is_partial`           | `bool`                     | True when materialization stopped early via `--stop-after`. |
 | `failed_stage`         | `str | null`               | Stage at which a partial run stopped. |
 | `sinks`                | `dict[str, SinkManifestEntry]` | Per-sink summary of disk-output artifacts captured at materialize time (Story I.d). Empty dict when the recipe declares no `Sinks` section. |
+| `sinks_skipped`        | `dict[str, str]`           | Sinks declared on the recipe whose host stage was not reached under a partial `--stage` run (Story I.f.1). Maps sink name → declared stage. Empty on full materializes. |
 
 ### `manifest.sinks` shape
 

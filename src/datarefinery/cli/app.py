@@ -22,6 +22,7 @@ from datarefinery.cli._exit_codes import (
 )
 from datarefinery.cli.commands.check_cmd import check as check_cmd
 from datarefinery.cli.commands.clean_cmd import clean_command as clean_cmd
+from datarefinery.cli.commands.export_cmd import export as export_cmd
 from datarefinery.cli.commands.init_cmd import init as init_cmd
 from datarefinery.cli.commands.inspect_cmd import inspect as inspect_cmd
 from datarefinery.cli.commands.materialize_cmd import materialize as materialize_cmd
@@ -161,6 +162,10 @@ app.command(
     "clean",
     help="Remove cached instances and orphan temp directories (FR-21).",
 )(clean_cmd)
+app.command(
+    "export",
+    help="Re-run Sinks against an existing instance without re-materializing (Story I.f).",
+)(export_cmd)
 
 
 def _render_error(message: str, *, title: str) -> None:
