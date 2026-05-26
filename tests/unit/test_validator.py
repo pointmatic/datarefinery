@@ -144,12 +144,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_twenty_two_checks() -> None:
+def test_valid_recipe_passes_all_twenty_three_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 22
-    assert {r.check_id for r in report.results} == set(range(1, 23))
+    assert len(report.results) == 23
+    assert {r.check_id for r in report.results} == set(range(1, 24))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -1351,3 +1351,196 @@ def test_check_21_propagates_unlabeled_to_sub_splits() -> None:
     ]
     failures = _failures_for(validate(_build(payload), _ic_plugin()), 21)
     assert failures and "sub_a" in failures[0].message
+
+
+# ---------------------------------------------------------------------------
+# check_23: Featurization output_field must not collide with a loader-stamped
+# field. G4 (dependency-gaps-v0.16.0.md). Shift-left of the runtime collision
+# check in pipeline/stages/featurizations.py.
+# ---------------------------------------------------------------------------
+
+
+def test_check_23_passes_when_no_featurizations() -> None:
+    payload = _ic_base_dict()
+    assert not _failures_for(validate(_build(payload), _ic_plugin()), 23)
+
+
+def test_check_23_passes_when_featurization_output_field_is_novel() -> None:
+    """`image_size_stats` writes to a fresh field — no collision."""
+    payload = _ic_base_dict()
+    payload["Featurizations"] = [
+        {
+            "name": "sizes",
+            "op": "image_size_stats",
+            "inputs": ["image"],
+            "output_field": "img_size",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    assert not _failures_for(validate(_build(payload), _ic_plugin()), 23)
+
+
+def test_check_23_fails_on_output_field_label_when_loader_stamps_label() -> None:
+    """G4 canonical case: image_flat + label_from + Labels.direct +
+    Featurization(op=label_from_path, output_field=label) → collision.
+    """
+    payload = _ic_base_dict()
+    payload["Input"]["sources"][0]["type"] = "image_flat"
+    payload["Input"]["sources"][0]["label_from"] = {
+        "path": "/data/labels.csv",
+        "join": "by_id",
+        "id_field": "filename",
+        "label_field": "class",
+    }
+    payload["Featurizations"] = [
+        {
+            "name": "derive_label_from_path",
+            "op": "label_from_path",
+            "inputs": ["path"],
+            "output_field": "label",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 23)
+    assert failures
+    assert "label" in failures[0].message
+
+
+def test_check_23_fails_on_output_field_label_for_image_folder_direct_labels() -> None:
+    """image_folder + Labels.direct also stamps `label` (from parent dir);
+    a `label_from_path` Featurization writing to `label` collides.
+    """
+    payload = _ic_base_dict()
+    # image_folder is the default in _ic_base_dict; Labels.kind=direct too
+    payload["Featurizations"] = [
+        {
+            "name": "derive_label",
+            "op": "label_from_path",
+            "inputs": ["path"],
+            "output_field": "label",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 23)
+    assert failures
+    assert "label" in failures[0].message
+
+
+def test_check_23_fails_on_output_field_path() -> None:
+    """`path` is always loader-stamped; any Featurization output_field='path' collides."""
+    payload = _ic_base_dict()
+    payload["Featurizations"] = [
+        {
+            "name": "derive_path",
+            "op": "image_size_stats",
+            "inputs": ["image"],
+            "output_field": "path",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 23)
+    assert failures
+    assert "path" in failures[0].message
+
+
+def test_check_23_fails_on_output_field_record_id() -> None:
+    """`record_id` is always loader-stamped."""
+    payload = _ic_base_dict()
+    payload["Featurizations"] = [
+        {
+            "name": "derive_record_id",
+            "op": "image_size_stats",
+            "inputs": ["image"],
+            "output_field": "record_id",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 23)
+    assert failures
+    assert "record_id" in failures[0].message
+
+
+def test_check_23_fails_on_output_field_image() -> None:
+    """`image` is always loader-stamped; reserve it from Featurization output."""
+    payload = _ic_base_dict()
+    payload["Featurizations"] = [
+        {
+            "name": "overwrite_image",
+            "op": "image_size_stats",
+            "inputs": ["image"],
+            "output_field": "image",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 23)
+    assert failures
+    assert "image" in failures[0].message
+
+
+def test_check_23_fails_on_output_field_partition_when_partition_declared() -> None:
+    """`partition` is loader-stamped only when an InputSource declares one."""
+    payload = _ic_base_dict()
+    payload["Input"]["sources"] = [
+        {
+            "name": "train_src",
+            "type": "image_folder",
+            "path": "/data/train",
+            "partition": "train",
+        },
+        {
+            "name": "test_src",
+            "type": "image_folder",
+            "path": "/data/test",
+            "partition": "test",
+        },
+    ]
+    payload["Splits"] = {}  # partitions are the splits; no ratio re-split
+    payload["Featurizations"] = [
+        {
+            "name": "derive_partition",
+            "op": "image_size_stats",
+            "inputs": ["image"],
+            "output_field": "partition",
+            "splits": ["train", "test"],
+        }
+    ]
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 23)
+    assert failures
+    assert "partition" in failures[0].message
+
+
+def test_check_23_passes_on_output_field_partition_when_no_partition_declared() -> None:
+    """When no InputSource declares `partition`, the loader doesn't stamp
+    a `partition` field, so a Featurization writing to `partition` is fine.
+    (Unusual but not contradictory.)
+    """
+    payload = _ic_base_dict()
+    payload["Featurizations"] = [
+        {
+            "name": "synth_partition",
+            "op": "image_size_stats",
+            "inputs": ["image"],
+            "output_field": "partition",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    assert not _failures_for(validate(_build(payload), _ic_plugin()), 23)
+
+
+def test_check_23_passes_on_output_field_label_when_labels_kind_is_derived() -> None:
+    """When `Labels.source.kind == "derived"`, the loader does NOT stamp
+    `label` — the recipe author is expected to derive it via a Featurization.
+    So writing `output_field: label` is the intended pattern, not a collision.
+    """
+    payload = _ic_base_dict()
+    payload["Labels"]["source"]["kind"] = "derived"
+    payload["Featurizations"] = [
+        {
+            "name": "derive_label",
+            "op": "label_from_path",
+            "inputs": ["path"],
+            "output_field": "label",
+            "splits": ["train", "val", "test"],
+        }
+    ]
+    assert not _failures_for(validate(_build(payload), _ic_plugin()), 23)

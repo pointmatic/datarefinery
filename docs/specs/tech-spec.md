@@ -105,7 +105,7 @@ src/datarefinery/
     __init__.py
     models.py                # pydantic v2 Recipe model + per-section models
     loader.py                # FR-1 load + schema-version gate
-    validator.py             # FR-2 enumerated checks 1–22
+    validator.py             # FR-2 enumerated checks 1–23
     canonical.py             # JSON-canonical bytes for cache identity (FR-4)
     variants.py              # FR-14 variant overlay
   cache/

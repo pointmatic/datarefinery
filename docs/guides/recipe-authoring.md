@@ -665,6 +665,31 @@ Featurizations may be deterministic or fit-on-train; fit-on-train
 featurizations follow the same `fit_source: train` rules as
 Transformations.
 
+**Reserved `output_field` names.** A Featurization's `output_field` must
+not collide with a field the input loader stamps on every record.
+Validator check 23 (`featurization_output_field_loader_collision`)
+catches these at validate time. For the `image_classification` plugin
+the reserved set is:
+
+- `record_id`, `image`, `path` — always.
+- `label` — when `Labels.source.kind` is `direct` and a label source is
+  available (`image_folder` parent directory, or `image_flat` +
+  `label_from` sidecar manifest).
+- `partition` — when any `InputSource` declares `partition`.
+
+So **if your recipe loads labels via `image_flat` + `label_from` (or
+`image_folder` with `Labels.kind: direct`), do not also declare a
+`label_from_path` Featurization writing to `label`**: the loader already
+produced the label, and the Featurization would be a duplicate write.
+The two patterns are mutually exclusive:
+
+- **Loader-stamped label.** `Input.sources[*].label_from` (or
+  `image_folder` parent directory) + `Labels.source.kind: direct`. The
+  loader writes `label` at load time; no Featurization needed.
+- **Derived label.** Set `Labels.source.kind: derived` and declare a
+  `label_from_path` Featurization with `output_field: label`. The loader
+  does not stamp `label`; the Featurization is the sole writer.
+
 ### `OutputExpectations`
 
 Post-pipeline assertions on the materialized records. Same assertion

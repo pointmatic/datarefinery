@@ -40,7 +40,7 @@ Three candidate code fixes were considered and rejected:
 
 1. **Convert `TypeError` → actionable `RecipeError` at the viz layer.** Error-message quality only; the recipe still cannot use the viz post-normalize. Pure polish.
 2. **Make realizers float-tolerant.** Suppresses the crash, but the viz's `_tile` clip-casts z-score values ~[-2, 2] to uint8 [0, 255], producing mostly-black tiles. Silently wrong is worse than crashing.
-3. **Stage-aware viz dispatch (= G7).** The honest fix; out of scope for a debug cycle, captured as Story I.c below.
+3. **Stage-aware viz dispatch (= G7).** The honest fix; out of scope for a debug cycle, captured as Story I.d below.
 
 This story produces no code change. Its deliverable is the reclassification in the gap doc and the planned-story handoff to G7.
 
@@ -51,7 +51,7 @@ This story produces no code change. Its deliverable is the reclassification in t
 - [x] Document the investigation outcome in [`docs/specs/dependency-gaps-v0.16.0.md` § G5](dependency-gaps-v0.16.0.md): status block, severity reclassified to "Subsumed by G7," fix path "implement G7."
 - [x] Update the dependency-gaps priority summary table: G5 row severity → "Subsumed by G7."
 - [x] Update the dependency-gaps recipe-side workarounds table: G5 row → "(No G5-only recipe edit; when G7 lands, restore the viz with `stage: pre_transformations`)."
-- [x] Capture Story I.c in this file for G7 — the genuine fix path.
+- [x] Capture Story I.d in this file for G7 — the genuine fix path.
 
 **Prevention scan (no code changes needed for I.a, but captured for the G7 implementer):**
 
@@ -60,7 +60,7 @@ This story produces no code change. Its deliverable is the reclassification in t
 
 **Out of Scope**
 
-- Implementing G7 itself. That's Story I.c.
+- Implementing G7 itself. That's Story I.d.
 - Implementing options 1 or 2 above as a polish-only intermediate fix. Both were rejected during investigation; shipping polish doesn't move the consumer closer to the working viz they want.
 - Reclassifying other G entries (G6, G8, etc.) in the same pass. Each gets its own debug cycle.
 
@@ -104,7 +104,51 @@ Both evaluators now accept ndarrays in the obvious way: `_eval_dtype` compares `
 - Numpy scalar handling (`np.int64(3)`, `np.float32(1.5)` as scalar field values, not ndarrays). The current `_PY_DTYPE_TAGS` aliases tolerate Python scalars; numpy 0-D scalars would need a separate audit and aren't surfaced by any consumer recipe today.
 - Empty-ndarray edge case (`arr.min()` raises on a 0-element array). Not surfaced by any consumer recipe; can be addressed when a real case appears.
 
-### Story I.c: G7 — Stage-aware visualization dispatch [Planned]
+### Story I.c: v0.16.2 G4 — validator catches Featurization output_field colliding with loader-stamped field [Done]
+
+**Disposition: bug fix.** Patch bump (`v0.16.1 → v0.16.2`).
+
+Debug-mode investigation of [`dependency-gaps-v0.16.0.md` § G4](dependency-gaps-v0.16.0.md) confirmed the gap: the runtime collision detector at [`pipeline/stages/featurizations.py:110-115`](../../src/datarefinery/pipeline/stages/featurizations.py#L110-L115) correctly rejects a Featurization whose `output_field` collides with a field the input loader stamps on every record — but it does so at materialize time, after loading work has already run. The validator was missing the symmetric pre-flight check. This is a classic shift-left: the contract violation is identical; the failure timing moves from materialize to validate.
+
+The new check (number 23 of the FR-2 set) computes the loader-stamped field set from the recipe's `Input` / `Labels` configuration and flags any Featurization writing to one of those fields. For the `image_classification` plugin the set is:
+
+- `record_id`, `image`, `path` — always.
+- `label` — when `Labels.source.kind == "direct"` and a label source is available (`image_folder` parent directory, or `image_flat` + `label_from` sidecar manifest).
+- `partition` — when any `InputSource.partition` is declared.
+
+**Tasks:**
+
+- [x] Confirm the runtime collision check exists and works: read [`pipeline/stages/featurizations.py:110-115`](../../src/datarefinery/pipeline/stages/featurizations.py#L110-L115) and validate that it raises `MaterializeError` with a "collides with an existing field" message when a Featurization writes to a loader-stamped field.
+- [x] Locate the loader to enumerate stamped fields: [`pipeline/inputs.py`](../../src/datarefinery/pipeline/inputs.py) stamps `record_id`, `image`, `path` always; `label` when a label source exists; `partition` when an InputSource declares one. Document the enumeration in `check_23`'s docstring as the in-tree authoritative source.
+- [x] Add `check_23_featurization_output_field_loader_collision` to [`src/datarefinery/recipe/validator.py`](../../src/datarefinery/recipe/validator.py). Compute the reserved set from the recipe, walk `recipe.Featurizations`, report any collision with a clear message that names the reserved set and suggests how to resolve (rename `output_field` or remove the loader-side source).
+- [x] Register the new check in the `_CHECKS` tuple at the bottom of [`validator.py`](../../src/datarefinery/recipe/validator.py).
+- [x] Write 10 unit tests in [`tests/unit/test_validator.py`](../../tests/unit/test_validator.py) covering: passing case with no Featurizations; passing case with a novel `output_field`; failure on each of the five reserved fields (`record_id`, `image`, `path`, `label`, `partition`); the canonical G4 case (`image_flat` + `label_from` + `Labels.direct` + `output_field: label`); the symmetric `image_folder` case; the `Labels.kind: derived` case where the loader does NOT stamp `label` and the Featurization writing `label` is valid; the `partition` case only fires when an InputSource declares one. All 10 fail today, all 10 pass after the check is added.
+- [x] Update [`tests/unit/test_validator.py`](../../tests/unit/test_validator.py) `test_valid_recipe_passes_all_twenty_two_checks` → `_twenty_three_checks` (literal count + `range(1, 24)`).
+- [x] Update [`tests/integration/test_image_flat_label_from.py`](../../tests/integration/test_image_flat_label_from.py), [`tests/integration/test_partitioned_inputs.py`](../../tests/integration/test_partitioned_inputs.py), [`tests/integration/test_unlabeled_partition.py`](../../tests/integration/test_unlabeled_partition.py): change CLI-output literal `"22/22 checks passed"` to `"23/23 checks passed"`. (4 call sites total across the three files.)
+- [x] Update [`tests/integration/test_tabular_stub_smoke.py`](../../tests/integration/test_tabular_stub_smoke.py): `assert len(report.results) == 22` → `== 23`.
+- [x] Update [`docs/specs/features.md` § FR-2](../specs/features.md) enumeration: append item 23 describing `featurization_output_field_loader_collision`.
+- [x] Update [`docs/specs/tech-spec.md`](../specs/tech-spec.md): `# FR-2 enumerated checks 1–22` → `1–23` in the package-structure tree comment.
+- [x] Update [`README.md`](../../README.md) § CLI verbs table: validate row count `22` → `23`.
+- [x] Per the [`dependency-gaps-v0.16.0.md` DOC rule](dependency-gaps-v0.16.0.md): update [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Featurizations — add a "Reserved `output_field` names" subsection enumerating the loader-stamped set per Input/Labels configuration, plus a "loader-stamped label vs. derived label" guidance block explaining the two mutually-exclusive patterns.
+- [x] Update [`dependency-gaps-v0.16.0.md` § G4](dependency-gaps-v0.16.0.md): status block at top documenting Story I.c outcome; severity in priority summary table updated to "Closed in v0.16.2"; entry in workarounds table updated.
+- [x] Update [`CHANGELOG.md`](../../CHANGELOG.md) with `## [0.16.2]` entry under `### Fixed`, citing the check name, the runtime-vs-validator timing shift, and the new 23/23 total.
+- [x] Bump `pyproject.toml` and `src/datarefinery/__init__.py` to `0.16.2`.
+- [x] Verify CI parity locally: `pyve test` (1042 passed; +10 from this story), `pyve testenv run mypy src tests` (clean, 175 source files), `pyve testenv run ruff check src/ tests/` (clean), `pyve testenv run ruff format --check src/ tests/` (clean).
+- [x] Cross-repo coordination check ([`docs/specs/modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no change. The new check tightens validation for a contract that already existed at the runtime layer; no recipe-model, manifest, or report shape changes. ModelFoundry consumers see strictly fewer recipes silently pass validate (which is the intended behavior).
+
+**Prevention notes:**
+
+- The runtime collision check at [`pipeline/stages/featurizations.py:110-115`](../../src/datarefinery/pipeline/stages/featurizations.py#L110-L115) remains in place as second-line defense. Validator check 23 is shift-left for the recipe author's diagnosability; the runtime check protects against future loader-stamp changes that the validator's enumeration doesn't yet know about.
+- The reserved-field enumeration in `check_23` is duplicated knowledge with [`pipeline/inputs.py`](../../src/datarefinery/pipeline/inputs.py). If the loader changes which fields it stamps (e.g., adds a `source_name` field, or stops stamping `partition` for a corner case), `check_23`'s set must be updated in lockstep. The runtime check is the authoritative source — when there's a divergence, the runtime wins and the validator's enumeration is the bug.
+- Plugin scope: the reserved-field set today is hardcoded for the `image_classification` plugin. The `tabular` and `text` stub plugins don't declare a loader with these stamps. When a non-stub plugin lands for those modalities, `check_23` will need a plugin-pluggable reserved-set hook (similar to how `OperationSpec.parameters` flows from the plugin).
+
+**Out of Scope**
+
+- Plugin-pluggable reserved-set hook (`Plugin.loader_stamped_fields(recipe) -> set[str]`). Not needed in v1 since only `image_classification` has a real loader; defer until `tabular` or `text` get their own loaders.
+- Backporting the same shift-left pattern for the Augmentation-output / Transformation-output collision cases. The Augmentation contract is "in-place rewrite of `image`" (no new fields), and Transformations have a similar in-place semantic, so there's no symmetric collision class to shift left. Leave them as they are.
+- Renaming any of the loader-stamped fields. Out of scope and would be a breaking change requiring a `schema_version` bump.
+
+### Story I.d: G7 — Stage-aware visualization dispatch [Planned]
 
 **Disposition: planned, not started.** Awaiting `plan_phase` scope or developer assignment. Captured here so the architectural commitment is recorded in the project's source of truth (`stories.md`), not just in the gap doc.
 

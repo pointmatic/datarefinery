@@ -998,6 +998,74 @@ def check_22_stats_from_instance_mutually_exclusive_with_fit_source(
     )
 
 
+def check_23_featurization_output_field_loader_collision(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    """G4 (dependency-gaps-v0.16.0.md): Featurization `output_field` must not
+    collide with a field the loader stamps on every record.
+
+    The image_classification loader (`pipeline/inputs.py`) writes these
+    fields on every loaded record:
+
+    - ``record_id`` (always)
+    - ``image`` (always)
+    - ``path`` (always)
+    - ``label`` — when ``Labels.source.kind == "direct"`` and a label source
+      is available (parent dir for ``image_folder``; sidecar manifest via
+      ``label_from`` for ``image_flat``).
+    - ``partition`` — when any ``InputSource.partition`` is declared.
+
+    A Featurization declaring `output_field` equal to any of these is
+    caught at materialize time by ``pipeline/stages/featurizations.py``
+    with a "collides with an existing field" error. This check surfaces
+    the same collision at validate time so the failure is reported
+    before any loading work runs.
+    """
+    del plugin
+    descriptor = "featurization_output_field_loader_collision"
+    issues: list[str] = []
+
+    # Loader-stamped field set, derived from the recipe's Input/Labels config.
+    # Keep in sync with the loader at `pipeline/inputs.py` — the runtime
+    # collision check at `pipeline/stages/featurizations.py` is the
+    # authoritative second-line defense.
+    reserved: set[str] = {"record_id", "image", "path"}
+    if recipe.Labels.source.kind == "direct":
+        # `direct` labels are populated by the loader when a label source
+        # exists. For image_folder the parent dir is the label; for
+        # image_flat the sidecar `label_from` manifest is the source.
+        any_labeled_source = any(
+            (src.type == "image_folder" or src.label_from is not None) and not src.unlabeled
+            for src in recipe.Input.sources
+        )
+        if any_labeled_source:
+            reserved.add(recipe.Labels.field)
+    if any(src.partition is not None for src in recipe.Input.sources):
+        reserved.add("partition")
+
+    for feat in recipe.Featurizations:
+        if feat.output_field in reserved:
+            issues.append(
+                f"Featurizations[{feat.name!r}].output_field {feat.output_field!r} "
+                f"collides with a field stamped by the input loader "
+                f"(reserved: {sorted(reserved)!r}). Either rename "
+                f"output_field, or remove the loader-side source for "
+                f"{feat.output_field!r} (e.g., for label collisions: drop "
+                f"the InputSource.label_from sidecar or change "
+                f"Labels.source.kind from 'direct' to 'derived')."
+            )
+
+    if not issues:
+        return _passed(23, descriptor)
+    return CheckResult(
+        check_id=23,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1072,6 +1140,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         22,
         "stats_from_instance_mutually_exclusive_with_fit_source",
         check_22_stats_from_instance_mutually_exclusive_with_fit_source,
+    ),
+    (
+        23,
+        "featurization_output_field_loader_collision",
+        check_23_featurization_output_field_loader_collision,
     ),
 )
 

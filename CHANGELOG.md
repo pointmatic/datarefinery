@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.2] - 2026-05-25
+
+### Fixed
+
+- **G4 — validator catches Featurization output_field colliding with a
+  loader-stamped field (Story I.c).** Added validator check 23
+  (`featurization_output_field_loader_collision`). Before this fix, a
+  recipe declaring an `image_flat` + `label_from` Input plus a
+  `label_from_path` Featurization writing `output_field: label` validated
+  cleanly and then crashed at materialize time with the runtime collision
+  detector at [`pipeline/stages/featurizations.py:110-115`](src/datarefinery/pipeline/stages/featurizations.py).
+  Check 23 surfaces the failure at validate time, before any loading
+  work runs. Covers all five loader-stamped fields for the
+  `image_classification` plugin: `record_id`, `image`, `path` (always);
+  `label` (when `Labels.source.kind == "direct"` and a label source
+  exists); `partition` (when any `InputSource.partition` is declared).
+  See [`docs/specs/dependency-gaps-v0.16.0.md` § G4](docs/specs/dependency-gaps-v0.16.0.md)
+  for the full investigation record.
+
+  Total static checks: 22 → 23. `validate` now reports `23/23 checks
+  passed` on a clean recipe.
+
 ## [0.16.1] - 2026-05-25
 
 ### Fixed

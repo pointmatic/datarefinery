@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
 
-__version__ = "0.16.1"
+__version__ = "0.16.2"
 
 from datarefinery.core.datarefinery import DataRefinery, materialize
 from datarefinery.core.instance import Instance

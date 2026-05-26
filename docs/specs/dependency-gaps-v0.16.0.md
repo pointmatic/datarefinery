@@ -40,7 +40,7 @@ None of these require a `schema_version` bump.
 | G1 | `Splits.applies_to` doesn't accept `sample_per_class_tags` labels | **Blocking (workaround used)** | Validator semantics |
 | G2 | `cast` Transformation: name + `scale` param + runtime factory missing | Blocking (workaround used) | Plugin op registration |
 | G3 | `categorical_encode` Featurization missing from plugin | Blocking for Phase D Module 3 (`mlp_flat`); deferred | Plugin op registration |
-| G4 | `label_from_path` collides with `image_flat` + `label_from` loader | Friction (workaround used) | Plugin runtime interaction |
+| G4 | `label_from_path` collides with `image_flat` + `label_from` loader | **Closed in v0.16.2** (Story I.c) | Validator semantics |
 | G5 | `augmented_sample_grid` viz raises on post-normalize float images | **Subsumed by G7** (not a defect; surfaces missing stage-aware viz dispatch) | Plugin runtime interaction |
 | G6 | `OutputExpectations` only supports flat-record assertion kinds | Friction (out-of-band verification used) | Contracts evaluator |
 | G7 | All reporting visualizations run at `post_pipeline` only | Friction (pre/post-normalize merged) | Pipeline runner |
@@ -385,10 +385,11 @@ the persisted vocabulary and writes per-record.
 
 ## G4 — `label_from_path` collides with `image_flat` + `label_from` loader
 
-**Severity:** Friction (workaround in place; Recipe A omits the
-Featurization entirely).
+**Status (Story I.c, v0.16.2):** **Closed.** Added validator check 23 (`featurization_output_field_loader_collision`) that detects any Featurization whose `output_field` collides with a loader-stamped field (`record_id`, `image`, `path`; plus `label` when Labels are direct with a label source; plus `partition` when an InputSource declares one). The check shifts the failure from materialize time (the runtime collision detector at `pipeline/stages/featurizations.py:110-115`) to validate time. The runtime check remains as second-line defense.
 
-**Category:** Plugin runtime interaction.
+**Severity:** Friction (workaround in place; Recipe A omits the Featurization entirely) → **Closed v0.16.2**.
+
+**Category:** Validator semantics (shift-left of a runtime check that already existed).
 
 **Symptom.** When `Input.sources[*]` is `image_flat` with `label_from`
 (sidecar manifest) AND `Labels.source.kind` is `direct`, the loader
@@ -1780,7 +1781,7 @@ corresponding deviation removed:
 | G1 | Restore the two `sample_per_class` filters with `label: train_pool` / `label: test_pool` + `Splits.applies_to: train_pool, ratios: {train: 0.85, val: 0.15}`. Refactor the `imbalanced*` variants similarly. |
 | G2 | Add `cast` Transformation (canonical name; not `cast_dtype`) before `normalize` with `params: { dtype: float32, scale: 0.00392156862745098 }`. Change `Output.record_schema.image.dtype` to `float32`. |
 | G3 | Add `categorical_encode` Featurization deriving `label_id`. Add `label_id: { dtype: int32 }` to `Output.record_schema`. |
-| G4 | (No recipe edit — fix is doc/validator side. Recipe already omits the conflicting Featurization.) |
+| G4 | **Closed in v0.16.2 (Story I.c).** Validator check 23 catches the collision at validate time. No recipe edit needed; Recipe A's existing structure (label from loader, no `label_from_path` Featurization) is still correct. The check now ensures any future author who reaches for the conflicting pattern is told before materialize runs. |
 | G5 | (No G5-only recipe edit; G5 is subsumed by G7. When G7 lands, restoring the `augmented_sample_grid` viz with `stage: pre_transformations` is the unblocked path.) |
 | G6 | Restore per-split + per-class OutputExpectations (paired with G15 for the missing assertion kinds). |
 | G7 | Split `sample_grid` into `pre_normalize` + `post_normalize` versions with appropriate `stage:` values. |
