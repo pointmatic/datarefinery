@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-05-27
+
+Phase I Bundle 2. Closes Story I.j. Patch release bundling one bug fix
+(Story I.i) and one documentation-only sanitize (Story I.h). No
+cross-repo contract changes; no `schema_version` bump.
+
+### Fixed
+
+- **G19 — `resolve_sibling_stats` strips sibling variants before hashing
+  (Story I.i).** The resolver now wraps `load_recipe(recipe_path)` with
+  `apply_variant(..., None)` before computing the canonical hash,
+  mirroring the materialize path at
+  [`core/datarefinery.py:92`](src/datarefinery/core/datarefinery.py).
+  Before the fix, any sibling recipe declaring a `variants:` block
+  produced a hash mismatch and `stats_from_instance` lookups failed with
+  `SiblingInstanceNotFoundError`, even though the sibling was
+  materialized and `datarefinery status` resolved it correctly. A
+  no-variant regression test pins the invariant that
+  `apply_variant(recipe, None)` preserves canonical bytes when no
+  variants are declared, so the fix does not invalidate existing
+  sibling-stats lookups. Adds an "FR-TRANS-1 across variants" subsection
+  to [`recipe-authoring.md` § Transformations](docs/guides/recipe-authoring.md)
+  documenting that `stats_from_instance` resolves the sibling's
+  no-variant canonical instance (pinning a specific sibling-variant's
+  statistics is tracked in `stories.md § Future`).
+
+### Documentation
+
+- **Narrow-scope sanitize of residual consumer-context identifiers
+  (Story I.h).** Scrubbed hard-blacklisted course identifiers from
+  [`phase-i-intermediate-artifact-persistence-spec.md`](docs/specs/phase-i-intermediate-artifact-persistence-spec.md)
+  (six occurrences in §§ 1, 6, 7 rephrased to generic equivalents).
+  [`phase-i-dependency-gaps-v0.16.0.md`](docs/specs/phase-i-dependency-gaps-v0.16.0.md)
+  was clean for the narrow scope; the deeper consumer-perspective
+  framing in both specs is intentionally left in place for a deliberate
+  post-course rewrite captured as a new entry under
+  [`stories.md § Future`](docs/specs/stories.md): "Broad consumer-context
+  rewrite of internal specs." Also added the previously-planned Phase I
+  deferred items to `stories.md § Future` (`stats_from_instance.variant`
+  selector, `to_grayscale` op, plugin-pluggable validator reserved-set
+  hook, per-stage report subsections, scaffolder v2 grand sweep, real
+  `distributional` assertion kind, DR-side `class_balance` resampling).
+  Renumbered the existing G7 placeholder Story I.h → Story I.v within
+  Bundle 3.
+
 ## [0.17.0] - 2026-05-26
 
 Phase I Bundle 1 (Sinks). Closes Story I.g. Additive cross-repo

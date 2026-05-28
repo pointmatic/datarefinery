@@ -347,7 +347,7 @@ Per [`dependency-gaps-v0.16.0.md` § G19](phase-i-dependency-gaps-v0.16.0.md): `
 
 ---
 
-### Story I.j: Release v0.17.1 (Phase I bundle 2) [Planned]
+### Story I.j: Release v0.17.1 (Phase I bundle 2) [Done]
 
 **Disposition: release ceremony.** Patch bump (`v0.17.0 → v0.17.1`). Closes Bundle 2.
 
@@ -355,12 +355,11 @@ Dedicated commit for the version bump so the release is identifiable in commit h
 
 **Tasks:**
 
-- [ ] Bump `pyproject.toml` `version = "0.17.0"` → `"0.17.1"`.
-- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
-- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.17.1]`:
-   - **Fixed:** "G19 — `resolve_sibling_stats` now strips sibling variants before hashing, so `stats_from_instance` resolves correctly against any sibling recipe that declares variants (Story I.i)."
-   - **Docs:** "Sanitized residual consumer-context references in `dependency-gaps-v0.16.0.md`. Added deferred items to `stories.md § Future` (Story I.h)."
-- [ ] Cross-repo coordination: no change.
+- [x] Bumped `pyproject.toml` `version = "0.17.0"` → `"0.17.1"`.
+- [x] Bumped `src/datarefinery/__init__.py` `__version__` to `"0.17.1"`.
+- [x] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.17.1] - 2026-05-27` added with Fixed entry for G19 (Story I.i) and Documentation entry for the narrow-scope sanitize and Phase I Future-section additions (Story I.h). Per the I.h scope-decision note, the Documentation bullet reflects what was actually scrubbed (`phase-i-intermediate-artifact-persistence-spec.md`) rather than the pre-execution placeholder wording in this task list, and uses the existing `### Documentation` section heading already established in the CHANGELOG (e.g., v0.13.0, v0.12.0).
+- [x] Cross-repo coordination: no change ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md) untouched; neither I.h nor I.i altered a contract surface).
+- [x] CI parity: `pyve test` 1106 passed; `pyve testenv run mypy src tests` clean; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 ---
 
