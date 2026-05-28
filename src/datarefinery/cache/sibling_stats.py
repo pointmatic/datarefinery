@@ -45,6 +45,7 @@ from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import read_manifest
 from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import load as load_recipe
+from datarefinery.recipe.variants import apply_variant
 
 
 class SiblingInstanceNotFoundError(MaterializeError):
@@ -85,7 +86,12 @@ def resolve_sibling_stats(
     ``fitted_statistics/`` directory. The caller then reads stats via
     ``stats.get_vector(op_id, name)`` / ``stats.get_scalar(op_id, name)``.
     """
-    sibling_recipe = load_recipe(recipe_path)
+    # Strip variants before hashing so the lookup matches the
+    # materialize path (core/datarefinery.py:92-93), which always runs
+    # apply_variant(recipe, None) before computing the cache key. Without
+    # this, any sibling recipe declaring `variants:` produces a hash
+    # mismatch and the shard lookup fails (G19).
+    sibling_recipe = apply_variant(load_recipe(recipe_path), None)
     sibling_hash = hashlib.sha256(to_canonical_bytes(sibling_recipe)).hexdigest()
     shard = sibling_hash[:16]
 

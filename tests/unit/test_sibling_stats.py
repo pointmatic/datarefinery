@@ -36,6 +36,7 @@ from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import Manifest, write_manifest
 from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import load as load_recipe
+from datarefinery.recipe.variants import apply_variant
 
 _RECIPE_YAML = textwrap.dedent(
     """\
@@ -282,3 +283,127 @@ def test_recipe_hash_lookup_is_independent_of_input_hash(tmp_path: Path) -> None
     )
     stats = resolve_sibling_stats(cache_root, recipe_path, "norm", required_vectors=("mean",))
     assert stats.get_vector("norm", "mean").to_pydict() == {"value": [42.0]}
+
+
+# ---------------------------------------------------------------------------
+# G19: resolver must strip variants before hashing the sibling recipe
+# ---------------------------------------------------------------------------
+
+
+_RECIPE_YAML_WITH_VARIANTS = textwrap.dedent(
+    """\
+    schema_version: 1
+    plugin: image_classification
+    seed: 0
+    Input:
+      sources:
+        - name: train
+          type: image_folder
+          path: /data/train
+    Output:
+      record_schema:
+        image: {dtype: uint8, shape: [4, 4, 3]}
+        label: {dtype: str}
+    Labels:
+      field: label
+      source: {kind: direct}
+    Splits:
+      ratios: {train: 0.6, val: 0.2, test: 0.2}
+      seed: 11
+    Transformations:
+      - name: norm
+        op: normalize
+        params: {}
+        fit_source: train
+        splits: [train, val, test]
+    variants:
+      no_norm:
+        Transformations: []
+    """
+)
+
+
+def _recipe_hash_stripped(recipe_path: Path) -> str:
+    """Canonical recipe hash with variants stripped, mirroring the
+    materialize path at ``core/datarefinery.py:92-93``.
+    """
+    recipe = apply_variant(load_recipe(recipe_path), None)
+    return hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+
+
+def _build_promoted_instance_materialize_path(
+    cache_root: Path,
+    recipe_path: Path,
+    *,
+    op_id: str = "norm",
+    vectors: dict[str, pa.Table] | None = None,
+    input_hash: str = "a" * 64,
+    seed: int = 7,
+) -> Path:
+    """Materialize a fake promoted instance under the materialize-time
+    (variants-stripped) recipe hash, mirroring what the real materialize
+    path produces. Used to reproduce G19.
+    """
+    recipe_hash = _recipe_hash_stripped(recipe_path)
+    key = CacheKey(recipe_hash=recipe_hash, input_hash=input_hash, seed=seed)
+    inst = instance_dir(cache_root, key)
+    inst.mkdir(parents=True, exist_ok=True)
+
+    write_manifest(
+        manifest_path(inst),
+        Manifest(
+            datarefinery_version="0.0.0-test",
+            plugin="image_classification",
+            plugin_version="1",
+            recipe_hash=recipe_hash,
+            input_hash=input_hash,
+            seed=seed,
+            created_at=datetime(2026, 5, 22, tzinfo=UTC),
+            elapsed_seconds=0.0,
+            record_counts={"train": 1},
+        ),
+    )
+
+    fs = FittedStatistics(fitted_stats_dir(inst))
+    for name, table in (vectors or {}).items():
+        fs.put_vector(op_id, name, table)
+
+    return inst
+
+
+def test_resolver_finds_instance_when_sibling_declares_variants(tmp_path: Path) -> None:
+    """G19 reproduction: a sibling recipe declaring ``variants:`` and a
+    promoted instance written under the materialize-path (stripped)
+    hash. The resolver must strip variants before hashing the sibling,
+    matching the materialize path, or the shard lookup fails.
+    """
+    cache_root = tmp_path / "cache"
+    recipe_path = tmp_path / "train_recipe_with_variants.yaml"
+    recipe_path.write_text(_RECIPE_YAML_WITH_VARIANTS, encoding="utf-8")
+    _build_promoted_instance_materialize_path(
+        cache_root,
+        recipe_path,
+        vectors={"mean": pa.table({"value": [7.0, 8.0, 9.0]})},
+    )
+
+    stats = resolve_sibling_stats(
+        cache_root,
+        recipe_path,
+        "norm",
+        required_vectors=("mean",),
+    )
+    assert stats.get_vector("norm", "mean").to_pydict() == {"value": [7.0, 8.0, 9.0]}
+
+
+def test_apply_variant_none_preserves_canonical_hash_when_no_variants_declared(
+    tmp_path: Path,
+) -> None:
+    """No-variant regression for the G19 fix: a recipe with no declared
+    variants must hash identically with or without the
+    ``apply_variant(..., None)`` strip. Guards against the fix silently
+    invalidating sibling-stats lookups for existing recipes.
+    """
+    recipe_path = _write_recipe(tmp_path / "train_recipe.yaml")
+    raw = load_recipe(recipe_path)
+    stripped = apply_variant(raw, None)
+    assert to_canonical_bytes(raw) == to_canonical_bytes(stripped)

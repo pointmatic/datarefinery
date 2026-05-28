@@ -55,7 +55,7 @@ None of these require a `schema_version` bump.
 | G16 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
 | G17 | `class_distribution_histogram` lacks `group_by` param | Friction (viz dropped) | Plugin op param schema |
 | G18 | `Generation` stage extends each target split rather than replacing source records | **Blocking for Recipe B (`cifar10c_eval.yaml`)** — phase plan's 12,000-record test split becomes 13,000 | Pipeline runner |
-| G19 | `resolve_sibling_stats` doesn't strip variants before hashing the sibling recipe | **Blocking whenever the sibling declares variants** — `stats_from_instance` lookups fail with `SiblingInstanceNotFoundError` | Pipeline runner / sibling resolver |
+| G19 | `resolve_sibling_stats` doesn't strip variants before hashing the sibling recipe | **Closed in v0.17.1** (Story I.i) | Pipeline runner / sibling resolver |
 | **DOC** | recipe-authoring.md has not kept up with the implemented op surface | **Blocking the principle "no implementation without documentation"** | Documentation discipline |
 
 **Severity guide for consumer repo:**
@@ -1636,10 +1636,12 @@ records per input" — silently disagrees with the runtime).
 
 ## G19 — `resolve_sibling_stats` doesn't strip variants before hashing the sibling recipe
 
+**Status (Story I.i, v0.17.1):** **Closed.** `resolve_sibling_stats` now wraps `load_recipe(recipe_path)` with `apply_variant(..., None)` before computing the canonical hash, mirroring the materialize path. Sibling-stats lookups succeed regardless of whether the sibling declares variants. A no-variant regression test pins the invariant that `apply_variant(recipe, None)` preserves the canonical bytes when no variants are declared, so the fix does not invalidate sibling lookups for existing recipes.
+
 **Severity:** Blocking whenever the sibling recipe declares any
 `variants` block — `stats_from_instance` lookups fail with
 `SiblingInstanceNotFoundError` even though the sibling is materialized
-and `datarefinery status` resolves it correctly.
+and `datarefinery status` resolves it correctly → **Closed v0.17.1**.
 
 **Category:** Pipeline runner / sibling resolver.
 
@@ -1796,7 +1798,7 @@ corresponding deviation removed:
 | G16 | Rewrite every assertion in both recipes to use the new naming + the new kinds (`value_in_set`, `shape_equals`, `per_class_count_equals`, `*_equals` / `*_range` renames). |
 | G17 | Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
 | G18 | Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |
-| G19 | Replace Recipe B's pinned literal `params.mean` / `params.std` with the FR-TRANS-1 form: `params: { stats_from_instance: { recipe: recipes/cifar10-base.yaml, op_id: normalize_per_channel } }`. Remove the G19-workaround comment block from the recipe header. (Bonus: once the future variant-selector form lands, the consumer recipe can pin a specific sibling-variant of Recipe A's normalize stats — relevant for Module 9's imbalance variants whose normalize stats may legitimately differ.) |
+| G19 | **Closed in v0.17.1 (Story I.i).** Replace Recipe B's pinned literal `params.mean` / `params.std` with the FR-TRANS-1 form: `params: { stats_from_instance: { recipe: recipes/cifar10-base.yaml, op_id: normalize_per_channel } }`. Remove the G19-workaround comment block from the recipe header. (Bonus: once the future variant-selector form lands, the consumer recipe can pin a specific sibling-variant of Recipe A's normalize stats — relevant for Module 9's imbalance variants whose normalize stats may legitimately differ.) |
 | DOC | Every G fix above lands its `recipe-authoring.md` section in the same story. Existing-feature documentation drift (the table in DOC) closes alongside the next op-registration story in each § — no separate doc-sweep story. |
 
 ---

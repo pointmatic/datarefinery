@@ -468,6 +468,8 @@ Transformations:
 
 The validator rejects a fit-on-train op whose `fit_source` is not `train` (check 6).
 
+**FR-TRANS-1 across variants.** A fit-on-train Transformation may import its fitted statistics from a sibling materialized instance via `stats_from_instance: { recipe: <path>, op_id: <op_name> }` instead of fitting locally. The resolver locates the sibling by hashing its **no-variant canonical form** — i.e., the recipe with its `variants:` block stripped, matching what the materialize path itself uses to compute cache identity. As a result, `stats_from_instance` always resolves to the sibling's no-variant canonical instance regardless of which variants the sibling declares. Pinning a specific sibling variant's statistics is not supported in v1 (tracked in `stories.md § Future`).
+
 ### `Augmentations`
 
 Stochastic, train-only operations that expand the *effective* dataset. Each augmentation declares its parameters, the splits it applies to (train-only by default, val/test rejected by validator check 5), a seed, and a **materialization mode** (`lazy` by default; `aggressive` opt-in). Lazy and aggressive ops can be mixed in a single `Augmentations:` block.

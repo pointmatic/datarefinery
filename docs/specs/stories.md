@@ -325,19 +325,21 @@ The gap doc, the existing Story I.h body (G7 placeholder), and the intermediate-
 
 ---
 
-### Story I.i: G19 — sibling-stats resolver strips variants [Planned]
+### Story I.i: G19 — sibling-stats resolver strips variants [Done]
 
 **Disposition: bug fix.** Part of Bundle 2 (v0.17.1 release).
 
-Per [`dependency-gaps-v0.16.0.md` § G19](dependency-gaps-v0.16.0.md): `resolve_sibling_stats` ([`cache/sibling_stats.py:88`](../../src/datarefinery/cache/sibling_stats.py)) loads the sibling recipe and hashes it without stripping the variants block first. The materialize path always strips variants via `apply_variant(recipe, None)` before computing the cache key; the resolver diverges, producing a hash mismatch any time the sibling declares variants. The fix is a one-line addition mirroring the materialize path.
+Per [`dependency-gaps-v0.16.0.md` § G19](phase-i-dependency-gaps-v0.16.0.md): `resolve_sibling_stats` ([`cache/sibling_stats.py:88`](../../src/datarefinery/cache/sibling_stats.py)) loads the sibling recipe and hashes it without stripping the variants block first. The materialize path always strips variants via `apply_variant(recipe, None)` before computing the cache key; the resolver diverges, producing a hash mismatch any time the sibling declares variants. The fix is a one-line addition mirroring the materialize path.
 
 **Tasks:**
 
-- [ ] Reproduce with a failing test in `tests/unit/test_sibling_stats.py`: a sibling recipe declaring `variants`, materialized once, then a consumer recipe with `stats_from_instance: { recipe: <sibling-path>, op_id: <op_name> }`. Materialize raises `SiblingInstanceNotFoundError` despite the sibling instance existing.
-- [ ] Apply the one-line fix in [`cache/sibling_stats.py`](../../src/datarefinery/cache/sibling_stats.py): wrap `load_recipe(recipe_path)` with `apply_variant(..., None)` before `to_canonical_bytes`. Import path mirrors `core/datarefinery.py:92`.
-- [ ] Add a regression test for the no-variant case (no regression).
-- [ ] DOC: add "FR-TRANS-1 across variants" subsection to [`recipe-authoring.md` § Transformations](../guides/recipe-authoring.md) documenting that `stats_from_instance` resolves the sibling's no-variant canonical instance.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G19](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.17.1"; workarounds row.
+- [x] Reproduce with a failing test in `tests/unit/test_sibling_stats.py`: a sibling recipe declaring `variants`, materialized once via a materialize-path-mirroring helper, then `resolve_sibling_stats` called with the sibling path. Pre-fix: raises `SiblingInstanceNotFoundError`. Post-fix: returns the FittedStatistics handle.
+- [x] Apply the one-line fix in [`cache/sibling_stats.py`](../../src/datarefinery/cache/sibling_stats.py): wrap `load_recipe(recipe_path)` with `apply_variant(..., None)` before `to_canonical_bytes`. Import path mirrors `core/datarefinery.py:92`.
+- [x] Add a regression test for the no-variant case: `apply_variant(recipe, None)` preserves canonical bytes when no variants are declared, so the fix does not invalidate sibling lookups for existing recipes.
+- [x] DOC: added "FR-TRANS-1 across variants" subsection to [`recipe-authoring.md` § Transformations](../guides/recipe-authoring.md) documenting that `stats_from_instance` resolves the sibling's no-variant canonical instance, with the future variant-selector form referenced from `stories.md § Future`.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G19](phase-i-dependency-gaps-v0.16.0.md): status block; priority summary row → "Closed in v0.17.1 (Story I.i)"; workarounds row prefixed "Closed in v0.17.1 (Story I.i)".
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no contract surface change — `stats_from_instance` resolution semantics aren't named in the spec; the fix is purely an internal resolver bug fix.
+- [x] CI parity: `pyve test` 1106 passed; `pyve testenv run mypy src tests` clean; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 **Out of Scope:**
 
