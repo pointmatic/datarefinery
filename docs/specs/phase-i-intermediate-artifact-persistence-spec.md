@@ -1,7 +1,7 @@
 # DataRefinery — intermediate-artifact persistence (Sinks)
 
 **Status:** Proposal. Filed against datarefinery 0.16.0 as a feature
-specification. Authoring story: d802-deep-learning Story B.f. Implementation
+specification. Authoring story: consumer-side Story B.f. Implementation
 in DataRefinery is a separate downstream change; this document is the
 canonical proposal-of-record.
 
@@ -39,9 +39,9 @@ a Recipe B-style pipeline:
 
 The uint8 corrupted RGB representation exists for one stage, then
 becomes inaccessible. Any consumer wanting that representation — for
-example, the d802-deep-learning Task 2 submission deliverable, which
-ships uint8 PNGs in a directory tree for downstream readability —
-cannot recover it bit-identically from the cache. Two workaround paths
+example, a downstream submission deliverable that ships uint8 PNGs in
+a directory tree for downstream readability — cannot recover it
+bit-identically from the cache. Two workaround paths
 exist; neither preserves DataRefinery's reproducibility contract:
 
 1. **Re-derive from `source_path` + DR's internal `per_record_seed`.**
@@ -341,10 +341,10 @@ exports.
 
 ---
 
-## 6. Worked example — Recipe B sink for d802 Task 2
+## 6. Worked example — Recipe B sink for a downstream export
 
 Recipe B (`cifar10c-eval.yaml`) with the sink declaration that
-replaces the d802 project-local export script:
+replaces a consumer-side project-local export script:
 
 ```yaml
 # (existing recipe sections elided)
@@ -391,7 +391,7 @@ cache/instances/<hash>/<inputs>/<seed>/
 └── report/
 ```
 
-The d802 export step becomes a thin orchestration:
+The consumer-side export step becomes a thin orchestration:
 
 ```bash
 datarefinery materialize recipes/cifar10c-eval.yaml
@@ -432,8 +432,8 @@ Suggested rollout sequence for the DR side:
 - Cache-identity participation: `Sinks` enters
   `to_canonical_bytes(recipe)`.
 
-**G18 closes once Phase 1 ships.** The d802 Recipe B can declare a
-sink and bit-identical export becomes structural.
+**G18 closes once Phase 1 ships.** The consumer-side Recipe B can
+declare a sink and bit-identical export becomes structural.
 
 ### Phase 2 — `datarefinery export` verb
 
