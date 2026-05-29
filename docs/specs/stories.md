@@ -388,20 +388,24 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G2](phase-i-dependency-gaps-v0.16.0
 
 ---
 
-### Story I.l: G3 — `categorical_encode` Featurization [Planned]
+### Story I.l: G3 — `categorical_encode` Featurization [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
-Per [`dependency-gaps-v0.16.0.md` § G3](dependency-gaps-v0.16.0.md): a new Featurization op that derives an integer-encoded field from a categorical source. Two modes: recipe-declared `vocabulary` (deterministic, no fit phase) and fit-on-train (vocabulary derived from train split, persisted to `fitted_statistics/<op_name>/vocabulary.parquet`, replayed identically on val/test). The fit-on-train mode is FR-TRANS-1 transplanted to Featurizations.
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G3](phase-i-dependency-gaps-v0.16.0.md): a new Featurization op that derives an integer-encoded field from a categorical source. Two modes: recipe-declared `vocabulary` (deterministic, persisted-but-verbatim) and fit-on-train (vocabulary derived from train split, persisted to `fitted_statistics/<op_name>/vocabulary.parquet`, replayed identically on val/test). The fit-on-train mode is FR-TRANS-1 transplanted to Featurizations.
 
 **Tasks:**
 
-- [ ] Add `CategoricalEncodeOp` class to [`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py).
-- [ ] OperationSpec parameters: `vocabulary: list[str], required=False`; `ordering: str, required=False, default="alphabetical"` (alternatives: `"first_seen"`); `output_dtype: str, required=False, default="int32"`. `fit_on_train=True` when `vocabulary` is unset.
-- [ ] Register `"categorical_encode": CategoricalEncodeOp()` in `_FEATURIZATION_OPS`.
-- [ ] Unit tests: recipe-declared vocabulary path; fit-on-train path persists vocabulary and reuses on val/test; FR-TRANS-1 sibling-stats path (`stats_from_instance: { op_id: <categorical_encode_op_name> }`); mismatch case (vocabulary doesn't cover all labels in train) reports the missing labels clearly.
-- [ ] DOC: add worked YAML example to [`recipe-authoring.md` § Featurizations](../guides/recipe-authoring.md) (both modes); backfill `image_size_stats` (DOC drift — already shipped, currently undocumented).
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G3](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Added `CategoricalEncodeOp` class to [`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py). Fit phase: returns the recipe-supplied vocabulary verbatim when present, else derives the vocabulary from train labels per `ordering` (`alphabetical` default, `first_seen` alternative). Apply: builds the string→int index from `params.vocabulary`, `fitted.vectors["vocabulary"]`, or a sibling-stats import; encodes each record's input label to the declared `output_dtype` (default `int32`); raises a `PluginError` naming the missing label when a record's value is outside the vocabulary.
+- [x] OperationSpec in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): `vocabulary: list[str], required=False`; `ordering: str, required=False, default="alphabetical"`; `output_dtype: str, required=False, default="int32"`; `stats_from_instance: StatsFromInstanceSpec, required=False`. `fit_on_train=True`. The spec follows the NormalizeOp pattern (recipe-supplied data still goes through fit so it lands in the audit trail).
+- [x] Registered `"categorical_encode": CategoricalEncodeOp()` in `_FEATURIZATION_OPS`.
+- [x] **Stage-runner extension.** Added a `cache_root: Path | None` parameter and a `stats_from_instance` branch to [`pipeline/stages/featurizations.py`](../../src/datarefinery/pipeline/stages/featurizations.py) mirroring the Transformations-stage behavior; `_load_sibling_fitted` is shared with the Transformations stage. Pipeline runner ([`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py)) now passes `cache_root=self.config.cache_root` to `apply_featurizations` so FR-TRANS-1 imports work for any fit-on-train Featurization, not just `categorical_encode`. This was not in the original task list — the story's FR-TRANS-1 unit-test prescription assumes the path works, so the runner extension is the natural follow-on rather than a scope expansion.
+- [x] Plugin contract test: added `categorical_encode` to `EXPECTED_OPERATIONS`; extended the C.i wired-op test; renamed `test_fit_on_train_ops_are_in_transformations` → `test_fit_on_train_ops_are_in_fit_capable_sections` since fit-on-train Featurizations are now valid (the prior test enforced "Transformations only", which was an implicit Story-C.h-era invariant).
+- [x] Unit tests in [`test_featurizations_stage.py`](../../tests/unit/test_featurizations_stage.py): recipe-declared vocabulary path (mode 1, persisted verbatim); fit-on-train path (mode 2) with `alphabetical` and `first_seen` orderings; `output_dtype: int64` honored; unknown-label rejection naming the missing label; unknown-`ordering` rejection. Integration test for FR-TRANS-1 sibling-stats import in [`tests/plugins/image_classification/test_categorical_encode_stats_from_instance.py`](../../tests/plugins/image_classification/test_categorical_encode_stats_from_instance.py).
+- [x] DOC: added worked YAML examples for both modes under [`recipe-authoring.md` § Featurizations](../guides/recipe-authoring.md), plus backfilled `image_size_stats` (closes DOC drift) and short summaries for `label_from_path`'s alternative `source` values.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G3](phase-i-dependency-gaps-v0.16.0.md): status block; priority-summary row → "Closed in v0.18.0 (Story I.l)"; workarounds row prefixed "Closed in v0.18.0 (Story I.l)".
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no mention of `categorical_encode` or fit-on-train Featurizations — no contract surface change.
+- [x] CI parity: `pyve test` 1119 passed; `pyve testenv run mypy src tests` clean; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 ---
 

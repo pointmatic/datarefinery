@@ -22,6 +22,13 @@ The same machinery produces derived labels (FR-22 #3): when
 special-casing in this stage - the featurization simply runs and
 populates the label field.
 
+FR-TRANS-1 (Story I.l): when a fit-on-train Featurization declares
+``stats_from_instance`` in its params, the fit phase is skipped and
+fitted statistics are imported from a sibling instance under
+``cache_root`` via ``resolve_sibling_stats``, mirroring the
+Transformations-stage behavior. ``cache_root`` is plumbed through from
+the pipeline runner.
+
 Edge case (FR-12): a featurization producing a name that collides with
 an existing field raises ``MaterializeError`` before the apply phase
 runs. Under the uniform-schema invariant (every record in a split
@@ -33,13 +40,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.fitted_stats import FittedStatistics
-from datarefinery.pipeline.stages.transformations import FittedValues
+from datarefinery.pipeline.stages.transformations import (
+    FittedValues,
+    _load_sibling_fitted,
+)
 from datarefinery.plugins.base import Plugin
-from datarefinery.recipe.models import FeaturizationOp
+from datarefinery.recipe.models import FeaturizationOp, StatsFromInstanceSpec
 
 Record = Mapping[str, Any]
 
@@ -86,8 +97,15 @@ def apply_featurizations(
     plugin: Plugin,
     fitted_stats: FittedStatistics,
     label_field: str | None = None,
+    cache_root: Path | None = None,
 ) -> FeaturizationsResult:
-    """Run every declared featurization, fitting and persisting as needed."""
+    """Run every declared featurization, fitting and persisting as needed.
+
+    When an op declares ``stats_from_instance`` in its params, the fit
+    phase is skipped: fitted statistics are imported from a sibling
+    instance under ``cache_root`` via
+    :func:`datarefinery.cache.sibling_stats.resolve_sibling_stats`.
+    """
     out: dict[str, list[Record]] = {name: list(recs) for name, recs in splits.items()}
     fitted_op_ids: list[str] = []
 
@@ -115,7 +133,20 @@ def apply_featurizations(
                 )
 
         fitted = FittedValues()
-        if spec.fit_on_train:
+        sib_raw = op.params.get("stats_from_instance")
+        if sib_raw is not None:
+            if cache_root is None:
+                raise MaterializeError(
+                    f"Featurizations[{op.name!r}] declares 'stats_from_instance' "
+                    f"but no cache_root was provided to apply_featurizations"
+                )
+            sib_spec = StatsFromInstanceSpec.model_validate(sib_raw)
+            fitted = _load_sibling_fitted(
+                op_name=op.name,
+                cache_root=cache_root,
+                spec=sib_spec,
+            )
+        elif spec.fit_on_train:
             if op.fit_source is None:
                 raise MaterializeError(
                     f"Featurizations[{op.name!r}] is fit-on-train but no "

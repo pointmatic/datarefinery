@@ -359,6 +359,7 @@ class PipelineRunner:
                 plugin=self.plugin,
                 fitted_stats=fitted_stats,
                 label_field=label_field,
+                cache_root=self.config.cache_root,
             )
             split_map = dict(feat_result.splits)
             fitted_op_ids.extend(feat_result.fitted_op_ids)

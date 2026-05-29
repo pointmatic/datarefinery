@@ -43,6 +43,7 @@ from datarefinery.plugins.image_classification.generation_imagecorruptions impor
     imagecorruptions_apply,
 )
 from datarefinery.plugins.image_classification.operations.featurizations import (
+    CategoricalEncodeOp,
     ImageSizeStatsOp,
     LabelFromPathOp,
 )
@@ -100,6 +101,7 @@ _TRANSFORMATION_OPS: dict[str, Operation] = {
 _FEATURIZATION_OPS: dict[str, Operation] = {
     "label_from_path": LabelFromPathOp(),
     "image_size_stats": ImageSizeStatsOp(),
+    "categorical_encode": CategoricalEncodeOp(),
 }
 
 _AUGMENTATION_REALIZERS: dict[str, Realizer] = {
@@ -235,6 +237,16 @@ def _supported_operations() -> dict[str, OperationSpec]:
             applicable_sections=frozenset({"Featurizations"}),
         ),
         "image_size_stats": OperationSpec(
+            applicable_sections=frozenset({"Featurizations"}),
+        ),
+        "categorical_encode": OperationSpec(
+            parameters={
+                "vocabulary": ParameterSpec(type="list[str]", required=False),
+                "ordering": ParameterSpec(type="str", required=False, default="alphabetical"),
+                "output_dtype": ParameterSpec(type="str", required=False, default="int32"),
+                "stats_from_instance": ParameterSpec(type="StatsFromInstanceSpec", required=False),
+            },
+            fit_on_train=True,
             applicable_sections=frozenset({"Featurizations"}),
         ),
         # ----- Augmentations (FR-11; train-only) -----

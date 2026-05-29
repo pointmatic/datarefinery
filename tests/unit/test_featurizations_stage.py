@@ -465,3 +465,160 @@ def test_input_split_lists_are_not_mutated(tmp_path: Path) -> None:
     splits = {"train": train}
     apply_featurizations(splits, [op], plugin=IMAGE_PLUGIN, fitted_stats=FittedStatistics(tmp_path))
     assert "label" not in train[0]  # original record unchanged
+
+
+# ---------------------------------------------------------------------------
+# categorical_encode (Story I.l / G3)
+# ---------------------------------------------------------------------------
+
+
+def _label_record(label: str) -> Mapping[str, Any]:
+    return {"label": label, "image": _img()}
+
+
+def test_categorical_encode_with_recipe_vocabulary_path(tmp_path: Path) -> None:
+    """Recipe-declared vocabulary: deterministic encoding by recipe.
+
+    Like ``NormalizeOp``'s recipe-pinned-mean/std pattern, the
+    fit_on_train spec still routes through the stage runner's fit phase,
+    but the fit returns the recipe-supplied vocab verbatim (persisted
+    as the audit trail), and apply uses it.
+    """
+    op = FeaturizationOp(
+        name="lbl_id",
+        inputs=["label"],
+        output_field="label_id",
+        op="categorical_encode",
+        params={"vocabulary": ["airplane", "automobile", "bird"], "output_dtype": "int32"},
+        fit_source="train",
+        splits=["train", "val"],
+    )
+    splits: dict[str, list[Mapping[str, Any]]] = {
+        "train": [_label_record("airplane"), _label_record("bird")],
+        "val": [_label_record("automobile")],
+    }
+    fs = FittedStatistics(tmp_path)
+    result = apply_featurizations(splits, [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
+    assert [int(r["label_id"]) for r in result.splits["train"]] == [0, 2]
+    assert [int(r["label_id"]) for r in result.splits["val"]] == [1]
+    # Persisted vocab is the recipe-supplied one verbatim.
+    vocab = fs.get_vector("lbl_id", "vocabulary").column("value").to_pylist()
+    assert vocab == ["airplane", "automobile", "bird"]
+
+
+def test_categorical_encode_output_dtype_is_honored(tmp_path: Path) -> None:
+    op = FeaturizationOp(
+        name="lbl_id",
+        inputs=["label"],
+        output_field="label_id",
+        op="categorical_encode",
+        params={"vocabulary": ["a", "b"], "output_dtype": "int64"},
+        fit_source="train",
+        splits=["train"],
+    )
+    result = apply_featurizations(
+        {"train": [_label_record("a"), _label_record("b")]},
+        [op],
+        plugin=IMAGE_PLUGIN,
+        fitted_stats=FittedStatistics(tmp_path),
+    )
+    encoded = result.splits["train"][0]["label_id"]
+    assert isinstance(encoded, np.integer)
+    assert encoded.dtype == np.int64
+
+
+def test_categorical_encode_fit_on_train_persists_alphabetical_vocabulary(
+    tmp_path: Path,
+) -> None:
+    """Fit-on-train path: vocab derived from train labels, persisted,
+    and replayed identically on every other declared split.
+    """
+    op = FeaturizationOp(
+        name="lbl_id",
+        inputs=["label"],
+        output_field="label_id",
+        op="categorical_encode",
+        fit_source="train",
+        splits=["train", "val", "test"],
+    )
+    splits: dict[str, list[Mapping[str, Any]]] = {
+        "train": [_label_record("cat"), _label_record("dog"), _label_record("bird")],
+        "val": [_label_record("dog")],
+        "test": [_label_record("cat"), _label_record("bird")],
+    }
+    fs = FittedStatistics(tmp_path)
+    result = apply_featurizations(splits, [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
+    # Alphabetical default: bird=0, cat=1, dog=2.
+    assert [int(r["label_id"]) for r in result.splits["train"]] == [1, 2, 0]
+    assert [int(r["label_id"]) for r in result.splits["val"]] == [2]
+    assert [int(r["label_id"]) for r in result.splits["test"]] == [1, 0]
+    assert "lbl_id" in result.fitted_op_ids
+    # Vocabulary persisted as a parquet vector under the op id.
+    assert (tmp_path / "lbl_id" / "vocabulary.parquet").exists()
+    vocab = fs.get_vector("lbl_id", "vocabulary").column("value").to_pylist()
+    assert vocab == ["bird", "cat", "dog"]
+
+
+def test_categorical_encode_first_seen_ordering(tmp_path: Path) -> None:
+    """`ordering: first_seen` preserves the order labels first appear in train."""
+    op = FeaturizationOp(
+        name="lbl_id",
+        inputs=["label"],
+        output_field="label_id",
+        op="categorical_encode",
+        params={"ordering": "first_seen"},
+        fit_source="train",
+        splits=["train"],
+    )
+    splits: dict[str, list[Mapping[str, Any]]] = {
+        "train": [
+            _label_record("cat"),
+            _label_record("dog"),
+            _label_record("cat"),
+            _label_record("bird"),
+        ],
+    }
+    fs = FittedStatistics(tmp_path)
+    result = apply_featurizations(splits, [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
+    assert [int(r["label_id"]) for r in result.splits["train"]] == [0, 1, 0, 2]
+    vocab = fs.get_vector("lbl_id", "vocabulary").column("value").to_pylist()
+    assert vocab == ["cat", "dog", "bird"]
+
+
+def test_categorical_encode_unknown_label_reports_missing(tmp_path: Path) -> None:
+    """Apply-time label not in the declared vocabulary surfaces clearly."""
+    op = FeaturizationOp(
+        name="lbl_id",
+        inputs=["label"],
+        output_field="label_id",
+        op="categorical_encode",
+        params={"vocabulary": ["airplane", "automobile"]},
+        fit_source="train",
+        splits=["train"],
+    )
+    with pytest.raises(PluginError, match="bird"):
+        apply_featurizations(
+            {"train": [_label_record("airplane"), _label_record("bird")]},
+            [op],
+            plugin=IMAGE_PLUGIN,
+            fitted_stats=FittedStatistics(tmp_path),
+        )
+
+
+def test_categorical_encode_rejects_unknown_ordering(tmp_path: Path) -> None:
+    op = FeaturizationOp(
+        name="lbl_id",
+        inputs=["label"],
+        output_field="label_id",
+        op="categorical_encode",
+        params={"ordering": "rabbit"},
+        fit_source="train",
+        splits=["train"],
+    )
+    with pytest.raises(PluginError, match="ordering"):
+        apply_featurizations(
+            {"train": [_label_record("a")]},
+            [op],
+            plugin=IMAGE_PLUGIN,
+            fitted_stats=FittedStatistics(tmp_path),
+        )

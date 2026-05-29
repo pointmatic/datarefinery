@@ -29,6 +29,7 @@ EXPECTED_OPERATIONS = frozenset(
         "cast",
         "label_from_path",
         "image_size_stats",
+        "categorical_encode",
         "random_crop",
         "horizontal_flip",
         "color_jitter",
@@ -77,13 +78,18 @@ def test_every_operation_has_a_valid_operation_spec(op_name: str) -> None:
     assert spec.applicable_sections.issubset(PLUGIN.supported_sections)
 
 
-def test_fit_on_train_ops_are_in_transformations() -> None:
+def test_fit_on_train_ops_are_in_fit_capable_sections() -> None:
+    """Fit-on-train ops are valid in Transformations (FR-10) and
+    Featurizations (Story I.l adds categorical_encode here). Each
+    fit-on-train op must declare at least one of these sections.
+    """
+    fit_capable = frozenset({"Transformations", "Featurizations"})
     fit_on_train_ops = {
         name for name, spec in PLUGIN.supported_operations.items() if spec.fit_on_train
     }
     for name in fit_on_train_ops:
         spec = PLUGIN.supported_operations[name]
-        assert "Transformations" in spec.applicable_sections, name
+        assert spec.applicable_sections & fit_capable, name
 
 
 def test_augmentation_ops_apply_to_train_only() -> None:
@@ -148,8 +154,10 @@ def test_operation_factory_returns_transformation_ops_after_C_h() -> None:
 
 
 def test_operation_factory_returns_featurization_ops_after_C_i() -> None:
-    """Story C.i wires label_from_path and image_size_stats through the factory."""
-    for op_name in ("label_from_path", "image_size_stats"):
+    """Story C.i wires label_from_path and image_size_stats through the
+    factory; Story I.l adds categorical_encode.
+    """
+    for op_name in ("label_from_path", "image_size_stats", "categorical_encode"):
         handle = PLUGIN.operation_factory("Featurizations", op_name)
         assert hasattr(handle, "fit") and hasattr(handle, "apply"), op_name
 

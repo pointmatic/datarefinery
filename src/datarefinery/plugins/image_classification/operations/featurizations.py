@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 """Image-classification plugin: Featurizations operations (Story C.i).
 
-Both ops follow the Featurizations operation handle interface in
+Each op follows the Featurizations operation handle interface in
 ``datarefinery.pipeline.stages.featurizations``: a stateless object with
-``fit`` (no-op for these v1 ops) and ``apply`` methods, plus a
-``fit_on_train: bool`` attribute mirroring the plugin's
-``OperationSpec``.
+``fit`` and ``apply`` methods, plus a ``fit_on_train: bool`` attribute
+mirroring the plugin's ``OperationSpec``. ``label_from_path`` and
+``image_size_stats`` (Story C.i) are no-fit. ``categorical_encode``
+(Story I.l / G3) supports both a recipe-declared ``vocabulary`` mode
+(no-fit) and a fit-on-train mode that persists the vocabulary under
+``fitted_statistics/<op_name>/vocabulary.parquet`` and replays it on
+every other declared split.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from pathlib import PurePath
 from typing import Any
 
 import numpy as np
+import pyarrow as pa
 
 from datarefinery.core.errors import PluginError
 from datarefinery.pipeline.stages.transformations import FittedValues
@@ -133,5 +138,96 @@ class ImageSizeStatsOp:
                 )
             new = dict(r)
             new[output_field] = list(arr.shape)
+            out.append(new)
+        return out
+
+
+_CATEGORICAL_ORDERINGS = ("alphabetical", "first_seen")
+
+
+class CategoricalEncodeOp:
+    """Encode a string-valued categorical input as an integer id.
+
+    Two modes:
+
+    - **Recipe-declared vocabulary** (``params.vocabulary`` set, no fit
+      phase): the vocabulary is fixed by the recipe and the encoding is
+      deterministic across runs without any persisted statistics.
+    - **Fit-on-train** (``params.vocabulary`` unset): the vocabulary is
+      derived from the train split's labels per the ``ordering`` policy
+      (``alphabetical`` default, ``first_seen`` alternative), persisted
+      to ``fitted_statistics/<op_name>/vocabulary.parquet``, and used on
+      every declared split. Vocabulary may also be imported from a
+      sibling instance via ``params.stats_from_instance`` (FR-TRANS-1).
+    """
+
+    fit_on_train: bool = True
+
+    def fit(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        *,
+        inputs: list[str],
+        output_field: str,
+        label_field: str | None,
+    ) -> FittedValues:
+        del output_field, label_field
+        if "vocabulary" in params:
+            return FittedValues(
+                scalars={},
+                vectors={"vocabulary": pa.table({"value": list(params["vocabulary"])})},
+            )
+        if not inputs:
+            raise PluginError("categorical_encode requires at least one input field")
+        source = inputs[0]
+        ordering = str(params.get("ordering", "alphabetical"))
+        if ordering not in _CATEGORICAL_ORDERINGS:
+            raise PluginError(
+                f"categorical_encode 'ordering' must be one of "
+                f"{list(_CATEGORICAL_ORDERINGS)!r} (got {ordering!r})"
+            )
+        values = [str(r[source]) for r in records if source in r]
+        if ordering == "alphabetical":
+            vocab = sorted(set(values))
+        else:
+            vocab = list(dict.fromkeys(values))
+        return FittedValues(scalars={}, vectors={"vocabulary": pa.table({"value": vocab})})
+
+    def apply(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        fitted: FittedValues,
+        *,
+        inputs: list[str],
+        output_field: str,
+        label_field: str | None,
+    ) -> list[Record]:
+        del label_field
+        if not inputs:
+            raise PluginError("categorical_encode requires at least one input field")
+        source = inputs[0]
+        output_dtype = np.dtype(str(params.get("output_dtype", "int32")))
+        if "vocabulary" in params:
+            vocab = list(params["vocabulary"])
+        elif "vocabulary" in fitted.vectors:
+            vocab = fitted.vectors["vocabulary"].column("value").to_pylist()
+        else:
+            raise PluginError(
+                "categorical_encode: no vocabulary available; either declare "
+                "params.vocabulary or wire fit_source / stats_from_instance"
+            )
+        index = {label: i for i, label in enumerate(vocab)}
+        out: list[Record] = []
+        for r in records:
+            raw = r.get(source)
+            if raw is None:
+                raise PluginError(f"categorical_encode: record missing input field {source!r}")
+            key = str(raw)
+            if key not in index:
+                raise PluginError(f"categorical_encode: label {key!r} not in vocabulary {vocab!r}")
+            new = dict(r)
+            new[output_field] = output_dtype.type(index[key])
             out.append(new)
         return out

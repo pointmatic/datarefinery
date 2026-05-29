@@ -39,7 +39,7 @@ None of these require a `schema_version` bump.
 |---|---|---|---|
 | G1 | `Splits.applies_to` doesn't accept `sample_per_class_tags` labels | **Blocking (workaround used)** | Validator semantics |
 | G2 | `cast` Transformation: name + `scale` param + runtime factory missing | **Closed in v0.18.0** (Story I.k) | Plugin op registration |
-| G3 | `categorical_encode` Featurization missing from plugin | Blocking for Phase D Module 3 (`mlp_flat`); deferred | Plugin op registration |
+| G3 | `categorical_encode` Featurization missing from plugin | **Closed in v0.18.0** (Story I.l) | Plugin op registration |
 | G4 | `label_from_path` collides with `image_flat` + `label_from` loader | **Closed in v0.16.2** (Story I.c) | Validator semantics |
 | G5 | `augmented_sample_grid` viz raises on post-normalize float images | **Subsumed by G7** (not a defect; surfaces missing stage-aware viz dispatch) | Plugin runtime interaction |
 | G6 | `OutputExpectations` only supports flat-record assertion kinds | Friction (out-of-band verification used) | Contracts evaluator |
@@ -305,8 +305,10 @@ the DOC drift table.
 
 ## G3 — `categorical_encode` Featurization missing from plugin
 
+**Status (Story I.l, v0.18.0):** **Closed.** `CategoricalEncodeOp` registered in `_FEATURIZATION_OPS` ([`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py)). `OperationSpec.parameters` declares `vocabulary: list[str]`, `ordering: str, default="alphabetical"`, `output_dtype: str, default="int32"`, and `stats_from_instance: StatsFromInstanceSpec`, all optional. Two modes supported: recipe-declared `vocabulary` (mode 1) and fit-on-train with persisted vocabulary (mode 2). The Featurizations stage runner ([`pipeline/stages/featurizations.py`](../../src/datarefinery/pipeline/stages/featurizations.py)) was extended with a `cache_root` parameter and a `stats_from_instance` branch mirroring the Transformations stage, so FR-TRANS-1 sibling-stats import works across the Featurizations layer for any future fit-on-train op too.
+
 **Severity:** Blocking for Phase D Module 3 (`mlp_flat` variant); deferred
-in Phase B (Task 2 doesn't need `label_id`).
+in Phase B (Task 2 doesn't need `label_id`) → **Closed v0.18.0**.
 
 **Category:** Plugin op registration.
 
@@ -1784,7 +1786,7 @@ corresponding deviation removed:
 |---|---|
 | G1 | Restore the two `sample_per_class` filters with `label: train_pool` / `label: test_pool` + `Splits.applies_to: train_pool, ratios: {train: 0.85, val: 0.15}`. Refactor the `imbalanced*` variants similarly. |
 | G2 | **Closed in v0.18.0 (Story I.k).** Add `cast` Transformation (canonical name; not `cast_dtype`) before `normalize` with `params: { dtype: float32, scale: 0.00392156862745098 }`. Change `Output.record_schema.image.dtype` to `float32`. |
-| G3 | Add `categorical_encode` Featurization deriving `label_id`. Add `label_id: { dtype: int32 }` to `Output.record_schema`. |
+| G3 | **Closed in v0.18.0 (Story I.l).** Add `categorical_encode` Featurization deriving `label_id`. Add `label_id: { dtype: int32 }` to `Output.record_schema`. |
 | G4 | **Closed in v0.16.2 (Story I.c).** Validator check 23 catches the collision at validate time. No recipe edit needed; Recipe A's existing structure (label from loader, no `label_from_path` Featurization) is still correct. The check now ensures any future author who reaches for the conflicting pattern is told before materialize runs. |
 | G5 | (No G5-only recipe edit; G5 is subsumed by G7. When G7 lands, restoring the `augmented_sample_grid` viz with `stage: pre_transformations` is the unblocked path.) |
 | G6 | Restore per-split + per-class OutputExpectations (paired with G15 for the missing assertion kinds). |

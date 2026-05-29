@@ -553,6 +553,51 @@ Featurizations:
 
 Featurizations may be deterministic or fit-on-train; fit-on-train featurizations follow the same `fit_source: train` rules as Transformations.
 
+**Image-classification Featurizations.**
+
+`label_from_path` (no fit) — derive a label from a path field; the example above shows the standard `image_folder` parent-directory convention. Alternative `source` values: `filename`, `stem`.
+
+`image_size_stats` (no fit) — featurize each record with its image's spatial dimensions, producing a list `[H, W, C]` (or `[H, W]` for 2-D images) under `output_field`. Useful for downstream filtering or as a sanity-check featurizer.
+
+```yaml
+Featurizations:
+  - name: img_dims
+    inputs: [image]
+    output_field: image_shape
+    op: image_size_stats
+    splits: [train, val, test]
+```
+
+`categorical_encode` (fit-on-train) — derive an integer-encoded field from a string-valued categorical source. Two modes:
+
+```yaml
+# Mode 1 — recipe-declared vocabulary (deterministic).
+Featurizations:
+  - name: lbl_id
+    inputs: [label]
+    output_field: label_id
+    op: categorical_encode
+    params:
+      vocabulary: [airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck]
+      output_dtype: int32
+    fit_source: train
+    splits: [train, val, test]
+```
+
+```yaml
+# Mode 2 — vocabulary fit on train, persisted, replayed on val/test.
+Featurizations:
+  - name: lbl_id
+    inputs: [label]
+    output_field: label_id
+    op: categorical_encode
+    params: { ordering: alphabetical, output_dtype: int32 }   # ordering: alphabetical | first_seen
+    fit_source: train
+    splits: [train, val, test]
+```
+
+Mode 2 persists the derived vocabulary to `fitted_statistics/<name>/vocabulary.parquet`. The persisted vocab can be imported by a downstream recipe via FR-TRANS-1 (`params.stats_from_instance`), exactly the same way `normalize` imports per-channel mean/std across recipes. An apply-time label that isn't in the vocabulary fails with a clear `PluginError` naming the missing label.
+
 **Reserved `output_field` names.** A Featurization's `output_field` must not collide with a field the input loader stamps on every record. Validator check 23 (`featurization_output_field_loader_collision`) catches these at validate time. For the `image_classification` plugin the reserved set is:
 
 - `record_id`, `image`, `path` — always.
