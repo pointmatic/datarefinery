@@ -53,7 +53,7 @@ None of these require a `schema_version` bump.
 | G14 | `SampleData.selector` lacks `kind` and `splits` | Friction (`SampleData` section dropped) | Schema |
 | G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Blocking (recipe doesn't parse)** | Schema (cross-section consistency) |
 | G16 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
-| G17 | `class_distribution_histogram` lacks `group_by` param | Friction (viz dropped) | Plugin op param schema |
+| G17 | `class_distribution_histogram` lacks `group_by` param | **Closed in v0.18.0** (Story I.p) | Plugin op param schema |
 | G18 | `Generation` stage extends each target split rather than replacing source records | **Blocking for Recipe B (`cifar10c_eval.yaml`)** — phase plan's 12,000-record test split becomes 13,000 | Pipeline runner |
 | G19 | `resolve_sibling_stats` doesn't strip variants before hashing the sibling recipe | **Closed in v0.17.1** (Story I.i) | Pipeline runner / sibling resolver |
 | **DOC** | recipe-authoring.md has not kept up with the implemented op surface | **Blocking the principle "no implementation without documentation"** | Documentation discipline |
@@ -1470,7 +1470,9 @@ is the canonical home.
 
 ## G17 — `class_distribution_histogram` lacks `group_by` param
 
-**Severity:** Friction (viz dropped in spec workaround).
+**Status (Story I.p, v0.18.0):** **Closed.** `class_distribution_histogram` OperationSpec now declares `group_by: str` (optional); the runtime buckets on `params.group_by` when present and falls back to `Labels.field` otherwise ([`operations/visualizations.py`](../../src/datarefinery/plugins/image_classification/operations/visualizations.py)). New validator **check 25** (`visualization_group_by_resolvable`) rejects a `group_by` that doesn't resolve to a known field (`Output.record_schema`, Generation `output_schema` / `tag_fields`, or Featurization output). Documented in `recipe-authoring.md § Visualizations` (with the FR-VIZ-1..4 op table backfilled per the DOC drift item).
+
+**Severity:** Friction (viz dropped in spec workaround) → **Closed v0.18.0**.
 
 **Category:** Plugin op param schema.
 
@@ -1807,7 +1809,7 @@ corresponding deviation removed:
 | G14 | Restore the `SampleData` section in Recipe A: `selector: { kind: per_class, n: 1, splits: [train] }`. |
 | G15 | Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. |
 | G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames still open** (Bundle 4, Story I.x.3, `schema_version` bump). Rewrite every assertion in both recipes to use the new naming + the new kinds. |
-| G17 | Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
+| G17 | **Closed in v0.18.0 (Story I.p).** Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
 | G18 | Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |
 | G19 | **Closed in v0.17.1 (Story I.i).** Replace Recipe B's pinned literal `params.mean` / `params.std` with the FR-TRANS-1 form: `params: { stats_from_instance: { recipe: recipes/cifar10-base.yaml, op_id: normalize_per_channel } }`. Remove the G19-workaround comment block from the recipe header. (Bonus: once the future variant-selector form lands, the consumer recipe can pin a specific sibling-variant of Recipe A's normalize stats — relevant for Module 9's imbalance variants whose normalize stats may legitimately differ.) |
 | DOC | Every G fix above lands its `recipe-authoring.md` section in the same story. Existing-feature documentation drift (the table in DOC) closes alongside the next op-registration story in each § — no separate doc-sweep story. |

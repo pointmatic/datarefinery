@@ -687,6 +687,31 @@ Visualizations:
     mode: reporting
 ```
 
+**Available visualization ops:**
+
+| `op` | Params | Renders |
+|------|--------|---------|
+| `class_distribution_histogram` | `group_by` (optional) | Bar chart of per-record counts bucketed by a field. Buckets on `group_by` when set, else `Labels.field`. |
+| `sample_grid` | `n` (default 16), `per_class` (default false) | Grid of sample images; `per_class: true` draws one row per class. |
+| `mean_image_per_class` | — | Per-class mean image tile (one column per class). |
+| `pixel_distribution` | `bins` (default 64), `splits` (required) | Per-channel pixel-value histogram across the named splits. |
+| `augmented_sample_grid` | `n_base` (required), `n_variants` (required), `seed` (optional) | Grid showing augmentation variants of base records (FR-VIZ-1). |
+| `corruption_severity_grid` | `n_images` (required), `corruption_types` (required), `severities` (required) | Grid of corruption × severity examples (FR-VIZ-2). |
+| `severity_ladder` | `n_examples` (required), `corruption_type` (required) | One corruption type laddered across severities (FR-VIZ-3). |
+
+**`group_by` (G17).** `class_distribution_histogram` accepts an optional `group_by: <field>` param to bucket on a field other than the label — e.g. a Generation-introduced tag like `corruption` or `severity`:
+
+```yaml
+Visualizations:
+  - name: corruption_distribution
+    op: class_distribution_histogram
+    params: { group_by: corruption }   # default: Labels.field
+    stage: post_pipeline
+    mode: reporting
+```
+
+The `group_by` value must resolve to a known recipe field — `Output.record_schema`, a Generation output / `tag_fields` entry, or a Featurization output. Validator check 25 rejects an unknown-field `group_by` at validate time.
+
 ### `Sinks` (optional)
 
 Disk-output declarations captured at materialize time. Each sink observes one named pipeline stage's record output and writes per-record artifacts (today: PNGs) under a path template, rooted in the cache instance directory. Sinks let downstream consumers (e.g. a training tool, a submission package, a manual sanity check) read bit-identical bytes from the stage at which they were produced — not a denormalized or otherwise reconstructed version.

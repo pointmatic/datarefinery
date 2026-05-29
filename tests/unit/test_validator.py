@@ -144,12 +144,12 @@ def _failures_for(report: ValidationReport, check_id: int) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 
-def test_valid_recipe_passes_all_twenty_four_checks() -> None:
+def test_valid_recipe_passes_all_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 24
-    assert {r.check_id for r in report.results} == set(range(1, 25))
+    assert len(report.results) == 25
+    assert {r.check_id for r in report.results} == set(range(1, 26))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -1544,3 +1544,78 @@ def test_check_23_passes_on_output_field_label_when_labels_kind_is_derived() -> 
         }
     ]
     assert not _failures_for(validate(_build(payload), _ic_plugin()), 23)
+
+
+# ---------------------------------------------------------------------------
+# check 25: Visualization group_by resolves to a known field (G17, Story I.p)
+# ---------------------------------------------------------------------------
+
+
+def test_check_25_passes_when_group_by_names_known_field() -> None:
+    ok = _base_dict()
+    ok["Visualizations"] = [
+        {
+            "name": "hist",
+            "op": "histogram",
+            "stage": "post_split",
+            "mode": "reporting",
+            "params": {"group_by": "label"},
+        }
+    ]
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 25)
+
+
+def test_check_25_passes_when_group_by_absent() -> None:
+    ok = _base_dict()
+    ok["Visualizations"] = [
+        {"name": "hist", "op": "histogram", "stage": "post_split", "mode": "reporting"}
+    ]
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 25)
+
+
+def test_check_25_fails_when_group_by_unknown_field() -> None:
+    bad = _base_dict()
+    bad["Visualizations"] = [
+        {
+            "name": "hist",
+            "op": "histogram",
+            "stage": "post_split",
+            "mode": "reporting",
+            "params": {"group_by": "nonexistent_field"},
+        }
+    ]
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 25)
+    assert len(failures) == 1
+    assert "nonexistent_field" in failures[0].message
+
+
+def test_check_25_passes_when_group_by_is_generation_tag_field() -> None:
+    ok = _base_dict()
+    ok["Output"]["record_schema"]["image"] = {"dtype": "uint8", "shape": [32, 32, 3]}
+    ok["Generation"] = [
+        {
+            "name": "corrupt",
+            "inputs": ["image"],
+            "output_schema": {"image": {"dtype": "uint8", "shape": [32, 32, 3]}},
+            "seed": 1,
+            "params": {
+                "corruption_types": ["fog"],
+                "severities": [1],
+                "tag_fields": ["corruption", "severity"],
+            },
+        }
+    ]
+    ok["Visualizations"] = [
+        {
+            "name": "hist",
+            "op": "histogram",
+            "stage": "post_split",
+            "mode": "reporting",
+            "params": {"group_by": "corruption"},
+        }
+    ]
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 25)

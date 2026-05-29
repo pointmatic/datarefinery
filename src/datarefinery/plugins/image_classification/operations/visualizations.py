@@ -30,7 +30,14 @@ Record = Mapping[str, Any]
 
 
 class ClassDistributionHistogramOp:
-    """Bar chart of per-class record counts across all splits."""
+    """Bar chart of per-record counts bucketed by a field across all splits.
+
+    Buckets on ``params.group_by`` when present (G17), else on
+    ``Labels.field``. The chosen field must resolve to a known recipe
+    field — validator check 25 enforces this at validate time, so a
+    missing ``group_by`` field here is an internal error rather than a
+    user-facing one.
+    """
 
     def render(
         self,
@@ -40,13 +47,16 @@ class ClassDistributionHistogramOp:
         label_field: str | None,
         recipe: Any = None,
     ) -> bytes:
-        del params, recipe
-        if label_field is None:
-            raise PluginError("class_distribution_histogram requires Labels.field")
+        del recipe
+        group_field = params.get("group_by") or label_field
+        if group_field is None:
+            raise PluginError(
+                "class_distribution_histogram requires Labels.field or a 'group_by' param"
+            )
         counts: dict[Any, int] = {}
         for recs in splits.values():
             for r in recs:
-                lbl = r.get(label_field)
+                lbl = r.get(group_field)
                 counts[lbl] = counts.get(lbl, 0) + 1
 
         canvas_w, canvas_h = 400, 300

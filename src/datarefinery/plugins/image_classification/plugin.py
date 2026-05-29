@@ -296,6 +296,9 @@ def _supported_operations() -> dict[str, OperationSpec]:
         ),
         # ----- Visualizations (FR-13) -----
         "class_distribution_histogram": OperationSpec(
+            parameters={
+                "group_by": ParameterSpec(type="str", required=False),
+            },
             applicable_sections=frozenset({"Visualizations"}),
         ),
         "sample_grid": OperationSpec(

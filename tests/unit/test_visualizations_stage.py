@@ -383,3 +383,71 @@ def test_mean_image_per_class_canvas_shape(tmp_path: Path) -> None:
     img = Image.open(io.BytesIO(result.rendered[0].png_bytes))
     # 3 classes * 32px wide tile, 32px tall.
     assert img.size == (3 * 32, 32)
+
+
+# ---------------------------------------------------------------------------
+# class_distribution_histogram group_by (G17, Story I.p)
+# ---------------------------------------------------------------------------
+
+
+def _grouped_splits() -> dict[str, list[Mapping[str, Any]]]:
+    # Distinct distributions for `label` vs `corruption` so the two
+    # histograms differ in their bar layout.
+    return {
+        "train": [
+            {"image": _img(20), "label": "cat", "corruption": "fog"},
+            {"image": _img(40), "label": "cat", "corruption": "blur"},
+            {"image": _img(60), "label": "dog", "corruption": "fog"},
+            {"image": _img(80), "label": "dog", "corruption": "fog"},
+        ],
+    }
+
+
+def test_histogram_group_by_buckets_on_named_field() -> None:
+    from datarefinery.plugins.image_classification.operations.visualizations import (
+        ClassDistributionHistogramOp,
+    )
+
+    op = ClassDistributionHistogramOp()
+    splits = _grouped_splits()
+    by_label = op.render(splits, {}, label_field="label")
+    by_corruption = op.render(splits, {"group_by": "corruption"}, label_field="label")
+    assert _is_png(by_label) and _is_png(by_corruption)
+    # label: cat=2, dog=2 (two equal bars). corruption: fog=3, blur=1
+    # (two unequal bars). Different distributions → different PNG bytes.
+    assert by_label != by_corruption
+
+
+def test_histogram_group_by_falls_back_to_label_when_absent() -> None:
+    from datarefinery.plugins.image_classification.operations.visualizations import (
+        ClassDistributionHistogramOp,
+    )
+
+    op = ClassDistributionHistogramOp()
+    splits = _grouped_splits()
+    default = op.render(splits, {}, label_field="label")
+    explicit = op.render(splits, {"group_by": "label"}, label_field="label")
+    # `group_by: label` is identical to the implicit Labels.field default.
+    assert default == explicit
+
+
+def test_histogram_requires_group_field_when_no_label_and_no_group_by() -> None:
+    from datarefinery.core.errors import PluginError
+    from datarefinery.plugins.image_classification.operations.visualizations import (
+        ClassDistributionHistogramOp,
+    )
+
+    op = ClassDistributionHistogramOp()
+    with pytest.raises(PluginError):
+        op.render(_grouped_splits(), {}, label_field=None)
+
+
+def test_histogram_group_by_works_without_label_field() -> None:
+    from datarefinery.plugins.image_classification.operations.visualizations import (
+        ClassDistributionHistogramOp,
+    )
+
+    op = ClassDistributionHistogramOp()
+    # No Labels.field, but an explicit group_by → renders on that field.
+    out = op.render(_grouped_splits(), {"group_by": "corruption"}, label_field=None)
+    assert _is_png(out)

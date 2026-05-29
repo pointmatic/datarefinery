@@ -496,20 +496,23 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G6](phase-i-dependency-gaps-v0.16.0
 
 ---
 
-### Story I.p: G17 — `class_distribution_histogram` accepts `group_by` [Planned]
+### Story I.p: G17 — `class_distribution_histogram` accepts `group_by` [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
-Per [`dependency-gaps-v0.16.0.md` § G17](dependency-gaps-v0.16.0.md): a `group_by: str` optional param on the `class_distribution_histogram` viz selects the field to bucket on; default is `Labels.field` (current behavior). A validator check ensures `group_by` names a known field per `Output.record_schema` or a Generation-introduced tag field.
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G17](phase-i-dependency-gaps-v0.16.0.md): a `group_by: str` optional param on the `class_distribution_histogram` viz selects the field to bucket on; default is `Labels.field` (current behavior). A validator check ensures `group_by` names a known field per `Output.record_schema` or a Generation-introduced tag field.
 
 **Tasks:**
 
-- [ ] OperationSpec update in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): add `group_by: str, required=False`.
-- [ ] Runtime: histogram on the named field when present; fall back to `Labels.field` when absent.
-- [ ] New validator check: `group_by` value resolves to a known field. Reject unknown-field references at validate time.
-- [ ] Unit tests: no-param case bucketed by Labels.field (current behavior, regression); `group_by: <new_field>` bucketed correctly; `group_by: nonexistent_field` rejected at validate time.
-- [ ] DOC: update [`recipe-authoring.md` § Visualizations](../guides/recipe-authoring.md) with the new param; backfill FR-VIZ-1..4 (DOC drift — `mean_image_per_class`, `pixel_distribution`, `augmented_sample_grid`, `corruption_severity_grid`, `severity_ladder`, all currently undocumented).
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G17](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] OperationSpec update in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): added `group_by: str, required=False` to `class_distribution_histogram`.
+- [x] Runtime ([`operations/visualizations.py`](../../src/datarefinery/plugins/image_classification/operations/visualizations.py)): histogram buckets on `params.group_by` when present, else `Labels.field`. An explicit `group_by` also works when `Labels.field` is unset; both unset raises a clear `PluginError`.
+- [x] New validator **check 25** (`visualization_group_by_resolvable`): keyed on the `group_by` param presence (not a specific op name, so any viz that grows the param is covered). Rejects a `group_by` that doesn't resolve to a known field. The known-field universe is factored into a shared `_known_field_universe` helper (mirrors check 24's sink universe + Generation `tag_fields`).
+- [x] Unit tests: histogram runtime in [`test_visualizations_stage.py`](../../tests/unit/test_visualizations_stage.py) — `group_by` buckets on the named field (different PNG bytes vs default), `group_by: label` equals the implicit default, group-field-required error, group_by works without `Labels.field`. Validator tests in [`test_validator.py`](../../tests/unit/test_validator.py) — known-field passes, absent passes, unknown-field fails, Generation tag-field passes.
+- [x] DOC: updated [`recipe-authoring.md` § Visualizations](../guides/recipe-authoring.md) with an "Available visualization ops" table (backfills FR-VIZ-1..4 DOC drift: `mean_image_per_class`, `pixel_distribution`, `augmented_sample_grid`, `corruption_severity_grid`, `severity_ladder`) plus a `group_by` worked example and the check-25 field-resolution rule.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G17](phase-i-dependency-gaps-v0.16.0.md): status block; priority-summary row → "Closed in v0.18.0 (Story I.p)"; workarounds row prefixed "Closed in v0.18.0 (Story I.p)".
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no mention of `group_by` or the histogram op — no contract surface change.
+- [x] Test-count assertions bumped 24 → 25 in `test_validator.py` and three integration tests (`test_tabular_stub_smoke`, `test_partitioned_inputs`, `test_image_flat_label_from`, `test_unlabeled_partition`'s `N/N checks passed` CLI output).
+- [x] CI parity: `pyve test` 1177 passed; `pyve testenv run mypy src tests` clean across 195 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 ---
 

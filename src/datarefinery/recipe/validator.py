@@ -1155,6 +1155,70 @@ def check_24_sinks(recipe: Recipe, plugin: Plugin) -> CheckResult:
     )
 
 
+def _known_field_universe(recipe: Recipe) -> set[str]:
+    """Fields a recipe is known to produce, for field-reference checks.
+
+    Loader-stamped fields + ``Output.record_schema`` + Generation
+    ``output_schema`` keys + Generation ``tag_fields`` params +
+    Featurization ``output_field``s. Mirrors the universe used by
+    check 24 (sinks), extended with Generation tag-field params (those
+    introduce fields like ``corruption`` / ``severity`` that are not
+    necessarily declared in ``output_schema``).
+    """
+    universe: set[str] = {"record_id", "image", "path", recipe.Labels.field}
+    if any(s.partition is not None for s in recipe.Input.sources):
+        universe.add("partition")
+    universe.update(recipe.Output.record_schema.keys())
+    for gen in recipe.Generation:
+        universe.update(gen.output_schema.keys())
+        tag_fields = gen.params.get("tag_fields")
+        if isinstance(tag_fields, list):
+            universe.update(str(t) for t in tag_fields)
+    for feat in recipe.Featurizations:
+        universe.add(feat.output_field)
+    return universe
+
+
+def check_25_visualization_group_by_resolvable(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """G17 (Story I.p): a Visualization's ``group_by`` param must name a
+    field the recipe is known to produce.
+
+    Keys on the ``group_by`` param rather than a specific op name so any
+    visualization that grows the param is covered. The field universe is
+    the same one check 24 uses for sinks, extended with Generation
+    ``tag_fields``.
+    """
+    del plugin
+    descriptor = "visualization_group_by_resolvable"
+    issues: list[str] = []
+    universe = _known_field_universe(recipe)
+    for viz in recipe.Visualizations:
+        group_by = viz.params.get("group_by")
+        if group_by is None:
+            continue
+        if not isinstance(group_by, str):
+            issues.append(
+                f"Visualizations[{viz.name!r}].params['group_by'] must be a string "
+                f"(got {type(group_by).__name__})"
+            )
+        elif group_by not in universe:
+            issues.append(
+                f"Visualizations[{viz.name!r}].params['group_by'] {group_by!r} not in "
+                f"the recipe's known fields ({sorted(universe)}); name a field in "
+                f"Output.record_schema, a Generation output / tag_field, or a "
+                f"Featurization output."
+            )
+    if not issues:
+        return _passed(25, descriptor)
+    return CheckResult(
+        check_id=25,
+        descriptor=descriptor,
+        status="fail",
+        location=None,
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1236,6 +1300,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         check_23_featurization_output_field_loader_collision,
     ),
     (24, "sinks", check_24_sinks),
+    (
+        25,
+        "visualization_group_by_resolvable",
+        check_25_visualization_group_by_resolvable,
+    ),
 )
 
 
