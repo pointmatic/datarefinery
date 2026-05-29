@@ -47,7 +47,7 @@ None of these require a `schema_version` bump.
 | G8 | `tensor`-typed fields can't satisfy `dtype` / `range` assertions | **Closed in v0.16.1** (Story I.b) | Contracts evaluator |
 | G9 | `flatten` Featurization missing from plugin | **Closed in v0.18.0** (Story I.m) | Plugin op registration |
 | G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Blocking for Phase D Module 9 `imbalanced_oversample` / `imbalanced_classweight` variants** | Schema + pipeline runner |
-| G11 | `seed_derive_from: master` not recognized on Filters / Generation | Friction (explicit ints used in spec workaround) | Schema |
+| G11 | `seed_derive_from: master` not recognized on Filters / Generation | **Closed in v0.18.0** (Story I.n) | Schema |
 | G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
 | G13 | `tag_fields` rename mapping for `imagecorruptions_apply` (`list[str]` vs `dict[str, str]`) | Friction (canonical names used) | Schema (param shape) |
 | G14 | `SampleData.selector` lacks `kind` and `splits` | Friction (`SampleData` section dropped) | Schema |
@@ -896,7 +896,9 @@ hint" as the two options — that section needs the resampling story added).
 
 ## G11 — `seed_derive_from: master` not recognized on Filters / Generation
 
-**Severity:** Friction (workaround: explicit ints).
+**Status (Story I.n, v0.18.0):** **Closed.** New `SeedDerivationSpec` pydantic model accepts `seed: {from: master}` as an alternative to a literal int at every seeded-op site (`Filters.predicate.seed`, `Splits.seed`, `Generation.seed`, `Augmentations.seed`, `SampleSelector.seed`). Resolution at materialize time via `recipe.seeds.derive_seed(master, op_name)` (SHA-256 over `master.to_bytes(8, "big") + op_name.encode()`); pinned by `tests/unit/test_seeds.py`. Master seed propagation is automatic — changing `recipe.seed` flows to every derived op without per-site edits. The `SeedDerivationSpec` is preserved in canonical bytes, so the cached `recipe.json` records the YAML intent. Documented in `recipe-authoring.md § Seeds and determinism` and `tech-spec.md § recipe.seeds`.
+
+**Severity:** Friction (workaround: explicit ints) → **Closed v0.18.0**.
 
 **Category:** Schema (parameter vocabulary).
 
@@ -1796,7 +1798,7 @@ corresponding deviation removed:
 | G8 | **Closed in v0.16.1 (Story I.b).** `dtype: uint8` and `range: {min, max}` on tensor fields now work. (`tensor_range` / `tensor_shape` as separate kinds remain G16.) |
 | G9 | **Closed in v0.18.0 (Story I.m).** Restore the `flatten` Featurization in the `mlp_flat` variant. |
 | G10 | Restore the `imbalanced_oversample` and `imbalanced_classweight` variants once the resampling design is decided (recipe-side shape depends on the decision). |
-| G11 | Restore `seed_derive_from: master` on every filter and on Recipe B's `apply_corruptions` Generation op. |
+| G11 | **Closed in v0.18.0 (Story I.n).** Restore `seed_derive_from: master` on every filter and on Recipe B's `apply_corruptions` Generation op. |
 | G12 | Rewrite Recipe B's `Generation` block in the new shape: top-level `op:`, `splits:` (not `applies_at:`), `output_schema: matches_input`, and `seed_derive_from: master`. |
 | G13 | Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption: corruption_type, severity: severity, source_path: original_path }`. |
 | G14 | Restore the `SampleData` section in Recipe A: `selector: { kind: per_class, n: 1, splits: [train] }`. |

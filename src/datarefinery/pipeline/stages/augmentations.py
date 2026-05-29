@@ -34,6 +34,7 @@ from typing import Any
 
 from datarefinery.core.errors import MaterializeError
 from datarefinery.recipe.models import AugmentationOp
+from datarefinery.recipe.seeds import resolve_seed
 
 Record = Mapping[str, Any]
 Realizer = Callable[[Record, int, int, Mapping[str, Any]], Record]
@@ -95,6 +96,8 @@ class AugmentationsResult:
 
 def collect_augmentation_policies(
     augmentation_ops: list[AugmentationOp],
+    *,
+    master_seed: int = 0,
 ) -> AugmentationsResult:
     """Capture every declared augmentation as a manifest-bound policy.
 
@@ -120,7 +123,7 @@ def collect_augmentation_policies(
                 op=op.op,
                 params=dict(op.params),
                 splits=tuple(op.splits),
-                seed=op.seed,
+                seed=resolve_seed(op.seed, master_seed=master_seed, op_name=op.name),
                 materialization=op.materialization,
                 expansion=op.expansion,
             )

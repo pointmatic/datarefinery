@@ -845,6 +845,45 @@ Two design notes:
 - **`Output` vs. `OutputExpectations`.** `Output` is the structural contract — record shape, field names, dtypes — that downstream tools bind against. `OutputExpectations` is the *value* contract — things you cannot express in a schema (record-count bounds, value ranges, distributional checks).
 - **`severity: warning`** records the violation in the manifest but does not fail the run. Use it for distributional checks that are legitimately violated by small inputs (e.g. a fixture too small for a meaningful KS test).
 
+## Seeds and determinism
+
+Every seeded op in a recipe — Filters that sample, Splits, Generation, Augmentations, SampleData — accepts a seed in one of two forms:
+
+1. **Literal integer.** `seed: 42`. The op uses that integer directly.
+2. **`seed_derive_from: master` (G11).** Per-op seeds derived from the recipe's master seed at materialize time:
+
+   ```yaml
+   seed: 20260509   # the recipe's master seed
+
+   Filters:
+     - name: subsample
+       predicate:
+         op: random_sample
+         fraction: 0.5
+         seed: { from: master }     # derived from the master seed
+     - name: train_pool
+       predicate:
+         op: sample_per_class
+         n_per_class: 200
+         seed: { from: master }
+
+   Splits:
+     ratios: { train: 0.85, val: 0.15 }
+     seed: { from: master }
+   ```
+
+   At materialize time each `seed: { from: master }` is resolved to
+
+   `sha256(master_seed.to_bytes(8, "big") + op_name.encode("utf-8")).digest()[:8]`
+
+   interpreted as a 64-bit unsigned integer. The op-name input is the surrounding op's `name` field (or the literal string `"Splits"` for the Splits section).
+
+**Cache identity.** The master seed is part of the recipe's canonical bytes, so it participates in cache identity. The `seed_derive_from` form itself is also preserved in canonical bytes — the cached `recipe.json` records your YAML intent rather than the resolved integers. Changing the master seed produces new cache identity for every op that derived from it; changing a single op's `name` changes only that op's derived seed.
+
+**Per-op-seed escape hatch.** If you need one op pinned to a specific integer while others derive — for example, to keep a Splits seed stable across master-seed experiments — declare a literal `seed:` on that one op and `seed: { from: master }` everywhere else.
+
+**The derivation function is a pinned contract.** Changing it would invalidate every cached instance for every recipe that uses the derivation form. A unit test pins the canonical value; bumping it is a deliberate, ceremonious cache-invalidation per the rules in `project-essentials.md` § "Cache identity is the reproducibility contract."
+
 ## Filters vs Splits for class imbalance
 
 Class imbalance shows up in almost every classification dataset. The v1 recipe surface splits the response cleanly along a single axis — *are you removing data, or weighting it at training time?*

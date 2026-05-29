@@ -318,6 +318,32 @@ def apply_variant(recipe: Recipe, variant_name: str | None) -> Recipe: ...
 
 Variants are applied **before** canonicalization, so `cache_key` reflects the selected variant.
 
+### `recipe.seeds` (G11 — Story I.n)
+
+```python
+def derive_seed(master_seed: int, op_name: str) -> int:
+    master_u64 = master_seed & ((1 << 64) - 1)
+    digest = hashlib.sha256(
+        master_u64.to_bytes(8, "big") + op_name.encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:8], "big")
+
+def resolve_seed(
+    value: int | SeedDerivationSpec | None,
+    *,
+    master_seed: int,
+    op_name: str,
+) -> int | None: ...
+```
+
+`SeedDerivationSpec(from_="master")` is the only spec form in v1.
+
+Pinned by `tests/unit/test_seeds.py::test_derive_seed_is_pinned_for_a_known_master_op_pair`:
+
+    derive_seed(20260509, "filter_train_pool") == 15455891160210205198
+
+**Cache identity participation.** The master seed (`Recipe.seed`) is part of canonical bytes — changing it changes the recipe hash, which is the intended propagation channel. The `SeedDerivationSpec` is also preserved in canonical bytes (the cached `recipe.json` records the YAML intent, not the resolved integer). Changing the derivation function itself is a deliberate cache invalidation: bump the pinned value, follow the post-prod ceremonious-invalidation rules.
+
 ### `cache.identity` (FR-4)
 
 ```python

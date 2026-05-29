@@ -39,6 +39,7 @@ from typing import Any
 from datarefinery.core.errors import MaterializeError
 from datarefinery.plugins.base import Plugin
 from datarefinery.recipe.models import FieldSpec, GenerationOp
+from datarefinery.recipe.seeds import resolve_seed
 
 Record = Mapping[str, Any]
 GenerationCallable = Callable[..., list[Record]]
@@ -61,6 +62,7 @@ def apply_generation(
     plugin: Plugin,
     output_record_schema: Mapping[str, FieldSpec],
     label_field: str | None = None,
+    master_seed: int = 0,
 ) -> GenerationResult:
     """Apply every declared generation op to its target splits.
 
@@ -87,7 +89,7 @@ def apply_generation(
                     f"Generation[{op.name!r}] runs on non-train split "
                     f"{split_name!r}; atypical (FR-9 edge case)"
                 )
-            new_records = _invoke_one(op, out[split_name], plugin, label_field)
+            new_records = _invoke_one(op, out[split_name], plugin, label_field, master_seed)
             _validate_against_output_schema(op.name, split_name, new_records, output_fields)
             out[split_name].extend(new_records)
 
@@ -110,11 +112,13 @@ def _invoke_one(
     records: list[Record],
     plugin: Plugin,
     label_field: str | None,
+    master_seed: int,
 ) -> list[Record]:
     callable_: GenerationCallable = plugin.operation_factory("Generation", op.name)
+    resolved_seed = resolve_seed(op.seed, master_seed=master_seed, op_name=op.name)
     return callable_(
         records,
-        seed=op.seed,
+        seed=resolved_seed,
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),

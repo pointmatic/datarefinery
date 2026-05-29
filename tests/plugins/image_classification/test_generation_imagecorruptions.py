@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import sys
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import numpy as np
@@ -96,7 +96,7 @@ def test_output_count_matches_inputs_times_types_times_severities() -> None:
     op = _gen_op(corruption_types=["gaussian_noise", "shot_noise"], severities=[1, 3])
     new = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -115,7 +115,7 @@ def test_preserve_original_adds_one_extra_per_input() -> None:
     )
     new = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -140,7 +140,7 @@ def test_tag_fields_default_written_on_each_output() -> None:
     op = _gen_op(corruption_types=["gaussian_noise"], severities=[3])
     new = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -162,7 +162,7 @@ def test_tag_fields_subset_only_writes_named() -> None:
     )
     new = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -179,7 +179,7 @@ def test_output_record_ids_are_unique_across_corruption_sweep() -> None:
     op = _gen_op(corruption_types=["gaussian_noise", "fog"], severities=[1, 3])
     new = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -209,7 +209,7 @@ def test_same_seed_yields_byte_identical_outputs() -> None:
     op = _gen_op()
     a = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -218,7 +218,7 @@ def test_same_seed_yields_byte_identical_outputs() -> None:
     )
     b = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -234,7 +234,7 @@ def test_different_seeds_change_outputs() -> None:
     op_b = _gen_op(seed=999)
     a = imagecorruptions_apply(
         records,
-        seed=op_a.seed,
+        seed=cast(int, op_a.seed),
         inputs=list(op_a.inputs),
         output_schema=op_a.output_schema,
         params=dict(op_a.params),
@@ -243,7 +243,7 @@ def test_different_seeds_change_outputs() -> None:
     )
     b = imagecorruptions_apply(
         records,
-        seed=op_b.seed,
+        seed=cast(int, op_b.seed),
         inputs=list(op_b.inputs),
         output_schema=op_b.output_schema,
         params=dict(op_b.params),
@@ -272,7 +272,7 @@ def test_workers_byte_identical_after_imagecorruptions_apply() -> None:
     op = _gen_op()
     new = imagecorruptions_apply(
         records,
-        seed=op.seed,
+        seed=cast(int, op.seed),
         inputs=list(op.inputs),
         output_schema=op.output_schema,
         params=dict(op.params),
@@ -283,12 +283,14 @@ def test_workers_byte_identical_after_imagecorruptions_apply() -> None:
     # already assigns unique IDs.
     baseline = [
         (r["record_id"], np.asarray(r["image"]).tobytes())
-        for r in run_parallel(seed=op.seed, fn=_identity_worker, items=new, workers=1)
+        for r in run_parallel(seed=cast(int, op.seed), fn=_identity_worker, items=new, workers=1)
     ]
     for workers in (2, 4):
         out = [
             (r["record_id"], np.asarray(r["image"]).tobytes())
-            for r in run_parallel(seed=op.seed, fn=_identity_worker, items=new, workers=workers)
+            for r in run_parallel(
+                seed=cast(int, op.seed), fn=_identity_worker, items=new, workers=workers
+            )
         ]
         assert out == baseline
 
@@ -362,7 +364,7 @@ def test_record_missing_image_field_raises() -> None:
     with pytest.raises(MaterializeError, match="missing 'image'"):
         imagecorruptions_apply(
             records,
-            seed=op.seed,
+            seed=cast(int, op.seed),
             inputs=list(op.inputs),
             output_schema=op.output_schema,
             params=dict(op.params),
@@ -378,7 +380,7 @@ def test_record_with_non_uint8_image_raises() -> None:
     with pytest.raises(MaterializeError, match="uint8"):
         imagecorruptions_apply(
             records,
-            seed=op.seed,
+            seed=cast(int, op.seed),
             inputs=list(op.inputs),
             output_schema=op.output_schema,
             params=dict(op.params),
@@ -417,7 +419,7 @@ def test_friendly_import_error_when_backend_missing(monkeypatch: pytest.MonkeyPa
         with pytest.raises(ImportError, match="ml-datarefinery\\[corruptions\\]"):
             imagecorruptions_apply(
                 records,
-                seed=op.seed,
+                seed=cast(int, op.seed),
                 inputs=list(op.inputs),
                 output_schema=op.output_schema,
                 params=dict(op.params),

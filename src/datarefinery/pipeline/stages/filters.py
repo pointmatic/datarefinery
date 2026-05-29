@@ -35,6 +35,7 @@ from typing import Any
 from datarefinery.core.errors import MaterializeError
 from datarefinery.plugins.base import Plugin
 from datarefinery.recipe.models import FilterOp
+from datarefinery.recipe.seeds import derive_seed
 
 Record = Mapping[str, Any]
 FilterCallable = Callable[..., list[Record]]
@@ -55,6 +56,7 @@ def apply_pre_split_filters(
     *,
     plugin: Plugin,
     label_field: str | None = None,
+    master_seed: int = 0,
 ) -> FilterResult:
     """Apply each ``pre_split``-stage filter to the raw record stream.
 
@@ -69,7 +71,7 @@ def apply_pre_split_filters(
     for op in filter_ops:
         if "pre_split" not in op.stages:
             continue
-        materialized = _invoke_one(op, materialized, plugin, label_field)
+        materialized = _invoke_one(op, materialized, plugin, label_field, master_seed)
 
     final_class_counts = _class_counts(materialized, label_field)
     warnings = _empty_class_warnings(initial_class_counts, final_class_counts)
@@ -86,6 +88,7 @@ def apply_post_split_filters(
     *,
     plugin: Plugin,
     label_field: str | None = None,
+    master_seed: int = 0,
 ) -> dict[str, FilterResult]:
     """Apply each ``post_split``-stage filter to the splits it targets.
 
@@ -103,7 +106,7 @@ def apply_post_split_filters(
                 continue
             if split_name not in op.splits:
                 continue
-            records = _invoke_one(op, records, plugin, label_field)
+            records = _invoke_one(op, records, plugin, label_field, master_seed)
         final_class_counts = _class_counts(records, label_field)
         warnings = _empty_class_warnings(initial_class_counts, final_class_counts, split=split_name)
         out[split_name] = FilterResult(
@@ -124,6 +127,7 @@ def _invoke_one(
     records: list[Record],
     plugin: Plugin,
     label_field: str | None,
+    master_seed: int,
 ) -> list[Record]:
     params = dict(op.predicate)
     op_name = params.pop("op", None)
@@ -131,6 +135,9 @@ def _invoke_one(
         raise MaterializeError(
             f"Filters[{op.name!r}].predicate missing 'op' string (got {type(op_name).__name__})"
         )
+    raw_seed = params.get("seed")
+    if isinstance(raw_seed, dict) and raw_seed.get("from") == "master":
+        params["seed"] = derive_seed(master_seed, op.name)
     callable_: FilterCallable = plugin.operation_factory("Filters", op_name)
     return callable_(records, params, label_field=label_field)
 

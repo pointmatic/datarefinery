@@ -125,6 +125,68 @@ def test_random_sample_with_fixed_seed_is_reproducible() -> None:
     assert [r["id"] for r in a.records] == [r["id"] for r in b.records]
 
 
+def test_random_sample_with_seed_derive_from_master_is_deterministic() -> None:
+    """G11 / Story I.n: filter predicate `seed: {from: master}` is
+    resolved at materialize time to the master-derived integer matching
+    `derive_seed(master_seed, FilterOp.name)`.
+    """
+    from datarefinery.recipe.seeds import derive_seed
+
+    op_derived = FilterOp(
+        name="subsample",
+        predicate={"op": "random_sample", "fraction": 0.5, "seed": {"from": "master"}},
+    )
+    op_literal = FilterOp(
+        name="subsample",
+        predicate={
+            "op": "random_sample",
+            "fraction": 0.5,
+            "seed": derive_seed(20260509, "subsample"),
+        },
+    )
+    a = apply_pre_split_filters(
+        _records(20),
+        [op_derived],
+        plugin=IMAGE_PLUGIN,
+        label_field="label",
+        master_seed=20260509,
+    )
+    b = apply_pre_split_filters(
+        _records(20),
+        [op_literal],
+        plugin=IMAGE_PLUGIN,
+        label_field="label",
+    )
+    # Derivation yields the same sample as the equivalent literal int seed.
+    assert [r["id"] for r in a.records] == [r["id"] for r in b.records]
+
+
+def test_random_sample_master_seed_change_propagates_to_derived_filter() -> None:
+    """Changing the master seed produces a different sampled subset
+    without any per-op edit (the master-seed-override discipline G11
+    motivates).
+    """
+    op = FilterOp(
+        name="subsample",
+        predicate={"op": "random_sample", "fraction": 0.5, "seed": {"from": "master"}},
+    )
+    a = apply_pre_split_filters(
+        _records(20),
+        [op],
+        plugin=IMAGE_PLUGIN,
+        label_field="label",
+        master_seed=100,
+    )
+    b = apply_pre_split_filters(
+        _records(20),
+        [op],
+        plugin=IMAGE_PLUGIN,
+        label_field="label",
+        master_seed=200,
+    )
+    assert [r["id"] for r in a.records] != [r["id"] for r in b.records]
+
+
 def test_random_sample_different_seeds_produce_different_subsets() -> None:
     op_a = FilterOp(
         name="s",

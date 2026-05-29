@@ -429,22 +429,36 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G9](phase-i-dependency-gaps-v0.16.0
 
 ---
 
-### Story I.n: G11 — `seed_derive_from: master` on Filters and Generation [Planned]
+### Story I.n: G11 — `seed_derive_from: master` on Filters and Generation [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
-Per [`dependency-gaps-v0.16.0.md` § G11](dependency-gaps-v0.16.0.md): a new `SeedDerivationSpec` schema accepts the literal `"master"` as an alternative to a fixed integer at every seeded-op site. Resolution at materialize time computes `derived_seed = sha256(recipe.seed.to_bytes(8, "big") + op_name_bytes).digest()[:8]`. The derivation participates in cache identity (via the master seed already being in canonical bytes) and is pinned by test.
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G11](phase-i-dependency-gaps-v0.16.0.md): a new `SeedDerivationSpec` schema accepts `{from: master}` as an alternative to a fixed integer at every seeded-op site. Resolution at materialize time computes `derived_seed = sha256(master_seed.to_bytes(8, "big") + op_name_bytes).digest()[:8]`. The derivation participates in cache identity (via the master seed already being in canonical bytes) and is pinned by test.
 
 **Tasks:**
 
-- [ ] Add `SeedDerivationSpec` to [`recipe/models.py`](../../src/datarefinery/recipe/models.py) — pydantic model accepting `from: Literal["master"]`.
-- [ ] Widen the seed-accepting sites to `int | SeedDerivationSpec`: `FilterOp.predicate.seed` (via plugin OperationSpec); `GenerationOp.seed` (model field); `SplitsSection.seed` (model field); `AugmentationOp.seed` (already optional, add accepting form).
-- [ ] Implement derivation in a shared helper (e.g., `recipe/seeds.py`): `derive_seed(master_seed: int, op_name: str) -> int`. Pinned by canonical-derivation test.
-- [ ] Update each seed-consuming op site to resolve `SeedDerivationSpec` → concrete int via the helper before use.
-- [ ] Unit tests: same master seed + different op name → different derived seeds (no collision); changing master seed → all derived seeds change; same op name + same master → same derived seed; explicit int still works (regression).
-- [ ] DOC: new "Seeds and determinism" subsection in [`recipe-authoring.md`](../guides/recipe-authoring.md) covering the master-seed derivation policy, cache-identity implications, and the per-op-seed escape hatch.
-- [ ] Update [`tech-spec.md`](tech-spec.md) with the pinned derivation function (participates in cache identity).
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G11](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Added `SeedDerivationSpec` to [`recipe/models.py`](../../src/datarefinery/recipe/models.py): pydantic model with `from_: Literal["master"]` aliased to YAML key `from` (Python keyword). `extra="forbid"` + `frozen=True` + `populate_by_name=True` so both YAML form `{from: master}` and Python form `SeedDerivationSpec(from_="master")` work.
+- [x] Widened the seed-accepting sites to `int | SeedDerivationSpec` (or `... | None` where already optional): `FilterOp.seed`, `GenerationOp.seed` (was `int` — still required), `SplitsSection.seed`, `AugmentationOp.seed`, `SampleSelector.seed`. The `FilterOp.predicate.seed` (inside the opaque `predicate: dict[str, Any]`) keeps its raw dict form per the existing schema; resolution happens at the stage runner via dict-shape detection (see below).
+- [x] Implemented derivation in a new [`recipe/seeds.py`](../../src/datarefinery/recipe/seeds.py) module: `derive_seed(master_seed, op_name) -> int` (SHA-256 over `master_u64.to_bytes(8, "big") + op_name.encode()`, returning the first 8 bytes as a 64-bit unsigned int) and `resolve_seed(value, *, master_seed, op_name) -> int | None`. Negative master seeds are wrapped into the 64-bit unsigned range before hashing.
+- [x] Updated each seed-consuming op site to resolve via the helper:
+   - [`pipeline/stages/splits.py:resolve_seed`](../../src/datarefinery/pipeline/stages/splits.py) — handles all three forms (None / int / SeedDerivationSpec), with op_name `"Splits"`.
+   - [`pipeline/stages/generation.py:_invoke_one`](../../src/datarefinery/pipeline/stages/generation.py) — resolves `op.seed` using `op.name`; `apply_generation` gains a `master_seed: int = 0` keyword arg.
+   - [`pipeline/stages/augmentations.py:collect_augmentation_policies`](../../src/datarefinery/pipeline/stages/augmentations.py) — resolves `op.seed` per `AugmentationPolicy`; gains a `master_seed: int = 0` keyword arg.
+   - [`pipeline/stages/filters.py:_invoke_one`](../../src/datarefinery/pipeline/stages/filters.py) — detects `{from: master}` inside `op.predicate.seed` (raw dict; predicate isn't pydantic-validated) and resolves to the derived int before invoking the plugin's filter callable. `apply_pre_split_filters` / `apply_post_split_filters` gain `master_seed: int = 0` keyword args.
+   - Pipeline runner ([`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py)) now passes `master_seed=self.seed` to all four stage calls.
+   - Export verb ([`pipeline/sinks/export.py`](../../src/datarefinery/pipeline/sinks/export.py)) threads `master_seed` through `_record_map_for_stage` → `_reconstruct_post_generation` → `apply_generation` so re-Generation during export uses the materialize-time master.
+- [x] Unit tests in [`test_seeds.py`](../../tests/unit/test_seeds.py): canonical-derivation pin (deliberate cache invalidation if changed); same master + different op names → distinct seeds; master-seed change → propagates to every derived op; idempotent; negative master seeds handled; `resolve_seed` cases (None / int / SeedDerivationSpec); model parse round-trip for both YAML and Python forms; rejection of unknown `from` and extra keys; each seed-bearing model accepts both forms.
+- [x] Stage-level integration tests: [`test_filters_stage.py`](../../tests/unit/test_filters_stage.py) — `random_sample` with `seed: {from: master}` yields the same subset as the equivalent literal-int derivation; master-seed change propagates to derived filter output. [`test_splits_stage.py`](../../tests/unit/test_splits_stage.py) — `resolve_seed` returns `derive_seed(master, "Splits")` when the section seed is a `SeedDerivationSpec`.
+- [x] DOC: new "Seeds and determinism" section in [`recipe-authoring.md`](../guides/recipe-authoring.md) covering both forms, cache-identity implications, the per-op-seed escape hatch, and the pinned-contract reminder.
+- [x] Updated [`tech-spec.md`](tech-spec.md) with the pinned derivation function under `### recipe.seeds (G11 — Story I.n)` and a cache-identity-participation note.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G11](phase-i-dependency-gaps-v0.16.0.md): status block; priority-summary row → "Closed in v0.18.0 (Story I.n)"; workarounds row prefixed "Closed in v0.18.0 (Story I.n)".
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no mention of `seed_derive_from` or `SeedDerivationSpec` — no contract surface change.
+- [x] CI parity: `pyve test` 1147 passed; `pyve testenv run mypy src tests` clean across 195 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
+
+**Out of Scope:**
+
+- Extending validator checks 6 and 22 (currently Transformations-only) to cover Featurizations / Filters / Generation / Splits seed-discipline. The existing model + stage-runner enforcement is enough for v1; richer validate-time error messages would be a follow-up if author confusion accumulates.
+- Future spec values beyond `from: master` (e.g., `sibling:<recipe_id>`). Tracked in the gap-doc § G11 fix direction note.
 
 ---
 

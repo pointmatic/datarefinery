@@ -146,6 +146,7 @@ def export_sinks(
             recipe=recipe,
             resolved_inputs=resolved_inputs,
             plugin=plugin,
+            master_seed=seed,
         )
         for sink in sinks:
             results.append(_run_one_sink_atomically(sink, split_map, instance_dir))
@@ -241,6 +242,7 @@ def _record_map_for_stage(
     recipe: Recipe,
     resolved_inputs: list[dict[str, Any]],
     plugin: Plugin,
+    master_seed: int = 0,
 ) -> dict[str, list[dict[str, Any]]]:
     """Produce the record map a sink at ``stage`` should iterate."""
     del instance_dir  # reserved for future per-stage strategies
@@ -248,7 +250,7 @@ def _record_map_for_stage(
         return {name: [dict(r) for r in recs] for name, recs in cached_records_by_split.items()}
     if stage == _GENERATION_STAGE:
         return _reconstruct_post_generation(
-            cached_records_by_split, recipe, resolved_inputs, plugin
+            cached_records_by_split, recipe, resolved_inputs, plugin, master_seed
         )
     raise MaterializeError(  # pragma: no cover — guarded upstream
         f"datarefinery export: stage {stage!r} not in reconstructability table"
@@ -260,6 +262,7 @@ def _reconstruct_post_generation(
     recipe: Recipe,
     resolved_inputs: list[dict[str, Any]],
     plugin: Plugin,
+    master_seed: int = 0,
 ) -> dict[str, list[dict[str, Any]]]:
     """Rebuild the records as they existed at the post-Generation stage.
 
@@ -325,6 +328,7 @@ def _reconstruct_post_generation(
         plugin=plugin,
         output_record_schema=recipe.Output.record_schema,
         label_field=recipe.Labels.field,
+        master_seed=master_seed,
     )
 
     # Index every record at the post-Generation state (originals +

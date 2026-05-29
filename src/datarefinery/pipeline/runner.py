@@ -235,6 +235,7 @@ class PipelineRunner:
                 self.recipe.Filters,
                 plugin=self.plugin,
                 label_field=label_field,
+                master_seed=self.seed,
             )
             warnings.extend(_wrap(current_stage, pre_filter.warnings))
             records = pre_filter.records
@@ -287,6 +288,7 @@ class PipelineRunner:
                 self.recipe.Filters,
                 plugin=self.plugin,
                 label_field=label_field,
+                master_seed=self.seed,
             )
             for split_name, fr in post_filter.items():
                 split_map[split_name] = fr.records
@@ -311,6 +313,7 @@ class PipelineRunner:
                 plugin=self.plugin,
                 output_record_schema=self.recipe.Output.record_schema,
                 label_field=label_field,
+                master_seed=self.seed,
             )
             split_map = dict(gen_result.splits)
             warnings.extend(_wrap(current_stage, gen_result.warnings))
@@ -398,7 +401,7 @@ class PipelineRunner:
                         realizer_registry=realizer_registry,
                     )
                 )
-            collect_augmentation_policies(self.recipe.Augmentations)
+            collect_augmentation_policies(self.recipe.Augmentations, master_seed=self.seed)
             # Policies are descriptive only in v1 (FR-11); the
             # serialized block is recorded in the manifest's eventual
             # `augmentations` field via the runner's report writer

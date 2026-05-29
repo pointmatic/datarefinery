@@ -24,6 +24,29 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class SeedDerivationSpec(BaseModel):
+    """G11 master-seed derivation form.
+
+    YAML:
+        seed:
+          from: master
+
+    Currently only ``from: master`` is recognized; resolution is
+    performed at materialize time by ``recipe.seeds.resolve_seed``. The
+    YAML key ``from`` is a Python keyword, so the field is exposed as
+    ``from_`` with an alias.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        populate_by_name=True,
+        json_schema_serialization_defaults_required=True,
+    )
+
+    from_: Literal["master"] = Field(alias="from")
+
+
 def _default_filter_stages() -> list[Literal["pre_split", "post_split"]]:
     return ["pre_split"]
 
@@ -111,7 +134,7 @@ class LabelsSection(_Frozen):
 class SampleSelector(_Frozen):
     n: int | None = None
     fraction: float | None = None
-    seed: int | None = None
+    seed: int | SeedDerivationSpec | None = None
 
 
 class SampleDataSection(_Frozen):
@@ -135,7 +158,7 @@ class FilterOp(_Frozen):
     predicate: dict[str, Any]
     stages: list[Literal["pre_split", "post_split"]] = Field(default_factory=_default_filter_stages)
     splits: list[str] = Field(default_factory=list)
-    seed: int | None = None
+    seed: int | SeedDerivationSpec | None = None
 
 
 class SamplePerClassParams(_Frozen):
@@ -239,7 +262,7 @@ class GenerationOp(_Frozen):
     name: str
     inputs: list[str]
     output_schema: dict[str, FieldSpec]
-    seed: int
+    seed: int | SeedDerivationSpec
     applies_at: list[str] = Field(default_factory=lambda: ["train"])
     params: dict[str, Any] = Field(default_factory=dict)
 
@@ -253,7 +276,7 @@ class SplitsSection(_Frozen):
     ratios: dict[str, float] | None = None
     key_assignment: KeyAssignment | None = None
     stratify_by: str | None = None
-    seed: int | None = None
+    seed: int | SeedDerivationSpec | None = None
     class_balance: str | None = None
     applies_to: str | None = None
 
@@ -284,7 +307,7 @@ class AugmentationOp(_Frozen):
     op: str
     params: dict[str, Any] = Field(default_factory=dict)
     splits: list[str] = Field(default_factory=lambda: ["train"])
-    seed: int | None = None
+    seed: int | SeedDerivationSpec | None = None
     materialization: Literal["lazy", "aggressive"] = "lazy"
     expansion: int = 1
 

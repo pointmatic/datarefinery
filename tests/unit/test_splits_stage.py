@@ -247,6 +247,17 @@ def test_resolve_seed_uses_fallback_when_section_seed_is_none() -> None:
     assert resolve_seed(section, fallback=7) == 7
 
 
+def test_resolve_seed_derives_from_master_when_seed_derivation_spec_supplied() -> None:
+    """G11 / Story I.n: `Splits.seed: {from: master}` resolves to
+    `derive_seed(master, "Splits")` at materialize time.
+    """
+    from datarefinery.recipe.models import SeedDerivationSpec
+    from datarefinery.recipe.seeds import derive_seed
+
+    section = SplitsSection(ratios={"train": 1.0}, seed=SeedDerivationSpec(from_="master"))
+    assert resolve_seed(section, fallback=20260509) == derive_seed(20260509, "Splits")
+
+
 # ---------------------------------------------------------------------------
 # Misc / defensive
 # ---------------------------------------------------------------------------

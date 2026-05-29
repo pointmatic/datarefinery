@@ -36,7 +36,8 @@ from typing import Any
 import numpy as np
 
 from datarefinery.core.errors import MaterializeError
-from datarefinery.recipe.models import SplitsSection
+from datarefinery.recipe.models import SeedDerivationSpec, SplitsSection
+from datarefinery.recipe.seeds import derive_seed
 
 Record = Mapping[str, Any]
 
@@ -53,8 +54,19 @@ class SplitResult:
 
 
 def resolve_seed(section: SplitsSection, fallback: int) -> int:
-    """Return the section's split seed if set, else the recipe-level fallback."""
-    return section.seed if section.seed is not None else fallback
+    """Resolve the Splits seed for materialize-time RNG seeding.
+
+    Three forms accepted on the section: ``None`` (use the recipe-level
+    fallback / master seed), a literal ``int``, or a
+    ``SeedDerivationSpec`` that derives from the master seed via the
+    G11 derivation function. The op name for derivation is the literal
+    string ``"Splits"`` (one Splits section per recipe).
+    """
+    if section.seed is None:
+        return fallback
+    if isinstance(section.seed, SeedDerivationSpec):
+        return derive_seed(fallback, "Splits")
+    return int(section.seed)
 
 
 def apply_splits(
