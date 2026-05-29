@@ -5,10 +5,10 @@
 Each handle exposes ``fit`` and ``apply`` per the Transformations
 operation interface in ``datarefinery.pipeline.stages.transformations``.
 
-v1 ships ``resize``, ``normalize``, and ``mean_subtract``. The remaining
-declared ops (``to_grayscale``, ``cast_dtype``) raise
-``NotImplementedError`` from the plugin's ``operation_factory`` until
-follow-up stories land them.
+v1 ships ``resize``, ``normalize``, ``mean_subtract``, and ``cast``
+(Story I.k / G2). A real ``to_grayscale`` implementation is deferred to
+``stories.md § Future``; the declared-but-unimplemented spec was removed
+in Story I.k.
 
 Image records carry an ``"image"`` field whose value is a NumPy array of
 shape ``(H, W, C)`` with a numeric dtype. ``normalize`` and
@@ -171,6 +171,51 @@ class MeanSubtractOp:
         del params, label_field
         mean, _ = _unwrap_mean_std(fitted)
         return [_replace_image(r, np.asarray(r["image"], dtype=np.float64) - mean) for r in records]
+
+
+# ---------------------------------------------------------------------------
+# cast (no fit; Story I.k / G2)
+# ---------------------------------------------------------------------------
+
+
+class CastOp:
+    fit_on_train: bool = False
+
+    def fit(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        *,
+        label_field: str | None,
+    ) -> FittedValues:
+        del records, params, label_field
+        return FittedValues()
+
+    def apply(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        fitted: FittedValues,
+        *,
+        label_field: str | None,
+    ) -> list[Record]:
+        del fitted, label_field
+        dtype_param = params.get("dtype")
+        if not isinstance(dtype_param, str):
+            raise PluginError(f"cast requires string 'dtype' (got {dtype_param!r})")
+        try:
+            target_dtype = np.dtype(dtype_param)
+        except TypeError as exc:
+            raise PluginError(f"cast 'dtype' is not a valid NumPy dtype: {dtype_param!r}") from exc
+        scale = float(params.get("scale", 1.0))
+        return [_replace_image(r, _cast_one(r["image"], target_dtype, scale)) for r in records]
+
+
+def _cast_one(image: Any, target_dtype: np.dtype, scale: float) -> np.ndarray:
+    arr = np.asarray(image).astype(target_dtype)
+    if scale != 1.0:
+        arr = (arr * np.array(scale, dtype=target_dtype)).astype(target_dtype)
+    return arr
 
 
 # ---------------------------------------------------------------------------

@@ -470,6 +470,42 @@ The validator rejects a fit-on-train op whose `fit_source` is not `train` (check
 
 **FR-TRANS-1 across variants.** A fit-on-train Transformation may import its fitted statistics from a sibling materialized instance via `stats_from_instance: { recipe: <path>, op_id: <op_name> }` instead of fitting locally. The resolver locates the sibling by hashing its **no-variant canonical form** — i.e., the recipe with its `variants:` block stripped, matching what the materialize path itself uses to compute cache identity. As a result, `stats_from_instance` always resolves to the sibling's no-variant canonical instance regardless of which variants the sibling declares. Pinning a specific sibling variant's statistics is not supported in v1 (tracked in `stories.md § Future`).
 
+**Image-classification Transformations.**
+
+`resize` (no fit) — resample each image to a square of the declared size.
+
+```yaml
+Transformations:
+  - name: r
+    op: resize
+    params: { size: 32, method: bilinear }   # method: nearest | bilinear | bicubic | lanczos
+    splits: [train, val, test]
+```
+
+`cast` (no fit) — convert each image to the declared NumPy dtype, optionally multiplying by `scale` in one pass. The common uint8 → float32 in `[0, 1]` pre-normalize pattern is a single op:
+
+```yaml
+Transformations:
+  - name: c
+    op: cast
+    params: { dtype: float32, scale: 0.00392156862745098 }   # 1/255
+    splits: [train, val, test]
+```
+
+With `scale` omitted (default `1.0`), `cast` is a pure dtype conversion — values are reinterpreted in the target dtype with no rescaling. A `cast` whose input is already the target dtype is effectively a no-op.
+
+`mean_subtract` (fit-on-train) — compute the per-channel mean over the training split, persist it to `fitted_statistics/<name>/mean.parquet`, and subtract the mean per record on every split listed under `splits`. Returns float64 records.
+
+```yaml
+Transformations:
+  - name: ms
+    op: mean_subtract
+    fit_source: train
+    splits: [train, val, test]
+```
+
+`normalize` (fit-on-train) — full z-score: subtract per-channel mean, divide by per-channel std. Persists `{mean,std}.parquet`. Supports recipe-pinned `params: { mean: [...], std: [...] }` for direct overrides (skips the fit), and `params: { stats_from_instance: ... }` per FR-TRANS-1 above.
+
 ### `Augmentations`
 
 Stochastic, train-only operations that expand the *effective* dataset. Each augmentation declares its parameters, the splits it applies to (train-only by default, val/test rejected by validator check 5), a seed, and a **materialization mode** (`lazy` by default; `aggressive` opt-in). Lazy and aggressive ops can be mixed in a single `Augmentations:` block.

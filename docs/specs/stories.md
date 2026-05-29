@@ -363,21 +363,23 @@ Dedicated commit for the version bump so the release is identifiable in commit h
 
 ---
 
-### Story I.k: G2 — `cast` Transformation [Planned]
+### Story I.k: G2 — `cast` Transformation [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
-Per [`dependency-gaps-v0.16.0.md` § G2](dependency-gaps-v0.16.0.md): `cast_dtype` is declared in `_supported_operations()` but missing from `_TRANSFORMATION_OPS` (`NotImplementedError` at materialize). This story registers the runtime factory under the canonical name `cast`, adds a `scale` parameter (for the common uint8 → float32-scaled-by-1/255 pattern), removes the unimplemented `cast_dtype` and `to_grayscale` OperationSpec entries.
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G2](phase-i-dependency-gaps-v0.16.0.md): `cast_dtype` was declared in `_supported_operations()` but missing from `_TRANSFORMATION_OPS` (`NotImplementedError` at materialize). This story registers the runtime factory under the canonical name `cast`, adds a `scale` parameter (for the common uint8 → float32-scaled-by-1/255 pattern), and removes the unimplemented `cast_dtype` and `to_grayscale` OperationSpec entries.
 
 **Tasks:**
 
-- [ ] Add `CastOp` to [`plugins/image_classification/operations/transformations.py`](../../src/datarefinery/plugins/image_classification/operations/transformations.py): `target_dtype = np.dtype(params["dtype"])`, `scale = params.get("scale", 1.0)`, apply per record.
-- [ ] OperationSpec in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): rename `"cast_dtype"` → `"cast"`; add `scale: float, default=1.0`. Remove the `to_grayscale` entry.
-- [ ] Register `"cast": CastOp()` in `_TRANSFORMATION_OPS`.
-- [ ] Update [`tests/plugin_contract/test_image_classification.py`](../../tests/plugin_contract/test_image_classification.py): swap `"cast_dtype"` → `"cast"` in `EXPECTED_OPERATIONS`; remove the `NotImplementedError`-pinning assertion for `cast_dtype`.
-- [ ] Unit tests: cast uint8→float32 scale=1/255 → [0,1]; no-scale → dtype change only; cast on already-float32 input is dtype-no-op; old name `cast_dtype` is rejected cleanly by check 18.
-- [ ] DOC: add worked YAML example for `op: cast` (with `dtype` and `scale`) to [`recipe-authoring.md` § Transformations](../guides/recipe-authoring.md). Backfill `mean_subtract` and `resize` (DOC drift table — both already shipped, currently undocumented).
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G2](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Added `CastOp` to [`plugins/image_classification/operations/transformations.py`](../../src/datarefinery/plugins/image_classification/operations/transformations.py): `np.dtype(params["dtype"])` + `params.get("scale", 1.0)`, deterministic per-record apply, no fit phase.
+- [x] OperationSpec in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): added `"cast"` with `dtype: str` (required) + `scale: float, default=1.0`. Removed the `"cast_dtype"` and `"to_grayscale"` entries.
+- [x] Registered `"cast": CastOp()` in `_TRANSFORMATION_OPS`.
+- [x] Updated [`tests/plugin_contract/test_image_classification.py`](../../tests/plugin_contract/test_image_classification.py): swapped `EXPECTED_OPERATIONS` (`cast_dtype` + `to_grayscale` → `cast`); dropped the `NotImplementedError`-pinning assertions for both; extended the C.h-wired-op test to cover `cast`.
+- [x] Unit tests in [`test_transformations_stage.py`](../../tests/unit/test_transformations_stage.py): cast uint8→float32 scale=1/255 → values in [0,1]; cast with no `scale` is dtype change only (values unchanged); cast on already-float32 input is a dtype no-op; cast persists no fitted stats. Plus two recipe-level rejection tests: old name `cast_dtype` and removed `to_grayscale` each fail validator check 18 with "not declared by plugin".
+- [x] DOC: added worked YAML examples for `op: cast` (with `dtype` and `scale`), backfilled `resize`, `mean_subtract`, and `normalize` summary blocks under [`recipe-authoring.md` § Transformations](../guides/recipe-authoring.md), closing the DOC-drift gap for the Transformations section.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G2](phase-i-dependency-gaps-v0.16.0.md): status block; priority-summary row → "Closed in v0.18.0 (Story I.k)"; workarounds row prefixed "Closed in v0.18.0 (Story I.k)".
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no mention of `cast` / `cast_dtype` / `to_grayscale` — no contract surface change.
+- [x] CI parity: `pyve test` 1111 passed; `pyve testenv run mypy src tests` clean; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 **Out of Scope:**
 

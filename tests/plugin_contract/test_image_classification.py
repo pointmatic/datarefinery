@@ -26,8 +26,7 @@ EXPECTED_OPERATIONS = frozenset(
         "resize",
         "normalize",
         "mean_subtract",
-        "to_grayscale",
-        "cast_dtype",
+        "cast",
         "label_from_path",
         "image_size_stats",
         "random_crop",
@@ -123,10 +122,6 @@ def test_operation_factory_raises_not_implemented_for_unimplemented_ops() -> Non
     them, the runner records the policy, but the plugin does not
     pre-materialize augmented examples - so the factory still refuses.
     """
-    with pytest.raises(NotImplementedError, match="not yet implemented"):
-        PLUGIN.operation_factory("Transformations", "to_grayscale")
-    with pytest.raises(NotImplementedError, match="not yet implemented"):
-        PLUGIN.operation_factory("Transformations", "cast_dtype")
     for aug_op in ("random_crop", "horizontal_flip", "color_jitter"):
         with pytest.raises(NotImplementedError, match="not yet implemented"):
             PLUGIN.operation_factory("Augmentations", aug_op)
@@ -144,8 +139,10 @@ def test_operation_factory_returns_generation_ops_after_C_g() -> None:
 
 
 def test_operation_factory_returns_transformation_ops_after_C_h() -> None:
-    """Story C.h wires resize, normalize, mean_subtract through the factory."""
-    for op_name in ("resize", "normalize", "mean_subtract"):
+    """Story C.h wires resize, normalize, mean_subtract through the
+    factory; Story I.k adds cast.
+    """
+    for op_name in ("resize", "normalize", "mean_subtract", "cast"):
         handle = PLUGIN.operation_factory("Transformations", op_name)
         assert hasattr(handle, "fit") and hasattr(handle, "apply"), op_name
 

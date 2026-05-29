@@ -38,7 +38,7 @@ None of these require a `schema_version` bump.
 | ID | Title | Severity for consumer repo | Category |
 |---|---|---|---|
 | G1 | `Splits.applies_to` doesn't accept `sample_per_class_tags` labels | **Blocking (workaround used)** | Validator semantics |
-| G2 | `cast` Transformation: name + `scale` param + runtime factory missing | Blocking (workaround used) | Plugin op registration |
+| G2 | `cast` Transformation: name + `scale` param + runtime factory missing | **Closed in v0.18.0** (Story I.k) | Plugin op registration |
 | G3 | `categorical_encode` Featurization missing from plugin | Blocking for Phase D Module 3 (`mlp_flat`); deferred | Plugin op registration |
 | G4 | `label_from_path` collides with `image_flat` + `label_from` loader | **Closed in v0.16.2** (Story I.c) | Validator semantics |
 | G5 | `augmented_sample_grid` viz raises on post-normalize float images | **Subsumed by G7** (not a defect; surfaces missing stage-aware viz dispatch) | Plugin runtime interaction |
@@ -169,8 +169,10 @@ filter + Splits config; if Splits-side semantics drift, bit-identity drifts.
 
 ## G2 — `cast` Transformation: declared but unimplemented, plus naming and `scale` param
 
+**Status (Story I.k, v0.18.0):** **Closed.** `CastOp` registered in `_TRANSFORMATION_OPS` under the canonical name `cast` ([`plugins/image_classification/operations/transformations.py`](../../src/datarefinery/plugins/image_classification/operations/transformations.py)). `OperationSpec.parameters` now declares `dtype: str` (required) + `scale: float, default=1.0`. The declared-but-unimplemented `cast_dtype` and `to_grayscale` `OperationSpec` entries were removed: both now fail validator check 18 with "not declared by plugin" rather than `NotImplementedError` at materialize. `to_grayscale` is tracked as a future enhancement (`stories.md § Future`) until a real implementation is needed. The bundled scaffolder still emits `normalize` only; the canonical uint8 → float32 / 255 pre-normalize chain is documented in `recipe-authoring.md § Transformations`.
+
 **Severity:** Blocking for consumer repo (the phase plan calls for uint8 → float32
-cast before normalize).
+cast before normalize) → **Closed v0.18.0**.
 
 **Category:** Plugin op registration.
 
@@ -1781,7 +1783,7 @@ corresponding deviation removed:
 | Gap | Recipe edit when fixed |
 |---|---|
 | G1 | Restore the two `sample_per_class` filters with `label: train_pool` / `label: test_pool` + `Splits.applies_to: train_pool, ratios: {train: 0.85, val: 0.15}`. Refactor the `imbalanced*` variants similarly. |
-| G2 | Add `cast` Transformation (canonical name; not `cast_dtype`) before `normalize` with `params: { dtype: float32, scale: 0.00392156862745098 }`. Change `Output.record_schema.image.dtype` to `float32`. |
+| G2 | **Closed in v0.18.0 (Story I.k).** Add `cast` Transformation (canonical name; not `cast_dtype`) before `normalize` with `params: { dtype: float32, scale: 0.00392156862745098 }`. Change `Output.record_schema.image.dtype` to `float32`. |
 | G3 | Add `categorical_encode` Featurization deriving `label_id`. Add `label_id: { dtype: int32 }` to `Output.record_schema`. |
 | G4 | **Closed in v0.16.2 (Story I.c).** Validator check 23 catches the collision at validate time. No recipe edit needed; Recipe A's existing structure (label from loader, no `label_from_path` Featurization) is still correct. The check now ensures any future author who reaches for the conflicting pattern is told before materialize runs. |
 | G5 | (No G5-only recipe edit; G5 is subsumed by G7. When G7 lands, restoring the `augmented_sample_grid` viz with `stage: pre_transformations` is the unblocked path.) |

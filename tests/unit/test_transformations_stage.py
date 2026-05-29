@@ -240,6 +240,165 @@ def test_mean_subtract_centers_around_zero(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# cast (no fit; Story I.k / G2)
+# ---------------------------------------------------------------------------
+
+
+def test_cast_changes_dtype_only_when_scale_default(tmp_path: Path) -> None:
+    op = TransformationOp(
+        name="c",
+        op="cast",
+        params={"dtype": "float32"},
+        splits=["train", "val", "test"],
+    )
+    fs = FittedStatistics(tmp_path)
+    result = apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
+    for split in result.splits.values():
+        for r in split:
+            assert r["image"].dtype == np.float32
+    # Values are unchanged from the uint8 originals when scale defaults to 1.0.
+    first_train = result.splits["train"][0]["image"]
+    assert np.array_equal(first_train, np.full((4, 4, 3), 10.0, dtype=np.float32))
+
+
+def test_cast_uint8_to_float32_with_scale_normalizes_to_unit_interval(
+    tmp_path: Path,
+) -> None:
+    op = TransformationOp(
+        name="c",
+        op="cast",
+        params={"dtype": "float32", "scale": 1.0 / 255.0},
+        splits=["train", "val", "test"],
+    )
+    fs = FittedStatistics(tmp_path)
+    result = apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
+    for split in result.splits.values():
+        for r in split:
+            arr = r["image"]
+            assert arr.dtype == np.float32
+            assert arr.min() >= 0.0
+            assert arr.max() <= 1.0
+    # uint8 100 → 100/255 ≈ 0.39215687
+    test_record = result.splits["test"][1]["image"]
+    assert np.allclose(test_record, np.float32(100.0 / 255.0))
+
+
+def test_cast_is_dtype_noop_when_input_already_target_dtype(tmp_path: Path) -> None:
+    splits: dict[str, list[Mapping[str, Any]]] = {
+        "train": [
+            {"image": np.full((4, 4, 3), 0.5, dtype=np.float32), "label": 0},
+            {"image": np.full((4, 4, 3), 0.25, dtype=np.float32), "label": 1},
+        ],
+    }
+    op = TransformationOp(
+        name="c",
+        op="cast",
+        params={"dtype": "float32"},
+        splits=["train"],
+    )
+    fs = FittedStatistics(tmp_path)
+    result = apply_transformations(splits, [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
+    for r in result.splits["train"]:
+        assert r["image"].dtype == np.float32
+    assert np.array_equal(
+        result.splits["train"][0]["image"],
+        np.full((4, 4, 3), 0.5, dtype=np.float32),
+    )
+
+
+def test_cast_does_not_persist_fitted_stats(tmp_path: Path) -> None:
+    op = TransformationOp(
+        name="c",
+        op="cast",
+        params={"dtype": "float32"},
+        splits=["train"],
+    )
+    fs = FittedStatistics(tmp_path)
+    apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
+    assert not (tmp_path / "c").exists()
+
+
+def test_old_cast_dtype_op_name_is_rejected_by_check_18() -> None:
+    """G2 closing assertion: the pre-fix name `cast_dtype` is removed
+    cleanly (not aliased). A recipe still using the old name must fail
+    validator check 18 with "not declared by plugin".
+    """
+    from datarefinery.recipe.models import Recipe
+    from datarefinery.recipe.validator import validate
+
+    recipe = Recipe.model_validate(
+        {
+            "schema_version": 1,
+            "plugin": "image_classification",
+            "Input": {
+                "sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]
+            },
+            "Output": {
+                "record_schema": {
+                    "image": {"dtype": "float32", "shape": [4, 4, 3]},
+                    "label": {"dtype": "str"},
+                }
+            },
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": {"ratios": {"train": 0.6, "val": 0.2, "test": 0.2}, "seed": 11},
+            "Transformations": [
+                {
+                    "name": "c",
+                    "op": "cast_dtype",
+                    "params": {"dtype": "float32"},
+                    "splits": ["train", "val", "test"],
+                }
+            ],
+        }
+    )
+    report = validate(recipe, IMAGE_PLUGIN)
+    failures = [c for c in report.failures if c.check_id == 18]
+    assert len(failures) == 1, failures
+    assert "cast_dtype" in failures[0].message
+    assert "not declared" in failures[0].message
+
+
+def test_to_grayscale_op_name_is_rejected_by_check_18() -> None:
+    """Story I.k removes the declared-but-unimplemented `to_grayscale`
+    OperationSpec entry (deferred to Future). A recipe declaring it must
+    fail validator check 18 cleanly.
+    """
+    from datarefinery.recipe.models import Recipe
+    from datarefinery.recipe.validator import validate
+
+    recipe = Recipe.model_validate(
+        {
+            "schema_version": 1,
+            "plugin": "image_classification",
+            "Input": {
+                "sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]
+            },
+            "Output": {
+                "record_schema": {
+                    "image": {"dtype": "uint8", "shape": [4, 4, 3]},
+                    "label": {"dtype": "str"},
+                }
+            },
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": {"ratios": {"train": 0.6, "val": 0.2, "test": 0.2}, "seed": 11},
+            "Transformations": [
+                {
+                    "name": "g",
+                    "op": "to_grayscale",
+                    "params": {},
+                    "splits": ["train", "val", "test"],
+                }
+            ],
+        }
+    )
+    report = validate(recipe, IMAGE_PLUGIN)
+    failures = [c for c in report.failures if c.check_id == 18]
+    assert len(failures) == 1, failures
+    assert "to_grayscale" in failures[0].message
+    assert "not declared" in failures[0].message
+
+
+# ---------------------------------------------------------------------------
 # Stage runner: error paths
 # ---------------------------------------------------------------------------
 

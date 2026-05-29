@@ -54,6 +54,7 @@ from datarefinery.plugins.image_classification.operations.generation import (
     duplicate_minority_class,
 )
 from datarefinery.plugins.image_classification.operations.transformations import (
+    CastOp,
     MeanSubtractOp,
     NormalizeOp,
     ResizeOp,
@@ -93,6 +94,7 @@ _TRANSFORMATION_OPS: dict[str, Operation] = {
     "resize": ResizeOp(),
     "normalize": NormalizeOp(),
     "mean_subtract": MeanSubtractOp(),
+    "cast": CastOp(),
 }
 
 _FEATURIZATION_OPS: dict[str, Operation] = {
@@ -214,11 +216,11 @@ def _supported_operations() -> dict[str, OperationSpec]:
             fit_on_train=True,
             applicable_sections=frozenset({"Transformations"}),
         ),
-        "to_grayscale": OperationSpec(
-            applicable_sections=frozenset({"Transformations"}),
-        ),
-        "cast_dtype": OperationSpec(
-            parameters={"dtype": ParameterSpec(type="str", required=True)},
+        "cast": OperationSpec(
+            parameters={
+                "dtype": ParameterSpec(type="str", required=True),
+                "scale": ParameterSpec(type="float", required=False, default=1.0),
+            },
             applicable_sections=frozenset({"Transformations"}),
         ),
         # ----- Featurizations (FR-12, FR-22) -----
