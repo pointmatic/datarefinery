@@ -417,6 +417,30 @@ Generation:
 
 Generation changes the record count; counts are recorded in the manifest and the report. Generated records must satisfy `OutputExpectations`.
 
+#### When to use `replace_input_records`
+
+By default a Generation op **augments** the split: its output records are appended to the existing records (the input records stay). Set `replace_input_records: true` to **replace** the split with only the generated records instead:
+
+```yaml
+Generation:
+  - name: corrupt
+    inputs: [image]
+    output_schema:
+      record_id: { dtype: str }
+      image:     { dtype: uint8, shape: [64, 64, 3] }
+      path:      { dtype: str }
+    seed: 42
+    applies_at: [train]
+    replace_input_records: true       # output replaces the originals
+    params:
+      corruption_types: [gaussian_noise, fog]
+      severities: [1, 3]
+```
+
+This is the transformation-style case: `imagecorruptions_apply` emits `n_corruptions × n_severities` records per input, and with `replace_input_records: true` the resulting split holds exactly `n_corruptions × n_severities × n_inputs` records — the pristine originals are dropped. Reach for it when the corrupted (or otherwise generated) records *are* the dataset, not an addition to it. Leave it at the default (`false`) for oversampling-style generation like `duplicate_minority_class`, where the originals must remain.
+
+`replace_input_records` is part of the recipe's canonical bytes — toggling it produces a different cache instance.
+
 **Per-record-seed persistence (Story I.e).** Each Generation op that uses the per-record-seed contract (today: `imagecorruptions_apply`) stamps `<GenerationOp.name>_seed` (8-byte int) onto every output record. The field rides through to the cached JSONL and is captured automatically by any Sink targeting `post_Generation`. Downstream tools — including the forthcoming `datarefinery export` verb (Story I.f) — use this seed to reconstruct the op's stochastic output from the cached state, without re-running the full pipeline. Ops whose stochasticity is op-level (not per-record) — like `duplicate_minority_class` — do not stamp; the op-level seed already lives in `recipe.json` and the duplicated record's `record_id` points back at the source.
 
 ### `Splits`

@@ -131,6 +131,40 @@ def test_preserve_original_adds_one_extra_per_input() -> None:
 
 
 # ---------------------------------------------------------------------------
+# replace_input_records via the stage (Story I.q / G18)
+# ---------------------------------------------------------------------------
+
+
+def test_replace_input_records_replaces_split_via_stage() -> None:
+    records = _input_records(n=3)
+    op = _gen_op(corruption_types=["gaussian_noise", "shot_noise"], severities=[1, 3])
+    op = op.model_copy(update={"replace_input_records": True})
+    result = apply_generation(
+        {"train": list(records)},
+        [op],
+        plugin=IMAGE_PLUGIN,
+        output_record_schema=_output_schema(),
+    )
+    # replace=True → split holds only generated records: inputs * types * severities.
+    assert result.counts_before == {"train": 3}
+    assert result.counts_after == {"train": 3 * 2 * 2}
+
+
+def test_replace_input_records_default_false_appends_via_stage() -> None:
+    records = _input_records(n=3)
+    op = _gen_op(corruption_types=["gaussian_noise", "shot_noise"], severities=[1, 3])
+    assert op.replace_input_records is False
+    result = apply_generation(
+        {"train": list(records)},
+        [op],
+        plugin=IMAGE_PLUGIN,
+        output_record_schema=_output_schema(),
+    )
+    # default → originals retained + generated appended.
+    assert result.counts_after == {"train": 3 + 3 * 2 * 2}
+
+
+# ---------------------------------------------------------------------------
 # Tag-field writes
 # ---------------------------------------------------------------------------
 

@@ -265,6 +265,7 @@ class GenerationOp(_Frozen):
     seed: int | SeedDerivationSpec
     applies_at: list[str] = Field(default_factory=lambda: ["train"])
     params: dict[str, Any] = Field(default_factory=dict)
+    replace_input_records: bool = False
 
 
 class KeyAssignment(_Frozen):

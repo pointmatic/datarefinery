@@ -21,10 +21,15 @@ per-record-stochastic ops can stamp a ``<op_name>_seed`` column on
 each output record (Story I.e), keyed on the recipe identifier so two
 ops of the same op kind never collide on a single seed column.
 
-Operations return only the *new* records to add; the stage concatenates
-them onto the split's existing records and validates each against
-``Output.record_schema`` (every declared field must be present). Schema
-mismatches raise ``MaterializeError`` per FR-9.
+Operations return only the *new* records to add. By default the stage
+concatenates them onto the split's existing records. When
+``GenerationOp.replace_input_records`` is ``True`` (Story I.q / G18) the
+stage instead replaces the split with just the generated records — the
+transformation-style case (e.g. on-the-fly corruption) that emits N
+records per input and does not want the originals carried along. Either
+way each generated record is validated against ``Output.record_schema``
+(every declared field must be present); schema mismatches raise
+``MaterializeError`` per FR-9.
 
 Counts before and after are exposed on ``GenerationResult`` so the runner
 (Story C.m) can record pre/post counts in the manifest.
@@ -91,7 +96,10 @@ def apply_generation(
                 )
             new_records = _invoke_one(op, out[split_name], plugin, label_field, master_seed)
             _validate_against_output_schema(op.name, split_name, new_records, output_fields)
-            out[split_name].extend(new_records)
+            if op.replace_input_records:
+                out[split_name] = list(new_records)
+            else:
+                out[split_name].extend(new_records)
 
     counts_after = {name: len(recs) for name, recs in out.items()}
     return GenerationResult(

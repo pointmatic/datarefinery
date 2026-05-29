@@ -516,7 +516,7 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G17](phase-i-dependency-gaps-v0.16.
 
 ---
 
-### Story I.q: G18 — Generation `replace_input_records` [Planned]
+### Story I.q: G18 — Generation `replace_input_records` [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
@@ -524,11 +524,14 @@ Per [`dependency-gaps-v0.16.0.md` § G18](dependency-gaps-v0.16.0.md): a new `Ge
 
 **Tasks:**
 
-- [ ] Add `replace_input_records: bool = False` to `GenerationOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py).
-- [ ] Update [`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py): branch on `op.replace_input_records` — `True` assigns `out[split_name] = list(new_records)`, `False` keeps current `.extend(...)`.
-- [ ] Unit tests: with `imagecorruptions_apply` op and `replace_input_records: true`, output count is `(n_corruptions × n_severities × n_base_records)`; with the field omitted (default `False`), output reproduces current 0.16.x behavior byte-identically (regression pin).
-- [ ] DOC: add "When to use `replace_input_records`" subsection to [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md) with the corruption-apply use case.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G18](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Add `replace_input_records: bool = False` to `GenerationOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py).
+- [x] Update [`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py): branch on `op.replace_input_records` — `True` assigns `out[split_name] = list(new_records)`, `False` keeps current `.extend(...)`. Module docstring updated to document both modes.
+- [x] Unit tests: stage-level tests in [`test_generation_stage.py`](../../tests/unit/test_generation_stage.py) with a fake N-per-input plugin (replace count vs. default-append count); plus realistic stage-level tests in [`test_generation_imagecorruptions.py`](../../tests/plugins/image_classification/test_generation_imagecorruptions.py) asserting `replace_input_records: true` yields `n_corruptions × n_severities × n_inputs` and the default (`False`) yields originals + generated.
+- [x] DOC: added "When to use `replace_input_records`" subsection to [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md) with the corruption-apply use case and the canonical-bytes note.
+- [x] Update [`dependency-gaps-v0.16.0.md` § G18](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0 (Story I.q)"; workarounds row prefixed "Closed in v0.18.0 (Story I.q)".
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no contract surface change — `GenerationOp` field shape (beyond the per-record-seed stamp) is not enumerated in the spec; `replace_input_records` changes record counts, not manifest/report/record-field shapes.
+- [x] **Cache-identity note.** Adding the field with its default perturbs canonical bytes for any recipe that declares a Generation op (the new `replace_input_records: false` key joins `model_dump`); recipes without Generation ops (including the canonical-hash pinning fixture) are unaffected, so `test_canonical_hash_pin.py` stays green. Pre-production invalidation per [`project-essentials.md` § "Cache identity is the reproducibility contract"](project-essentials.md); folded into the Bundle 3 release-notes (Story I.w). **NB:** I.w's current note claims "no canonical-bytes perturbation for existing recipes" — that needs correcting at the I.w release ceremony to carve out recipes-with-Generation.
+- [x] CI parity: `pyve test` 1181 passed (+4 from this story); `pyve testenv run mypy src tests` clean across 195 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 **Out of Scope:**
 

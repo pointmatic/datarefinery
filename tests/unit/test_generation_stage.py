@@ -303,6 +303,96 @@ def test_generation_record_missing_output_field_raises_materialize_error() -> No
 
 
 # ---------------------------------------------------------------------------
+# replace_input_records (Story I.q / G18)
+# ---------------------------------------------------------------------------
+
+
+class _ReplacingPlugin:
+    """Test plugin whose generation op emits two new records per input record."""
+
+    name = "replacing"
+    schema_version = 1
+    supported_sections = frozenset({"Generation"})
+
+    def __init__(self) -> None:
+        self.supported_operations: dict[str, Any] = {}
+
+    def operation_factory(self, section: str, op_name: str) -> Any:
+        del section, op_name
+
+        def op(
+            records: list[Mapping[str, Any]],
+            *,
+            seed: int,
+            inputs: list[str],
+            output_schema: Mapping[str, Any],
+            params: Mapping[str, Any],
+            label_field: str | None,
+            op_name: str,
+        ) -> list[Mapping[str, Any]]:
+            del seed, inputs, output_schema, params, label_field, op_name
+            new: list[Mapping[str, Any]] = []
+            for r in records:
+                new.append({"image": r["image"], "label": r["label"], "variant": "a"})
+                new.append({"image": r["image"], "label": r["label"], "variant": "b"})
+            return new
+
+        return op
+
+    def is_stub(self) -> bool:
+        return False
+
+
+def test_replace_input_records_replaces_split_with_generated_records() -> None:
+    plugin = _ReplacingPlugin()
+    op = GenerationOp(
+        name="gen2",
+        inputs=["image", "label"],
+        output_schema=_output_schema(),
+        seed=0,
+        replace_input_records=True,
+    )
+    splits = {"train": [_record(0, image=1), _record(1, image=2)]}
+    result = apply_generation(
+        splits,
+        [op],
+        plugin=plugin,
+        output_record_schema=_output_schema(),
+        label_field="label",
+    )
+    train = result.splits["train"]
+    # 2 inputs * 2 emitted per input = 4; originals replaced (none lack 'variant').
+    assert len(train) == 4
+    assert all("variant" in r for r in train)
+    assert result.counts_before == {"train": 2}
+    assert result.counts_after == {"train": 4}
+
+
+def test_replace_input_records_defaults_false_and_appends() -> None:
+    plugin = _ReplacingPlugin()
+    op = GenerationOp(
+        name="gen2",
+        inputs=["image", "label"],
+        output_schema=_output_schema(),
+        seed=0,
+    )
+    assert op.replace_input_records is False
+    splits = {"train": [_record(0, image=1), _record(1, image=2)]}
+    result = apply_generation(
+        splits,
+        [op],
+        plugin=plugin,
+        output_record_schema=_output_schema(),
+        label_field="label",
+    )
+    train = result.splits["train"]
+    # 2 originals + 4 generated = 6; originals (no 'variant') retained.
+    assert len(train) == 6
+    assert sum(1 for r in train if "variant" not in r) == 2
+    assert result.counts_after == {"train": 6}
+
+
+# ---------------------------------------------------------------------------
 # Misc / pass-through
 # ---------------------------------------------------------------------------
 

@@ -54,7 +54,7 @@ None of these require a `schema_version` bump.
 | G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Blocking (recipe doesn't parse)** | Schema (cross-section consistency) |
 | G16 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
 | G17 | `class_distribution_histogram` lacks `group_by` param | **Closed in v0.18.0** (Story I.p) | Plugin op param schema |
-| G18 | `Generation` stage extends each target split rather than replacing source records | **Blocking for Recipe B (`cifar10c_eval.yaml`)** — phase plan's 12,000-record test split becomes 13,000 | Pipeline runner |
+| G18 | `Generation` stage extends each target split rather than replacing source records | **Closed in v0.18.0** (Story I.q) | Pipeline runner |
 | G19 | `resolve_sibling_stats` doesn't strip variants before hashing the sibling recipe | **Closed in v0.17.1** (Story I.i) | Pipeline runner / sibling resolver |
 | **DOC** | recipe-authoring.md has not kept up with the implemented op surface | **Blocking the principle "no implementation without documentation"** | Documentation discipline |
 
@@ -1538,6 +1538,8 @@ viz ops (FR-VIZ-1..4).
 
 ## G18 — `Generation` stage extends each target split rather than replacing source records
 
+**Status (Story I.q, v0.18.0):** **Closed.** Added `GenerationOp.replace_input_records: bool = False` ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)). `apply_generation` ([`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py)) branches on the flag: `False` (default) keeps the current `extend` behavior; `True` replaces the split with only the generated records (`out[split_name] = list(new_records)`). For `imagecorruptions_apply` with `replace_input_records: true` the target split holds exactly `n_corruptions × n_severities × n_inputs` records — the untagged originals are dropped. The field is part of canonical bytes; toggling it produces a distinct cache instance, and adding the field with its default perturbs canonical bytes for any recipe with a Generation op (pre-production invalidation per `project-essentials.md`). Documented in `recipe-authoring.md § Generation` ("When to use `replace_input_records`").
+
 **Severity:** Blocking for Recipe B (`cifar10c_eval.yaml`) — the phase
 plan's "single test split of exactly 12,000 records" is unachievable in
 0.16.0. Worked around by accepting 1,000 dead-weight untagged originals
@@ -1810,7 +1812,7 @@ corresponding deviation removed:
 | G15 | Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. |
 | G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames still open** (Bundle 4, Story I.x.3, `schema_version` bump). Rewrite every assertion in both recipes to use the new naming + the new kinds. |
 | G17 | **Closed in v0.18.0 (Story I.p).** Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
-| G18 | Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |
+| G18 | **Closed in v0.18.0 (Story I.q).** Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |
 | G19 | **Closed in v0.17.1 (Story I.i).** Replace Recipe B's pinned literal `params.mean` / `params.std` with the FR-TRANS-1 form: `params: { stats_from_instance: { recipe: recipes/cifar10-base.yaml, op_id: normalize_per_channel } }`. Remove the G19-workaround comment block from the recipe header. (Bonus: once the future variant-selector form lands, the consumer recipe can pin a specific sibling-variant of Recipe A's normalize stats — relevant for Module 9's imbalance variants whose normalize stats may legitimately differ.) |
 | DOC | Every G fix above lands its `recipe-authoring.md` section in the same story. Existing-feature documentation drift (the table in DOC) closes alongside the next op-registration story in each § — no separate doc-sweep story. |
 
