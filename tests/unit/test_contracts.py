@@ -511,3 +511,297 @@ def test_g8_range_on_tensor_field_detects_out_of_bounds() -> None:
     assert not report.passed
     msg = report.failures[0].message
     assert "5.0" in msg or "5" in msg, f"expected message to cite the bad value, got: {msg!r}"
+
+
+# ---------------------------------------------------------------------------
+# G6 + G16b (Story I.o): per-split / per-class / structural assertion kinds
+# ---------------------------------------------------------------------------
+
+
+def _split_map(
+    train: int = 0, val: int = 0, test: int = 0, *, classes: int = 2
+) -> dict[str, list[dict[str, Any]]]:
+    def _mk(n: int, prefix: str) -> list[dict[str, Any]]:
+        return [
+            {"id": f"{prefix}_{i}", "label": f"c{i % classes}", "value": float(i)} for i in range(n)
+        ]
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    if train:
+        out["train"] = _mk(train, "tr")
+    if val:
+        out["val"] = _mk(val, "va")
+    if test:
+        out["test"] = _mk(test, "te")
+    return out
+
+
+# --- signature widening / backward compatibility ---------------------------
+
+
+def test_output_expectations_accepts_split_mapping() -> None:
+    splits = _split_map(train=6, val=2, test=2)
+    expectations = [Expectation(assertion={"kind": "record_count", "min": 1})]
+    report = evaluate_output_expectations(splits, expectations)
+    assert report.passed
+
+
+def test_output_expectations_flat_iterable_still_supported() -> None:
+    # Backward compatibility: a flat list routes as a single implicit split.
+    expectations = [Expectation(assertion={"kind": "record_count", "min": 1})]
+    report = evaluate_output_expectations(_records(3), expectations)
+    assert report.passed
+
+
+# --- split_record_counts ----------------------------------------------------
+
+
+def test_split_record_counts_passes_when_counts_match() -> None:
+    splits = _split_map(train=6, val=2, test=2)
+    exp = Expectation(
+        assertion={"kind": "split_record_counts", "counts": {"train": 6, "val": 2, "test": 2}}
+    )
+    report = evaluate_output_expectations(splits, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_split_record_counts_fails_with_precise_diff_message() -> None:
+    splits = _split_map(train=6, val=3, test=2)
+    exp = Expectation(
+        assertion={"kind": "split_record_counts", "counts": {"train": 6, "val": 2, "test": 2}}
+    )
+    report = evaluate_output_expectations(splits, [exp])
+    assert not report.passed
+    msg = report.failures[0].message
+    assert "val" in msg and "expected 2" in msg and "got 3" in msg, msg
+
+
+def test_split_record_counts_fails_when_named_split_absent() -> None:
+    splits = _split_map(train=6, val=2)
+    exp = Expectation(
+        assertion={"kind": "split_record_counts", "counts": {"train": 6, "val": 2, "test": 2}}
+    )
+    report = evaluate_output_expectations(splits, [exp])
+    assert not report.passed
+    assert "test" in report.failures[0].message
+
+
+def test_split_record_counts_in_input_contracts_fails_without_split_context() -> None:
+    contract = Contract(assertion={"kind": "split_record_counts", "counts": {"train": 3}})
+    report = evaluate_input_contracts(_records(3), [contract])
+    assert not report.passed
+    assert "per-split" in report.failures[0].message
+
+
+# --- per_class_count_per_split ----------------------------------------------
+
+
+def test_per_class_count_per_split_passes_with_exact_counts() -> None:
+    splits = _split_map(train=6, val=2, classes=2)  # 3 per class in train, 1 in val
+    exp = Expectation(
+        field="label",
+        assertion={"kind": "per_class_count_per_split", "per_class": 3, "tolerance": 0},
+    )
+    report = evaluate_output_expectations({"train": splits["train"]}, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_per_class_count_per_split_tolerates_rounding_by_default() -> None:
+    # train: c0 appears 4 times, c1 appears 3 times (7 records). per_class=3,
+    # default tolerance 1 → both within [2, 4], passes.
+    train = [{"id": i, "label": f"c{i % 2}"} for i in range(7)]
+    exp = Expectation(
+        field="label",
+        assertion={"kind": "per_class_count_per_split", "per_class": 3},
+    )
+    report = evaluate_output_expectations({"train": train}, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_per_class_count_per_split_fails_outside_tolerance() -> None:
+    # c0 appears 5 times, c1 once; per_class=3 tolerance=1 → c1 (1) is outside.
+    train = [{"id": i, "label": "c0" if i < 5 else "c1"} for i in range(6)]
+    exp = Expectation(
+        field="label",
+        assertion={"kind": "per_class_count_per_split", "per_class": 3, "tolerance": 1},
+    )
+    report = evaluate_output_expectations({"train": train}, [exp])
+    assert not report.passed
+    msg = report.failures[0].message
+    assert "train" in msg and "c1" in msg
+
+
+# --- count_by_field ---------------------------------------------------------
+
+
+def test_count_by_field_passes_when_every_key_has_expected_count() -> None:
+    records = [{"id": i, "label": f"c{i % 3}"} for i in range(9)]  # 3 each
+    exp = Expectation(field="label", assertion={"kind": "count_by_field", "value_per_key": 3})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_count_by_field_fails_naming_offending_key() -> None:
+    records = [{"id": i, "label": "c0" if i < 4 else "c1"} for i in range(6)]  # c0=4, c1=2
+    exp = Expectation(field="label", assertion={"kind": "count_by_field", "value_per_key": 3})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert not report.passed
+    msg = report.failures[0].message
+    assert "c0" in msg or "c1" in msg
+
+
+# --- count_by_fields --------------------------------------------------------
+
+
+def test_count_by_fields_passes_per_combination() -> None:
+    records = []
+    for corruption in ("blur", "noise"):
+        for sev in (1, 3):
+            for i in range(2):
+                records.append({"id": i, "corruption": corruption, "severity": sev})
+    exp = Expectation(
+        assertion={
+            "kind": "count_by_fields",
+            "fields": ["corruption", "severity"],
+            "value_per_combination": 2,
+        }
+    )
+    report = evaluate_output_expectations({"test": records}, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_count_by_fields_fails_on_wrong_combination_count() -> None:
+    records = [
+        {"corruption": "blur", "severity": 1},
+        {"corruption": "blur", "severity": 1},
+        {"corruption": "noise", "severity": 1},  # only 1
+    ]
+    exp = Expectation(
+        assertion={
+            "kind": "count_by_fields",
+            "fields": ["corruption", "severity"],
+            "value_per_combination": 2,
+        }
+    )
+    report = evaluate_output_expectations({"test": records}, [exp])
+    assert not report.passed
+
+
+# --- shape_equals -----------------------------------------------------------
+
+
+def test_shape_equals_passes_for_matching_ndarray_shape() -> None:
+    import numpy as np
+
+    records = [{"id": i, "image": np.zeros((4, 4, 3), dtype=np.uint8)} for i in range(3)]
+    exp = Expectation(field="image", assertion={"kind": "shape_equals", "value": [4, 4, 3]})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_shape_equals_fails_on_mismatched_shape() -> None:
+    import numpy as np
+
+    records = [
+        {"id": 0, "image": np.zeros((4, 4, 3), dtype=np.uint8)},
+        {"id": 1, "image": np.zeros((8, 8, 3), dtype=np.uint8)},
+    ]
+    exp = Expectation(field="image", assertion={"kind": "shape_equals", "value": [4, 4, 3]})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert not report.passed
+    assert "8" in report.failures[0].message
+
+
+def test_shape_equals_fails_on_non_ndarray() -> None:
+    records = [{"id": 0, "image": [1, 2, 3]}]
+    exp = Expectation(field="image", assertion={"kind": "shape_equals", "value": [3]})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert not report.passed
+
+
+# --- value_in_set -----------------------------------------------------------
+
+
+def test_value_in_set_passes_when_all_values_in_set() -> None:
+    records = [{"id": i, "label": f"c{i % 2}"} for i in range(4)]
+    exp = Expectation(field="label", assertion={"kind": "value_in_set", "value": ["c0", "c1"]})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_value_in_set_fails_naming_offending_value() -> None:
+    records = [{"id": 0, "label": "c0"}, {"id": 1, "label": "rogue"}]
+    exp = Expectation(field="label", assertion={"kind": "value_in_set", "value": ["c0", "c1"]})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert not report.passed
+    assert "rogue" in report.failures[0].message
+
+
+# --- per_class_count_equals -------------------------------------------------
+
+
+def test_per_class_count_equals_passes_when_every_class_matches() -> None:
+    records = [{"id": i, "label": f"c{i % 2}"} for i in range(6)]  # 3 each
+    exp = Expectation(field="label", assertion={"kind": "per_class_count_equals", "value": 3})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert report.passed, report.results[0].message
+
+
+def test_per_class_count_equals_fails_with_precise_message() -> None:
+    records = [{"id": i, "label": "c0" if i < 4 else "c1"} for i in range(6)]  # c0=4, c1=2
+    exp = Expectation(field="label", assertion={"kind": "per_class_count_equals", "value": 3})
+    report = evaluate_output_expectations({"train": records}, [exp])
+    assert not report.passed
+    msg = report.failures[0].message
+    assert ("c0" in msg and "4" in msg) or ("c1" in msg and "2" in msg)
+
+
+def test_all_seven_new_kinds_pass_together_on_a_canonical_fixture() -> None:
+    """Integration-style: a single OutputExpectations block declaring all
+    seven new kinds passes against a consistent split-keyed fixture.
+    """
+    import numpy as np
+
+    def _mk(n: int, prefix: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": f"{prefix}_{i}",
+                "label": f"c{i % 2}",
+                "image": np.zeros((4, 4, 3), dtype=np.uint8),
+                "corruption": "blur",
+                "severity": 1,
+            }
+            for i in range(n)
+        ]
+
+    splits = {"train": _mk(4, "tr"), "val": _mk(2, "va")}
+    expectations = [
+        Expectation(assertion={"kind": "split_record_counts", "counts": {"train": 4, "val": 2}}),
+        Expectation(
+            field="label",
+            severity="warning",
+            assertion={"kind": "per_class_count_per_split", "per_class": 2, "tolerance": 1},
+        ),
+        Expectation(field="label", assertion={"kind": "count_by_field", "value_per_key": 3}),
+        Expectation(
+            assertion={
+                "kind": "count_by_fields",
+                "fields": ["corruption", "severity"],
+                "value_per_combination": 6,
+            }
+        ),
+        Expectation(field="image", assertion={"kind": "shape_equals", "value": [4, 4, 3]}),
+        Expectation(field="label", assertion={"kind": "value_in_set", "value": ["c0", "c1"]}),
+        Expectation(field="label", assertion={"kind": "per_class_count_equals", "value": 3}),
+    ]
+    report = evaluate_output_expectations(splits, expectations)
+    assert report.passed, [r.message for r in report.results if not r.passed]
+    assert len(report.results) == 7
+
+
+def test_mutating_split_ratio_produces_precise_failure() -> None:
+    splits = _split_map(train=5, val=2)  # train should be 6
+    exp = Expectation(assertion={"kind": "split_record_counts", "counts": {"train": 6, "val": 2}})
+    report = evaluate_output_expectations(splits, [exp])
+    assert not report.passed
+    assert "train" in report.failures[0].message and "got 5" in report.failures[0].message

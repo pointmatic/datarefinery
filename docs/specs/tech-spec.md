@@ -537,8 +537,16 @@ Never opaque pickles.
 
 ```python
 def evaluate_input_contracts(records: Iterable[Record], contracts: list[Contract]) -> ContractResult: ...
-def evaluate_output_expectations(dataset: Dataset, expectations: list[Expectation]) -> ContractResult: ...
+def evaluate_output_expectations(
+    dataset: Mapping[str, Sequence[Record]] | Iterable[Record],
+    expectations: list[Expectation],
+    *, skip_missing_label_field: str | None = None,
+) -> ContractResult: ...
 ```
+
+`evaluate_output_expectations` accepts the post-Splits `Mapping[str, list[Record]]` keyed by split (a flat iterable is also accepted and routed as one implicit split for backward compatibility). `evaluate_input_contracts` stays flat — input contracts run pre-Splits.
+
+**Assertion kinds.** Flat kinds (every record across all splits): `record_count`, `required_field`, `dtype`, `range`, `distributional` (v1 placeholder), `count_by_field`, `count_by_fields`, `shape_equals`, `value_in_set`, `per_class_count_equals`. Per-split kinds (consult the split structure; `OutputExpectations` only): `split_record_counts`, `per_class_count_per_split` (rounding-tolerant via optional `tolerance`, default 1). G6 + G16b (Story I.o) added the per-split / per-class / structural kinds; the G16a naming-rename pass for existing kinds ships separately.
 
 Failures abort materialization; partial state lives under `.tmp/` with the standard FAILED marker.
 

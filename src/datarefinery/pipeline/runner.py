@@ -420,10 +420,9 @@ class PipelineRunner:
                 )
 
             _emit("OutputExpectations")
-            all_records = [r for split in split_map.values() for r in split]
             has_unlabeled = any(s.unlabeled for s in self.recipe.Input.sources)
             oe = evaluate_output_expectations(
-                all_records,
+                split_map,
                 self.recipe.OutputExpectations,
                 skip_missing_label_field=(self.recipe.Labels.field if has_unlabeled else None),
             )

@@ -42,7 +42,7 @@ None of these require a `schema_version` bump.
 | G3 | `categorical_encode` Featurization missing from plugin | **Closed in v0.18.0** (Story I.l) | Plugin op registration |
 | G4 | `label_from_path` collides with `image_flat` + `label_from` loader | **Closed in v0.16.2** (Story I.c) | Validator semantics |
 | G5 | `augmented_sample_grid` viz raises on post-normalize float images | **Subsumed by G7** (not a defect; surfaces missing stage-aware viz dispatch) | Plugin runtime interaction |
-| G6 | `OutputExpectations` only supports flat-record assertion kinds | Friction (out-of-band verification used) | Contracts evaluator |
+| G6 | `OutputExpectations` only supports flat-record assertion kinds | **Closed in v0.18.0** (Story I.o) | Contracts evaluator |
 | G7 | All reporting visualizations run at `post_pipeline` only | Friction (pre/post-normalize merged) | Pipeline runner |
 | G8 | `tensor`-typed fields can't satisfy `dtype` / `range` assertions | **Closed in v0.16.1** (Story I.b) | Contracts evaluator |
 | G9 | `flatten` Featurization missing from plugin | **Closed in v0.18.0** (Story I.m) | Plugin op registration |
@@ -508,8 +508,10 @@ that proves the fix because G5 has no independent fix.
 
 ## G6 — `OutputExpectations` only supports flat-record assertion kinds
 
+**Status (Story I.o, v0.18.0):** **Closed.** `evaluate_output_expectations` ([`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py)) now accepts `Mapping[str, Sequence[Record]]` keyed by split (flat iterable still accepted for backward compatibility, routed as one implicit split). Seven new assertion kinds land together (shared evaluator plumbing): `split_record_counts`, `per_class_count_per_split` (rounding-tolerant), `count_by_field`, `count_by_fields`, `shape_equals`, `value_in_set`, `per_class_count_equals`. Per-split kinds reject use in `InputContracts` (which runs pre-Splits). The G16a naming-rename pass for existing kinds is separate (Bundle 4, Story I.x.3). Documented in `recipe-authoring.md § OutputExpectations` (assertion-kinds table + "Cross-split assertions") and `tech-spec.md § pipeline.contracts`.
+
 **Severity:** Friction (Recipe A drops per-split / per-class expectations
-and verifies out-of-band via JSONL inspection).
+and verifies out-of-band via JSONL inspection) → **Closed v0.18.0**.
 
 **Category:** Contracts evaluator.
 
@@ -1410,22 +1412,23 @@ The first option is more discoverable; the second is more compact. Per
 DOC, whatever is chosen must be documented in `recipe-authoring.md §
 InputContracts` (and section parity for OutputExpectations).
 
-**G16b — Missing kinds.** Beyond renames, these kinds are not
-implemented at all:
+**G16b — Missing kinds. Status (Story I.o, v0.18.0): Closed.** All of
+these now have v1 evaluators in `contracts.py`, dispatch-table entries,
+and `recipe-authoring.md § OutputExpectations` rows:
 
-- `value_in_set` (or `dtype: {one_of: [...]}`) — used in 8 places across
-  the spec.
-- `shape_equals` — used 4 times on `image` fields; today shape only
-  lives in `Output.record_schema` declarations, not as a runtime
-  assertion.
-- `per_class_count_equals` (single-split) — used 1 time in Recipe A's
-  InputContracts.
+- `value_in_set` — implemented (per-record membership against a `value`
+  list).
+- `shape_equals` — implemented (per-record ndarray `.shape` equality).
+- `per_class_count_equals` (single-split) — implemented (flat per-class
+  exact count).
 - The per-split family from G6 (`split_record_counts`,
-  `per_class_count_per_split`, `count_by_field`, `count_by_fields`).
+  `per_class_count_per_split`, `count_by_field`, `count_by_fields`) —
+  implemented; the per-split kinds require the post-Splits mapping and
+  are rejected in `InputContracts`.
 
-Each missing kind needs a v1-style evaluator entry in `contracts.py`,
-the `dispatch` table extended, and a `recipe-authoring.md` row in the
-Assertion kinds table.
+**G16a — Naming-rename pass for existing kinds remains open** (Bundle 4,
+Story I.x.3); it is cache-invalidating and ships with the
+`schema_version` bump.
 
 **Workaround in 0.16.0.** Drop all assertions except the five DR
 recognizes; rewrite those into the bare-verb shape with the right param
@@ -1793,7 +1796,7 @@ corresponding deviation removed:
 | G3 | **Closed in v0.18.0 (Story I.l).** Add `categorical_encode` Featurization deriving `label_id`. Add `label_id: { dtype: int32 }` to `Output.record_schema`. |
 | G4 | **Closed in v0.16.2 (Story I.c).** Validator check 23 catches the collision at validate time. No recipe edit needed; Recipe A's existing structure (label from loader, no `label_from_path` Featurization) is still correct. The check now ensures any future author who reaches for the conflicting pattern is told before materialize runs. |
 | G5 | (No G5-only recipe edit; G5 is subsumed by G7. When G7 lands, restoring the `augmented_sample_grid` viz with `stage: pre_transformations` is the unblocked path.) |
-| G6 | Restore per-split + per-class OutputExpectations (paired with G15 for the missing assertion kinds). |
+| G6 | **Closed in v0.18.0 (Story I.o).** Restore per-split + per-class OutputExpectations (paired with G15 for the missing assertion kinds). |
 | G7 | Split `sample_grid` into `pre_normalize` + `post_normalize` versions with appropriate `stage:` values. |
 | G8 | **Closed in v0.16.1 (Story I.b).** `dtype: uint8` and `range: {min, max}` on tensor fields now work. (`tensor_range` / `tensor_shape` as separate kinds remain G16.) |
 | G9 | **Closed in v0.18.0 (Story I.m).** Restore the `flatten` Featurization in the `mlp_flat` variant. |
@@ -1803,7 +1806,7 @@ corresponding deviation removed:
 | G13 | Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption: corruption_type, severity: severity, source_path: original_path }`. |
 | G14 | Restore the `SampleData` section in Recipe A: `selector: { kind: per_class, n: 1, splits: [train] }`. |
 | G15 | Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. |
-| G16 | Rewrite every assertion in both recipes to use the new naming + the new kinds (`value_in_set`, `shape_equals`, `per_class_count_equals`, `*_equals` / `*_range` renames). |
+| G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames still open** (Bundle 4, Story I.x.3, `schema_version` bump). Rewrite every assertion in both recipes to use the new naming + the new kinds. |
 | G17 | Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
 | G18 | Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |
 | G19 | **Closed in v0.17.1 (Story I.i).** Replace Recipe B's pinned literal `params.mean` / `params.std` with the FR-TRANS-1 form: `params: { stats_from_instance: { recipe: recipes/cifar10-base.yaml, op_id: normalize_per_channel } }`. Remove the G19-workaround comment block from the recipe header. (Bonus: once the future variant-selector form lands, the consumer recipe can pin a specific sibling-variant of Recipe A's normalize stats — relevant for Module 9's imbalance variants whose normalize stats may legitimately differ.) |

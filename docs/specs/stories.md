@@ -462,11 +462,11 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G11](phase-i-dependency-gaps-v0.16.
 
 ---
 
-### Story I.o: G6 + G16b — per-split / per-class / structural assertion kinds [Planned]
+### Story I.o: G6 + G16b — per-split / per-class / structural assertion kinds [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
-Per [`dependency-gaps-v0.16.0.md` § G6](dependency-gaps-v0.16.0.md) and [§ G16b](dependency-gaps-v0.16.0.md): seven new assertion kinds land together (they share evaluator plumbing). The `evaluate_output_expectations` signature widens from `Iterable[Record]` to `Mapping[str, list[Record]]` keyed by split. `evaluate_input_contracts` keeps its flat form (contracts run pre-splits). The naming-rename pass for existing kinds (G16a) is separate; ships in Bundle 4.
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G6](phase-i-dependency-gaps-v0.16.0.md) and [§ G16b](phase-i-dependency-gaps-v0.16.0.md): seven new assertion kinds land together (they share evaluator plumbing). The `evaluate_output_expectations` signature widens from `Iterable[Record]` to `Mapping[str, Sequence[Record]]` keyed by split. `evaluate_input_contracts` keeps its flat form (contracts run pre-splits). The naming-rename pass for existing kinds (G16a) is separate; ships in Bundle 4.
 
 **New kinds:**
 
@@ -480,13 +480,19 @@ Per [`dependency-gaps-v0.16.0.md` § G6](dependency-gaps-v0.16.0.md) and [§ G16
 
 **Tasks:**
 
-- [ ] Widen `evaluate_output_expectations` signature to `Mapping[str, list[Record]]`; route single-split callers as a one-key mapping for backward compatibility.
-- [ ] Implement each new kind in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py); register in the dispatch table.
-- [ ] Unit tests per kind: positive case + at least one negative case with precise diff message ("split 'val' expected 300, got 350", etc.).
-- [ ] Integration test: a recipe declaring all seven kinds materializes; expectations pass on canonical fixture; mutating ratios / shapes / class counts produces precise failure messages.
-- [ ] DOC: extend the assertion-kinds table in [`recipe-authoring.md` § InputContracts](../guides/recipe-authoring.md) and § OutputExpectations with a row per new kind. Add a "Cross-split assertions" subsection explaining per-split semantics.
-- [ ] Update [`tech-spec.md`](tech-spec.md) assertion-kinds enumeration.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G6 + § G16b](dependency-gaps-v0.16.0.md): status blocks; priority summary → "Closed in v0.18.0"; workarounds rows.
+- [x] Widened `evaluate_output_expectations` to accept `Mapping[str, Sequence[Record]]` (used `Sequence` rather than `list` for covariance so `dict[str, list[dict]]` call sites type-check); a flat iterable is still accepted and routed as one implicit `__all__` split for backward compatibility. `evaluate_input_contracts` stays flat. Runner now passes `split_map` directly instead of pre-flattening.
+- [x] Implemented each new kind in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py) and registered them in `_evaluate_one`. Per-split kinds (`split_record_counts`, `per_class_count_per_split`) are gated by a `_PER_SPLIT_KINDS` set: declaring one in `InputContracts` (where `splits is None`) fails with a "requires per-split context" message. `per_class_count_per_split` carries an optional `tolerance` (default 1) to absorb stratification rounding.
+- [x] Unit tests per kind in [`test_contracts.py`](../../tests/unit/test_contracts.py): positive + negative with precise diff message (`split 'val' expected 2, got 3`, offending key/class/value named, etc.), plus the per-split-in-InputContracts rejection and the flat-iterable backward-compat path.
+- [x] Integration-style test: a single `OutputExpectations` block declaring all seven kinds passes against a consistent split-keyed fixture; a separate test confirms a mutated split count produces a precise failure message.
+- [x] DOC: extended [`recipe-authoring.md` § OutputExpectations](../guides/recipe-authoring.md) with an assertion-kinds table for the seven new kinds plus a "Cross-split assertions" subsection explaining per-split-only semantics and the InputContracts rejection. (The new kinds are OutputExpectations-relevant; the existing § InputContracts table already documents the five flat kinds shared by both.)
+- [x] Updated [`tech-spec.md` § pipeline.contracts](tech-spec.md) with the widened signature and the full assertion-kinds enumeration (flat vs per-split).
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G6 + § G16b](phase-i-dependency-gaps-v0.16.0.md): G6 status block + priority-summary row + workarounds row → "Closed in v0.18.0 (Story I.o)"; G16b marked Closed with each kind enumerated; G16a renames noted as still-open (Bundle 4).
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): assertion kinds are recipe-side and not referenced by the manifest/report contract — no contract surface change.
+- [x] CI parity: `pyve test` 1169 passed; `pyve testenv run mypy src tests` clean across 195 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
+
+**Out of Scope:**
+
+- G16a naming-rename pass for the existing five kinds (`*_equals` / `*_range` renames). Cache-invalidating; ships with the `schema_version` bump in Bundle 4 (Story I.x.3).
 
 ---
 

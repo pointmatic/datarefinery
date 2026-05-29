@@ -624,7 +624,7 @@ So **if your recipe loads labels via `image_flat` + `label_from` (or `image_fold
 
 ### `OutputExpectations`
 
-Post-pipeline assertions on the materialized records. Same assertion shape as `InputContracts`, run after the final pipeline stage. Failures abort the run at end-of-pipeline; the partial instance is left in the cache's `.tmp/<run-id>/` directory under the `FAILED` marker for diagnosis (FR-5 atomic temp-then-promote).
+Post-pipeline assertions on the materialized records. Run after the final pipeline stage. Failures abort the run at end-of-pipeline; the partial instance is left in the cache's `.tmp/<run-id>/` directory under the `FAILED` marker for diagnosis (FR-5 atomic temp-then-promote).
 
 ```yaml
 OutputExpectations:
@@ -633,6 +633,37 @@ OutputExpectations:
     severity: error
   - field: image
     assertion: { kind: dtype, expected: uint8 }
+    severity: error
+```
+
+`OutputExpectations` support every `InputContracts` assertion kind above, plus the per-split / per-class / structural kinds below (these run after Splits, so they have access to the split structure that pre-pipeline `InputContracts` do not).
+
+| `kind` | Required keys | Optional keys | What it checks |
+|--------|---------------|---------------|-----------------|
+| `split_record_counts` | `counts: {<split>: <int>, …}` | — | Each named split's record count equals the declared value. A named split that is absent fails. Extra splits are ignored. |
+| `per_class_count_per_split` | `field`, `per_class: <int>` | `tolerance` (default `1`) | For every split, every distinct value of `field` has `per_class ± tolerance` records. The default tolerance absorbs stratification rounding; declare at `severity: warning` for a soft check. |
+| `count_by_field` | `field`, `value_per_key: <int>` | — | Across all records, every distinct value of `field` has exactly `value_per_key` records. |
+| `count_by_fields` | `fields: [<name>, …]`, `value_per_combination: <int>` | — | Across all records, every distinct combination of `fields` values has exactly `value_per_combination` records (e.g. every `(corruption, severity)` pair). |
+| `shape_equals` | `field`, `value: [<dim>, …]` | — | Every record's `field` is an ndarray whose `.shape` equals `value`. Non-ndarray values fail. |
+| `value_in_set` | `field`, `value: [<v>, …]` | — | Every record's `field` value is one of the listed values. `None` values are skipped (use `required_field` to forbid them). |
+| `per_class_count_equals` | `field`, `value: <int>` | — | Across all records (single-split form), every distinct value of `field` has exactly `value` records. |
+
+**Cross-split assertions.** `split_record_counts` and `per_class_count_per_split` are the only kinds that consult the split structure; the rest evaluate against the flattened set of all records across splits. The per-split kinds are valid **only** in `OutputExpectations` — declaring one in `InputContracts` (which runs pre-Splits) fails with a clear "requires per-split context" message. Failure messages name the offending split / class / key precisely (e.g. `split 'val' expected 300, got 350`).
+
+```yaml
+OutputExpectations:
+  - assertion:
+      kind: split_record_counts
+      counts: { train: 1700, val: 300, test: 1000 }
+    severity: error
+  - field: label
+    assertion: { kind: per_class_count_per_split, per_class: 170 }
+    severity: warning      # tolerant of stratification rounding
+  - field: image
+    assertion: { kind: shape_equals, value: [32, 32, 3] }
+    severity: error
+  - field: label
+    assertion: { kind: value_in_set, value: [airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck] }
     severity: error
 ```
 

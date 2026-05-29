@@ -11,6 +11,25 @@ Assertion kinds supported in v1:
 - ``distributional``   placeholder (always passes in v1; full machinery is
                        post-v1; see features.md FR-23 edge cases)
 
+Per-split / per-class / structural kinds (G6 + G16b, Story I.o; valid in
+``OutputExpectations`` only — they require the per-split structure):
+
+- ``split_record_counts``        per-split record-count equality
+                                 (``counts: {<split>: <int>, …}``)
+- ``per_class_count_per_split``  per-split per-class count within a
+                                 rounding tolerance (``field``,
+                                 ``per_class``, optional ``tolerance``=1)
+- ``count_by_field``             every distinct value of ``field`` has
+                                 ``value_per_key`` records (flat)
+- ``count_by_fields``            every distinct combination of ``fields``
+                                 has ``value_per_combination`` records (flat)
+- ``shape_equals``               every record's ``field`` is an ndarray
+                                 whose shape equals ``value`` (flat)
+- ``value_in_set``               every record's ``field`` value is in the
+                                 ``value`` set (flat)
+- ``per_class_count_equals``     every distinct value of ``field`` has
+                                 exactly ``value`` records (single-split, flat)
+
 Evaluators return a :class:`ContractResult` listing one
 :class:`AssertionResult` per declared contract. The runner calls
 ``result.raise_for_status()`` to abort materialization on any
@@ -26,7 +45,7 @@ are peers of ``Output`` and complement it with value-level assertions.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -247,15 +266,182 @@ def _eval_distributional(
     return True, "distributional check is a v1 placeholder; always passes"
 
 
+def _eval_split_record_counts(
+    splits: Mapping[str, list[Record]],
+    assertion: Mapping[str, Any],
+) -> tuple[bool, str]:
+    counts = assertion.get("counts")
+    if not isinstance(counts, Mapping):
+        return False, "split_record_counts assertion needs a 'counts' mapping"
+    bad: list[str] = []
+    for split_name, expected in counts.items():
+        if split_name not in splits:
+            bad.append(f"split {split_name!r} absent (expected {expected})")
+            continue
+        actual = len(splits[split_name])
+        if actual != expected:
+            bad.append(f"split {split_name!r} expected {expected}, got {actual}")
+    if bad:
+        return False, "; ".join(bad)
+    return True, f"split record counts match {dict(counts)!r}"
+
+
+def _eval_per_class_count_per_split(
+    splits: Mapping[str, list[Record]],
+    field: str,
+    assertion: Mapping[str, Any],
+) -> tuple[bool, str]:
+    per_class = assertion.get("per_class")
+    if not isinstance(per_class, int):
+        return False, "per_class_count_per_split assertion needs an integer 'per_class'"
+    tolerance = assertion.get("tolerance", 1)
+    if not isinstance(tolerance, int) or tolerance < 0:
+        return False, "per_class_count_per_split 'tolerance' must be a non-negative int"
+    bad: list[str] = []
+    for split_name, recs in splits.items():
+        counts: dict[Any, int] = {}
+        for r in recs:
+            counts[r.get(field)] = counts.get(r.get(field), 0) + 1
+        for cls, n in sorted(counts.items(), key=lambda kv: str(kv[0])):
+            if abs(n - per_class) > tolerance:
+                bad.append(
+                    f"split {split_name!r} class {cls!r} expected {per_class}±{tolerance}, got {n}"
+                )
+    if bad:
+        return False, "; ".join(bad)
+    return True, f"per-class counts within {per_class}±{tolerance} for every split"
+
+
+def _eval_count_by_field(
+    records: list[Record],
+    field: str,
+    assertion: Mapping[str, Any],
+) -> tuple[bool, str]:
+    expected = assertion.get("value_per_key")
+    if not isinstance(expected, int):
+        return False, "count_by_field assertion needs an integer 'value_per_key'"
+    counts: dict[Any, int] = {}
+    for r in records:
+        counts[r.get(field)] = counts.get(r.get(field), 0) + 1
+    bad = [
+        f"{key!r}={n}"
+        for key, n in sorted(counts.items(), key=lambda kv: str(kv[0]))
+        if n != expected
+    ]
+    if bad:
+        return False, f"field {field!r} expected {expected} per key; got " + ", ".join(bad)
+    return True, f"field {field!r} has {expected} records for every key"
+
+
+def _eval_count_by_fields(
+    records: list[Record],
+    assertion: Mapping[str, Any],
+) -> tuple[bool, str]:
+    fields = assertion.get("fields")
+    if not isinstance(fields, list) or not all(isinstance(f, str) for f in fields):
+        return False, "count_by_fields assertion needs a 'fields' list of strings"
+    expected = assertion.get("value_per_combination")
+    if not isinstance(expected, int):
+        return False, "count_by_fields assertion needs an integer 'value_per_combination'"
+    counts: dict[tuple[Any, ...], int] = {}
+    for r in records:
+        key = tuple(r.get(f) for f in fields)
+        counts[key] = counts.get(key, 0) + 1
+    bad = [
+        f"{combo!r}={n}"
+        for combo, n in sorted(counts.items(), key=lambda kv: str(kv[0]))
+        if n != expected
+    ]
+    if bad:
+        return False, (
+            f"fields {fields!r} expected {expected} per combination; got " + ", ".join(bad)
+        )
+    return True, f"fields {fields!r} have {expected} records for every combination"
+
+
+def _eval_shape_equals(
+    records: list[Record],
+    field: str,
+    assertion: Mapping[str, Any],
+) -> tuple[bool, str]:
+    value = assertion.get("value")
+    if not isinstance(value, list):
+        return False, "shape_equals assertion needs a 'value' list of dimensions"
+    expected_shape = tuple(value)
+    bad: list[tuple[int, Any]] = []
+    for i, r in enumerate(records):
+        v = r.get(field)
+        if not isinstance(v, np.ndarray):
+            bad.append((i, type(v).__name__))
+            continue
+        if v.shape != expected_shape:
+            bad.append((i, v.shape))
+    if bad:
+        i, got = bad[0]
+        more = "" if len(bad) == 1 else f" (+{len(bad) - 1} more)"
+        return False, (
+            f"field {field!r} expected shape {list(expected_shape)}; got {got} at record {i}{more}"
+        )
+    return True, f"field {field!r} shape matches {list(expected_shape)} in all records"
+
+
+def _eval_value_in_set(
+    records: list[Record],
+    field: str,
+    assertion: Mapping[str, Any],
+) -> tuple[bool, str]:
+    value = assertion.get("value")
+    if not isinstance(value, list):
+        return False, "value_in_set assertion needs a 'value' list of allowed values"
+    allowed = set(value)
+    bad: list[tuple[int, Any]] = []
+    for i, r in enumerate(records):
+        v = r.get(field)
+        if v is None:
+            continue
+        if v not in allowed:
+            bad.append((i, v))
+    if bad:
+        i, v = bad[0]
+        more = "" if len(bad) == 1 else f" (+{len(bad) - 1} more)"
+        return False, (f"field {field!r} value {v!r} at record {i} not in {value!r}{more}")
+    return True, f"field {field!r} all values in {value!r}"
+
+
+def _eval_per_class_count_equals(
+    records: list[Record],
+    field: str,
+    assertion: Mapping[str, Any],
+) -> tuple[bool, str]:
+    expected = assertion.get("value")
+    if not isinstance(expected, int):
+        return False, "per_class_count_equals assertion needs an integer 'value'"
+    counts: dict[Any, int] = {}
+    for r in records:
+        counts[r.get(field)] = counts.get(r.get(field), 0) + 1
+    bad = [
+        f"{cls!r}={n}"
+        for cls, n in sorted(counts.items(), key=lambda kv: str(kv[0]))
+        if n != expected
+    ]
+    if bad:
+        return False, f"field {field!r} expected {expected} per class; got " + ", ".join(bad)
+    return True, f"field {field!r} has exactly {expected} records per class"
+
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
+
+
+_PER_SPLIT_KINDS = frozenset({"split_record_counts", "per_class_count_per_split"})
 
 
 def _evaluate_one(
     records: list[Record],
     contract: Contract | Expectation,
     *,
+    splits: Mapping[str, list[Record]] | None = None,
     skip_missing_label_field: str | None = None,
 ) -> AssertionResult:
     assertion = contract.assertion
@@ -273,61 +459,76 @@ def _evaluate_one(
             message=(f"assertion missing string 'kind' (got {type(kind).__name__})"),
         )
 
+    if kind in _PER_SPLIT_KINDS and splits is None:
+        return AssertionResult(
+            kind,
+            field,
+            False,
+            severity,
+            f"{kind} requires per-split context (only valid in OutputExpectations)",
+        )
+
+    def _need_field() -> AssertionResult | None:
+        if field is None:
+            return AssertionResult(kind, None, False, severity, f"{kind} assertion needs a 'field'")
+        return None
+
     try:
         if kind == "record_count":
             ok, msg = _eval_record_count(records, assertion)
         elif kind == "required_field":
-            if field is None:
-                return AssertionResult(
-                    kind,
-                    None,
-                    False,
-                    severity,
-                    "required_field assertion needs a 'field'",
-                )
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None
             ok, msg = _eval_required_field(records, field, skip_missing_field=skip_missing)
         elif kind == "dtype":
-            if field is None:
-                return AssertionResult(
-                    kind,
-                    None,
-                    False,
-                    severity,
-                    "dtype assertion needs a 'field'",
-                )
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None
             ok, msg = _eval_dtype(records, field, assertion)
         elif kind == "range":
-            if field is None:
-                return AssertionResult(
-                    kind,
-                    None,
-                    False,
-                    severity,
-                    "range assertion needs a 'field'",
-                )
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None
             ok, msg = _eval_range(records, field, assertion)
         elif kind == "distributional":
             ok, msg = _eval_distributional(records, field, assertion)
+        elif kind == "split_record_counts":
+            assert splits is not None
+            ok, msg = _eval_split_record_counts(splits, assertion)
+        elif kind == "per_class_count_per_split":
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None and splits is not None
+            ok, msg = _eval_per_class_count_per_split(splits, field, assertion)
+        elif kind == "count_by_field":
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None
+            ok, msg = _eval_count_by_field(records, field, assertion)
+        elif kind == "count_by_fields":
+            ok, msg = _eval_count_by_fields(records, assertion)
+        elif kind == "shape_equals":
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None
+            ok, msg = _eval_shape_equals(records, field, assertion)
+        elif kind == "value_in_set":
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None
+            ok, msg = _eval_value_in_set(records, field, assertion)
+        elif kind == "per_class_count_equals":
+            if (miss := _need_field()) is not None:
+                return miss
+            assert field is not None
+            ok, msg = _eval_per_class_count_equals(records, field, assertion)
         else:
             ok, msg = False, f"unknown assertion kind {kind!r}"
     except (TypeError, ValueError) as exc:
         ok, msg = False, f"evaluator raised {type(exc).__name__}: {exc}"
 
     return AssertionResult(kind=kind, field=field, passed=ok, severity=severity, message=msg)
-
-
-def _evaluate_all(
-    records: Iterable[Record],
-    contracts: list[Contract] | list[Expectation],
-    *,
-    skip_missing_label_field: str | None = None,
-) -> ContractResult:
-    materialized = list(records)
-    results = tuple(
-        _evaluate_one(materialized, c, skip_missing_label_field=skip_missing_label_field)
-        for c in contracts
-    )
-    return ContractResult(results=results)
 
 
 def evaluate_input_contracts(
@@ -337,29 +538,53 @@ def evaluate_input_contracts(
     """Evaluate ``InputContracts`` against the raw input record stream.
 
     Materializes the iterable once internally so multiple assertions can
-    traverse the same records without callers re-buffering.
+    traverse the same records without callers re-buffering. Input
+    contracts run pre-splits, so per-split assertion kinds are rejected
+    with a clear message.
     """
-    return _evaluate_all(records, contracts)
+    materialized = list(records)
+    results = tuple(_evaluate_one(materialized, c) for c in contracts)
+    return ContractResult(results=results)
 
 
 def evaluate_output_expectations(
-    dataset: Iterable[Record],
+    dataset: Mapping[str, Sequence[Record]] | Iterable[Record],
     expectations: list[Expectation],
     *,
     skip_missing_label_field: str | None = None,
 ) -> ContractResult:
     """Evaluate ``OutputExpectations`` against the materialized dataset.
 
-    The dataset is presented as a flat record iterable in v1; per-split
-    expectations are not yet expressible (deferred to a post-v1 expectation
-    extension).
+    ``dataset`` is a ``Mapping[str, list[Record]]`` keyed by split name
+    (the canonical form post-Splits). A flat iterable is also accepted
+    and routed as a single implicit split for backward compatibility;
+    per-split assertion kinds then see one unnamed split.
+
+    Flat-record kinds (``record_count``, ``dtype``, ``range``,
+    ``shape_equals``, ``value_in_set``, ``count_by_field``,
+    ``count_by_fields``, ``per_class_count_equals``, …) evaluate against
+    every record across all splits. Per-split kinds
+    (``split_record_counts``, ``per_class_count_per_split``) evaluate
+    against the split structure.
 
     When ``skip_missing_label_field`` is set (the recipe's ``Labels.field``
     name when any source declares ``unlabeled: true``), expectations whose
     ``field`` equals that name treat records that lack the field as
     "skipped" rather than failures. Records where the field is present
-    but ``None`` still fail. This lets a recipe that mixes labeled and
-    unlabeled partitions declare ``required_field: <label>`` without
-    being rejected for the unlabeled partition's missing labels.
+    but ``None`` still fail.
     """
-    return _evaluate_all(dataset, expectations, skip_missing_label_field=skip_missing_label_field)
+    if isinstance(dataset, Mapping):
+        splits: dict[str, list[Record]] = {k: list(v) for k, v in dataset.items()}
+    else:
+        splits = {"__all__": list(dataset)}
+    all_records = [r for recs in splits.values() for r in recs]
+    results = tuple(
+        _evaluate_one(
+            all_records,
+            c,
+            splits=splits,
+            skip_missing_label_field=skip_missing_label_field,
+        )
+        for c in expectations
+    )
+    return ContractResult(results=results)
