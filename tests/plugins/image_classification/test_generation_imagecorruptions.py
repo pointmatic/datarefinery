@@ -187,6 +187,39 @@ def test_tag_fields_default_written_on_each_output() -> None:
         assert r["source_path"] in ("/data/0.png", "/data/1.png")
 
 
+def test_tag_fields_dict_form_writes_under_authored_keys() -> None:
+    records = _input_records(n=1)
+    params: dict[str, Any] = {
+        "corruption_types": ["gaussian_noise"],
+        "severities": [3],
+        "preserve_original": False,
+        "tag_fields": {"corruption_kind": "corruption", "lvl": "severity"},
+    }
+    op = GenerationOp(
+        name="imagecorruptions_apply",
+        inputs=["image"],
+        output_schema=_output_schema(),
+        seed=42,
+        params=params,
+    )
+    new = imagecorruptions_apply(
+        records,
+        seed=cast(int, op.seed),
+        inputs=list(op.inputs),
+        output_schema=op.output_schema,
+        params=dict(op.params),
+        label_field=None,
+        op_name="imagecorruptions_apply",
+    )
+    assert new[0]["corruption_kind"] == "gaussian_noise"
+    assert new[0]["lvl"] == 3
+    # Canonical names are NOT used as keys when the dict form renames them.
+    assert "corruption" not in new[0]
+    assert "severity" not in new[0]
+    # source_path was not declared in the dict, so it must not appear.
+    assert "source_path" not in new[0]
+
+
 def test_tag_fields_subset_only_writes_named() -> None:
     records = _input_records(n=1)
     op = _gen_op(
@@ -385,6 +418,40 @@ def test_empty_corruption_types_rejected() -> None:
 def test_empty_severities_rejected() -> None:
     with pytest.raises(ValidationError):
         ImageCorruptionsApplyParams(corruption_types=["gaussian_noise"], severities=[])
+
+
+# --- G13 (Story I.u): tag_fields dict-rename form ---
+
+
+def test_tag_fields_dict_form_accepts_canonical_values() -> None:
+    parsed = ImageCorruptionsApplyParams(
+        corruption_types=["gaussian_noise"],
+        severities=[1],
+        tag_fields={"corruption_kind": "corruption", "lvl": "severity", "src": "source_path"},
+    )
+    assert parsed.tag_fields == {
+        "corruption_kind": "corruption",
+        "lvl": "severity",
+        "src": "source_path",
+    }
+
+
+def test_tag_fields_dict_form_rejects_unknown_canonical_value() -> None:
+    with pytest.raises(ValidationError, match="bogus"):
+        ImageCorruptionsApplyParams(
+            corruption_types=["gaussian_noise"],
+            severities=[1],
+            tag_fields={"a": "corruption", "b": "bogus"},
+        )
+
+
+def test_tag_fields_dict_form_rejects_duplicate_canonical_values() -> None:
+    with pytest.raises(ValidationError, match="duplicate"):
+        ImageCorruptionsApplyParams(
+            corruption_types=["gaussian_noise"],
+            severities=[1],
+            tag_fields={"a": "corruption", "b": "corruption"},
+        )
 
 
 # ---------------------------------------------------------------------------

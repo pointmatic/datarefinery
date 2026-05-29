@@ -83,9 +83,18 @@ def imagecorruptions_apply(
     corruption_types = list(parsed.corruption_types)
     severities = list(parsed.severities)
     preserve_original = parsed.preserve_original
-    tag_corruption = "corruption" in parsed.tag_fields
-    tag_severity = "severity" in parsed.tag_fields
-    tag_source_path = "source_path" in parsed.tag_fields
+    # G13 / Story I.u: tag_fields is either a list of canonical names (legacy)
+    # or a {authored_field: canonical_name} rename map. Resolve to per-canonical
+    # output-field names (or None when the canonical is not requested).
+    if isinstance(parsed.tag_fields, dict):
+        _by_canonical = {canon: authored for authored, canon in parsed.tag_fields.items()}
+        corruption_key: str | None = _by_canonical.get("corruption")
+        severity_key: str | None = _by_canonical.get("severity")
+        source_path_key: str | None = _by_canonical.get("source_path")
+    else:
+        corruption_key = "corruption" if "corruption" in parsed.tag_fields else None
+        severity_key = "severity" if "severity" in parsed.tag_fields else None
+        source_path_key = "source_path" if "source_path" in parsed.tag_fields else None
 
     new_records: list[Record] = []
     for record in records:
@@ -109,12 +118,12 @@ def imagecorruptions_apply(
         if preserve_original:
             preserved = dict(record)
             preserved["record_id"] = _derive_output_record_id(record["record_id"], "none", 0)
-            if tag_corruption:
-                preserved["corruption"] = "none"
-            if tag_severity:
-                preserved["severity"] = 0
-            if tag_source_path:
-                preserved["source_path"] = source_path
+            if corruption_key is not None:
+                preserved[corruption_key] = "none"
+            if severity_key is not None:
+                preserved[severity_key] = 0
+            if source_path_key is not None:
+                preserved[source_path_key] = source_path
             preserved[seed_field] = prs
             new_records.append(preserved)
 
@@ -131,12 +140,12 @@ def imagecorruptions_apply(
                 out["record_id"] = _derive_output_record_id(
                     record["record_id"], corruption_name, severity
                 )
-                if tag_corruption:
-                    out["corruption"] = corruption_name
-                if tag_severity:
-                    out["severity"] = severity
-                if tag_source_path:
-                    out["source_path"] = source_path
+                if corruption_key is not None:
+                    out[corruption_key] = corruption_name
+                if severity_key is not None:
+                    out[severity_key] = severity
+                if source_path_key is not None:
+                    out[source_path_key] = source_path
                 out[seed_field] = prs
                 new_records.append(out)
     return new_records

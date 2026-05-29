@@ -450,6 +450,37 @@ This is the transformation-style case: `imagecorruptions_apply` emits `n_corrupt
 
 `replace_input_records` is part of the recipe's canonical bytes — toggling it produces a different cache instance.
 
+#### `tag_fields` on `imagecorruptions_apply`
+
+`tag_fields` controls which metadata the op stamps onto each output record. The canonical metadata names are **`corruption`**, **`severity`**, and **`source_path`**. Two authoring forms are accepted:
+
+- **List form (legacy / default).** A subset of the canonical names; each named tag is written under its canonical key. Omit a name to suppress its tag.
+
+  ```yaml
+  Generation:
+    - name: corrupt
+      params:
+        corruption_types: [gaussian_noise]
+        severities: [3]
+        tag_fields: [corruption, severity]    # source_path suppressed
+  ```
+
+- **Dict form (rename map, Story I.u / G13).** A `{authored_field_name: canonical_name}` mapping. Each output record receives the canonical tag's value under the *authored* key. Canonicals not listed are suppressed. Useful when downstream code expects a different column name (e.g. `corruption_kind` instead of `corruption`), or when avoiding a clash with another field on the record.
+
+  ```yaml
+  Generation:
+    - name: corrupt
+      params:
+        corruption_types: [gaussian_noise]
+        severities: [3]
+        tag_fields:
+          corruption_kind: corruption          # rename
+          lvl: severity                        # rename
+          # source_path omitted → not written
+  ```
+
+The model validator rejects a dict value that is not in `{corruption, severity, source_path}` and rejects duplicate canonical values (the rename map must be one-to-one). The list form is unchanged.
+
 **Per-record-seed persistence (Story I.e).** Each Generation op that uses the per-record-seed contract (today: `imagecorruptions_apply`) stamps `<GenerationOp.name>_seed` (8-byte int) onto every output record. The field rides through to the cached JSONL and is captured automatically by any Sink targeting `post_Generation`. Downstream tools — including the forthcoming `datarefinery export` verb (Story I.f) — use this seed to reconstruct the op's stochastic output from the cached state, without re-running the full pipeline. Ops whose stochasticity is op-level (not per-record) — like `duplicate_minority_class` — do not stamp; the op-level seed already lives in `recipe.json` and the duplicated record's `record_id` points back at the source.
 
 ### `Splits`

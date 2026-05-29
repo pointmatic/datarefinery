@@ -49,7 +49,7 @@ None of these require a `schema_version` bump.
 | G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Closed in v0.18.0** (Story I.s; dict shape + `manifest.class_balance`, MF-side resampling) | Schema + pipeline runner |
 | G11 | `seed_derive_from: master` not recognized on Filters / Generation | **Closed in v0.18.0** (Story I.n) | Schema |
 | G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
-| G13 | `tag_fields` rename mapping for `imagecorruptions_apply` (`list[str]` vs `dict[str, str]`) | Friction (canonical names used) | Schema (param shape) |
+| G13 | `tag_fields` rename mapping for `imagecorruptions_apply` (`list[str]` vs `dict[str, str]`) | **Closed in v0.18.0** (Story I.u) | Schema (param shape) |
 | G14 | `SampleData.selector` lacks `kind` and `splits` | **Schema in v0.18.0** (Story I.r); runtime pending (plan_phase) | Schema |
 | G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Blocking (recipe doesn't parse)** | Schema (cross-section consistency) |
 | G16 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
@@ -1107,6 +1107,8 @@ Per DOC: rewrite `recipe-authoring.md § Generation` with a worked
 
 ## G13 — `tag_fields` rename mapping for `imagecorruptions_apply`
 
+**Status (Story I.u, v0.18.0):** **Closed.** `ImageCorruptionsApplyParams.tag_fields` widened to `list[str] | dict[str, str]` ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)). The dict form is a `{authored_field_name: canonical_name}` rename map; the canonical set `{corruption, severity, source_path}` is now a module-level constant `_CORRUPTION_TAG_CANONICAL`. The model `_validate` rejects dict values outside the canonical set and duplicate canonical values (the rename must be one-to-one). The runtime ([`generation_imagecorruptions.py`](../../src/datarefinery/plugins/image_classification/generation_imagecorruptions.py)) inverts the dict to `canonical → authored_key` and writes each declared tag under the authored key (preserved-original copies included). The list form is unchanged — `tag_fields: [corruption, severity]` still writes under the canonical names. Additive — no canonical-bytes perturbation for existing list-form recipes; no `schema_version` bump. Documented in `recipe-authoring.md § Generation → tag_fields on imagecorruptions_apply`.
+
 **Severity:** Friction (workaround: accept the canonical field names).
 
 **Category:** Schema (param shape).
@@ -1813,7 +1815,7 @@ corresponding deviation removed:
 | G10 | **Closed in v0.18.0 (Story I.s).** Restore the `imbalanced_oversample` / `imbalanced_classweight` variants using the dict form `class_balance: { strategy: <name>, applies_to: [train] }`. The strategy rides through to `manifest.class_balance`; ModelFoundry resamples/weights at training time (DR does not). |
 | G11 | **Closed in v0.18.0 (Story I.n).** Restore `seed_derive_from: master` on every filter and on Recipe B's `apply_corruptions` Generation op. |
 | G12 | Rewrite Recipe B's `Generation` block in the new shape: top-level `op:`, `splits:` (not `applies_at:`), `output_schema: matches_input`, and `seed_derive_from: master`. |
-| G13 | Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption: corruption_type, severity: severity, source_path: original_path }`. |
+| G13 | **Closed in v0.18.0 (Story I.u).** Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption_type: corruption, severity: severity, original_path: source_path }` (keys are the authored output-field names; values are the canonical tag names). |
 | G14 | **Schema in v0.18.0 (Story I.r); runtime pending.** The `SampleData` section now *accepts* `selector: { kind: per_class, n: 1, splits: [train] }` (validated, cache-participating), but the selector is not yet honored at materialize time — restoring it is forward-looking until the carved-out runtime story (plan_phase) lands. |
 | G15 | Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. |
 | G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames still open** (Bundle 4, Story I.x.3, `schema_version` bump). Rewrite every assertion in both recipes to use the new naming + the new kinds. |

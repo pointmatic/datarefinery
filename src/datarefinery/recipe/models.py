@@ -212,6 +212,9 @@ class DropByLabelParams(_Frozen):
     labels: list[str] = Field(min_length=1)
 
 
+_CORRUPTION_TAG_CANONICAL: frozenset[str] = frozenset({"corruption", "severity", "source_path"})
+
+
 class ImageCorruptionsApplyParams(_Frozen):
     """FR-GEN-1 params for `imagecorruptions_apply` (Story H.m.2).
 
@@ -227,7 +230,9 @@ class ImageCorruptionsApplyParams(_Frozen):
     corruption_types: list[str] = Field(min_length=1)
     severities: list[int] = Field(min_length=1)
     preserve_original: bool = False
-    tag_fields: list[str] = Field(default_factory=lambda: ["corruption", "severity", "source_path"])
+    tag_fields: list[str] | dict[str, str] = Field(
+        default_factory=lambda: ["corruption", "severity", "source_path"]
+    )
 
     @model_validator(mode="after")
     def _validate(self) -> ImageCorruptionsApplyParams:
@@ -257,6 +262,24 @@ class ImageCorruptionsApplyParams(_Frozen):
             raise ValueError(
                 f"imagecorruptions_apply: severities contains duplicates ({self.severities!r})"
             )
+        if isinstance(self.tag_fields, dict):
+            # G13 / Story I.u: dict form maps authored output-field name → canonical
+            # tag name. Each value must be in the canonical set; each canonical may
+            # appear at most once (one-to-one rename mapping).
+            unknown = sorted(
+                {v for v in self.tag_fields.values() if v not in _CORRUPTION_TAG_CANONICAL}
+            )
+            if unknown:
+                raise ValueError(
+                    f"imagecorruptions_apply: tag_fields dict values {unknown!r} are not "
+                    f"in the canonical set {sorted(_CORRUPTION_TAG_CANONICAL)!r}"
+                )
+            values = list(self.tag_fields.values())
+            if len(set(values)) != len(values):
+                raise ValueError(
+                    f"imagecorruptions_apply: tag_fields dict has duplicate canonical "
+                    f"value(s) (got {self.tag_fields!r})"
+                )
         return self
 
 

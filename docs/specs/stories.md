@@ -644,7 +644,7 @@ Per [`dependency-gaps-v0.16.0.md` § G1](dependency-gaps-v0.16.0.md): validator 
 
 ---
 
-### Story I.u: G13 — `tag_fields` dict-rename form [Planned]
+### Story I.u: G13 — `tag_fields` dict-rename form [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
@@ -652,12 +652,14 @@ Per [`dependency-gaps-v0.16.0.md` § G13](dependency-gaps-v0.16.0.md): `ImageCor
 
 **Tasks:**
 
-- [ ] Widen `ImageCorruptionsApplyParams.tag_fields` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py) to `list[str] | dict[str, str]`.
-- [ ] Update [`generation_imagecorruptions.py`](../../src/datarefinery/plugins/image_classification/operations/generation_imagecorruptions.py) to walk the dict form: each value must be in `{corruption, severity, source_path}`; write each tag under the authored key.
-- [ ] Validator check: dict values are in the canonical set; reject unknown values with a clear message.
-- [ ] Unit tests: list form (subset selection, current behavior); dict form (output-field rename); dict form with unknown canonical tag rejected.
-- [ ] DOC: document both shapes in [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md).
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G13](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Widened `ImageCorruptionsApplyParams.tag_fields` to `list[str] | dict[str, str]` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py); default unchanged (the canonical list). Added module-level constant `_CORRUPTION_TAG_CANONICAL = {"corruption", "severity", "source_path"}` and extended the pydantic `_validate` to reject dict values outside the canonical set and reject duplicate canonical values (the rename map must be one-to-one).
+- [x] Updated [`generation_imagecorruptions.py`](../../src/datarefinery/plugins/image_classification/generation_imagecorruptions.py) (file path corrected from the story's original; the file lives in the plugin root, not under `operations/`) to derive three optional `<canonical>_key: str | None` output-field names from the parsed `tag_fields`. For the dict form, inverts the map (`canonical → authored_key`); for the list form, the canonical name *is* the output-field name. Each preserved-original and corrupted record is stamped with `record[<key>] = <value>` when the corresponding key is not `None`.
+- [x] Validator check: covered by the pydantic model-level `_validate` (which surfaces as `RecipeError` via the loader) rather than a recipe-validator check, mirroring the other `ImageCorruptionsApplyParams` field validations (`unknown corruption_types`, severity range, duplicates). Kept narrow per the story scope: list-form unknown-canonical entries remain silently ignored as before — surfacing list-form typos was not in scope here.
+- [x] Unit tests in [`test_generation_imagecorruptions.py`](../../tests/plugins/image_classification/test_generation_imagecorruptions.py): list form (existing `test_tag_fields_default_written_on_each_output` / `test_tag_fields_subset_only_writes_named` are regression pins); dict form writes under authored keys with canonicals and undeclared canonicals correctly suppressed; dict form with an unknown canonical value rejected; dict form with duplicate canonical values rejected.
+- [x] DOC: added "`tag_fields` on `imagecorruptions_apply`" subsection to [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md) with worked examples of both forms, the canonical set, and the one-to-one constraint.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G13](phase-i-dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0 (Story I.u)"; workarounds row updated to show the corrected authored→canonical mapping direction.
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no contract surface change — `tag_fields` is recipe-side authoring; consumers already saw arbitrary plugin-emitted field names on records, and the manifest/report shapes are unchanged.
+- [x] CI parity: `pyve test` 1208 passed (+4 from this story); `pyve testenv run mypy src tests` clean across 196 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 ---
 
