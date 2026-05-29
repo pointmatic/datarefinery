@@ -5,10 +5,11 @@
 Each op follows the Featurizations operation handle interface in
 ``datarefinery.pipeline.stages.featurizations``: a stateless object with
 ``fit`` and ``apply`` methods, plus a ``fit_on_train: bool`` attribute
-mirroring the plugin's ``OperationSpec``. ``label_from_path`` and
-``image_size_stats`` (Story C.i) are no-fit. ``categorical_encode``
-(Story I.l / G3) supports both a recipe-declared ``vocabulary`` mode
-(no-fit) and a fit-on-train mode that persists the vocabulary under
+mirroring the plugin's ``OperationSpec``. ``label_from_path``,
+``image_size_stats`` (Story C.i), and ``flatten`` (Story I.m / G9) are
+no-fit. ``categorical_encode`` (Story I.l / G3) supports both a
+recipe-declared ``vocabulary`` mode (no-fit) and a fit-on-train mode
+that persists the vocabulary under
 ``fitted_statistics/<op_name>/vocabulary.parquet`` and replays it on
 every other declared split.
 """
@@ -229,5 +230,55 @@ class CategoricalEncodeOp:
                 raise PluginError(f"categorical_encode: label {key!r} not in vocabulary {vocab!r}")
             new = dict(r)
             new[output_field] = output_dtype.type(index[key])
+            out.append(new)
+        return out
+
+
+class FlattenOp:
+    """Reshape a multi-dimensional input field to a 1-D vector.
+
+    Deterministic, no fit phase. Writes ``output_field`` alongside the
+    source field — the source is preserved so a downstream consumer can
+    still observe the multi-dimensional view (e.g., a CNN-shaped variant
+    and an MLP-shaped variant of the same recipe).
+    """
+
+    fit_on_train: bool = False
+
+    def fit(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        *,
+        inputs: list[str],
+        output_field: str,
+        label_field: str | None,
+    ) -> FittedValues:
+        del records, params, inputs, output_field, label_field
+        return FittedValues()
+
+    def apply(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        fitted: FittedValues,
+        *,
+        inputs: list[str],
+        output_field: str,
+        label_field: str | None,
+    ) -> list[Record]:
+        del params, fitted, label_field
+        if len(inputs) != 1:
+            raise PluginError(
+                f"flatten requires exactly one input field (got {len(inputs)}: {inputs!r})"
+            )
+        source = inputs[0]
+        out: list[Record] = []
+        for r in records:
+            raw = r.get(source)
+            if raw is None:
+                raise PluginError(f"flatten: record missing input field {source!r}")
+            new = dict(r)
+            new[output_field] = np.asarray(raw).reshape(-1)
             out.append(new)
         return out

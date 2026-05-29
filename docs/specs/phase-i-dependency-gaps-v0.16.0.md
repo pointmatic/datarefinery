@@ -45,7 +45,7 @@ None of these require a `schema_version` bump.
 | G6 | `OutputExpectations` only supports flat-record assertion kinds | Friction (out-of-band verification used) | Contracts evaluator |
 | G7 | All reporting visualizations run at `post_pipeline` only | Friction (pre/post-normalize merged) | Pipeline runner |
 | G8 | `tensor`-typed fields can't satisfy `dtype` / `range` assertions | **Closed in v0.16.1** (Story I.b) | Contracts evaluator |
-| G9 | `flatten` Featurization missing from plugin | **Blocking for Phase D Module 3 (`mlp_flat`); deferred** | Plugin op registration |
+| G9 | `flatten` Featurization missing from plugin | **Closed in v0.18.0** (Story I.m) | Plugin op registration |
 | G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Blocking for Phase D Module 9 `imbalanced_oversample` / `imbalanced_classweight` variants** | Schema + pipeline runner |
 | G11 | `seed_derive_from: master` not recognized on Filters / Generation | Friction (explicit ints used in spec workaround) | Schema |
 | G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
@@ -704,8 +704,10 @@ the `Output.record_schema` shape at the value level.
 
 ## G9 — `flatten` Featurization missing from plugin
 
+**Status (Story I.m, v0.18.0):** **Closed.** `FlattenOp` registered in `_FEATURIZATION_OPS` ([`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py)). Deterministic, no fit phase; reshapes the named input to a 1-D vector while preserving the source field on the record. OperationSpec declares no params; the op requires exactly one entry in `inputs` (op-side `PluginError`).
+
 **Severity:** Blocking for Phase D Module 3 (`mlp_flat` variant); deferred
-in Phase B.
+in Phase B → **Closed v0.18.0**.
 
 **Category:** Plugin op registration.
 
@@ -1792,7 +1794,7 @@ corresponding deviation removed:
 | G6 | Restore per-split + per-class OutputExpectations (paired with G15 for the missing assertion kinds). |
 | G7 | Split `sample_grid` into `pre_normalize` + `post_normalize` versions with appropriate `stage:` values. |
 | G8 | **Closed in v0.16.1 (Story I.b).** `dtype: uint8` and `range: {min, max}` on tensor fields now work. (`tensor_range` / `tensor_shape` as separate kinds remain G16.) |
-| G9 | Restore the `flatten` Featurization in the `mlp_flat` variant. |
+| G9 | **Closed in v0.18.0 (Story I.m).** Restore the `flatten` Featurization in the `mlp_flat` variant. |
 | G10 | Restore the `imbalanced_oversample` and `imbalanced_classweight` variants once the resampling design is decided (recipe-side shape depends on the decision). |
 | G11 | Restore `seed_derive_from: master` on every filter and on Recipe B's `apply_corruptions` Generation op. |
 | G12 | Rewrite Recipe B's `Generation` block in the new shape: top-level `op:`, `splits:` (not `applies_at:`), `output_schema: matches_input`, and `seed_derive_from: master`. |

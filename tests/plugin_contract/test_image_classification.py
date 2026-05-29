@@ -30,6 +30,7 @@ EXPECTED_OPERATIONS = frozenset(
         "label_from_path",
         "image_size_stats",
         "categorical_encode",
+        "flatten",
         "random_crop",
         "horizontal_flip",
         "color_jitter",
@@ -155,9 +156,14 @@ def test_operation_factory_returns_transformation_ops_after_C_h() -> None:
 
 def test_operation_factory_returns_featurization_ops_after_C_i() -> None:
     """Story C.i wires label_from_path and image_size_stats through the
-    factory; Story I.l adds categorical_encode.
+    factory; Story I.l adds categorical_encode; Story I.m adds flatten.
     """
-    for op_name in ("label_from_path", "image_size_stats", "categorical_encode"):
+    for op_name in (
+        "label_from_path",
+        "image_size_stats",
+        "categorical_encode",
+        "flatten",
+    ):
         handle = PLUGIN.operation_factory("Featurizations", op_name)
         assert hasattr(handle, "fit") and hasattr(handle, "apply"), op_name
 

@@ -409,20 +409,23 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G3](phase-i-dependency-gaps-v0.16.0
 
 ---
 
-### Story I.m: G9 — `flatten` Featurization [Planned]
+### Story I.m: G9 — `flatten` Featurization [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
-Per [`dependency-gaps-v0.16.0.md` § G9](dependency-gaps-v0.16.0.md): a new Featurization op that reshapes a multi-dimensional field to a 1-D vector. Unblocks variants that want both the original tensor and a flattened view (e.g., MLP-shaped vs. CNN-shaped consumption from one recipe).
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G9](phase-i-dependency-gaps-v0.16.0.md): a new Featurization op that reshapes a multi-dimensional field to a 1-D vector. Unblocks variants that want both the original tensor and a flattened view (e.g., MLP-shaped vs. CNN-shaped consumption from one recipe).
 
 **Tasks:**
 
-- [ ] Add `FlattenOp` class to [`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py). Implementation: `{**r, output_field: np.asarray(r[src]).reshape(-1)}` per record.
-- [ ] OperationSpec: no params; `applicable_sections=frozenset({"Featurizations"})`. Require exactly one entry in `inputs` (validator-side or op-side error).
-- [ ] Register `"flatten": FlattenOp()` in `_FEATURIZATION_OPS`.
-- [ ] Unit tests: 3-D image → 1-D vector with correct length and values; multi-input rejected; variant overlay resolves cleanly via `apply_variant`.
-- [ ] DOC: add worked YAML example to [`recipe-authoring.md` § Featurizations](../guides/recipe-authoring.md).
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G9](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Added `FlattenOp` class to [`plugins/image_classification/operations/featurizations.py`](../../src/datarefinery/plugins/image_classification/operations/featurizations.py). Deterministic, no fit phase: `np.asarray(r[src]).reshape(-1)` per record, with the source field preserved alongside the new `output_field`.
+- [x] OperationSpec in [`plugin.py`](../../src/datarefinery/plugins/image_classification/plugin.py): no params; `applicable_sections=frozenset({"Featurizations"})`. The "exactly one input" rule is enforced op-side at apply time (`PluginError`); no validator-check change needed.
+- [x] Registered `"flatten": FlattenOp()` in `_FEATURIZATION_OPS`.
+- [x] Unit tests in [`test_featurizations_stage.py`](../../tests/unit/test_featurizations_stage.py): 3-D image → 1-D vector with correct shape and values; dtype preserved; source field not dropped; multi-input rejected with `PluginError`; zero-input rejected; variant overlay (`variants.mlp_flat.Featurizations: [flatten op]`) round-trips through `apply_variant(recipe, "mlp_flat")` and `apply_variant(recipe, None)` cleanly.
+- [x] Plugin contract test: added `flatten` to `EXPECTED_OPERATIONS`; extended the C.i wired-op test.
+- [x] DOC: added worked YAML example under [`recipe-authoring.md` § Featurizations](../guides/recipe-authoring.md) (Image-classification Featurizations subsection).
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G9](phase-i-dependency-gaps-v0.16.0.md): status block; priority-summary row → "Closed in v0.18.0 (Story I.m)"; workarounds row prefixed "Closed in v0.18.0 (Story I.m)".
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no mention of `flatten` — no contract surface change.
+- [x] CI parity: `pyve test` 1126 passed; `pyve testenv run mypy src tests` clean; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 ---
 

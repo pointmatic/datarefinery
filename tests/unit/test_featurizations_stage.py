@@ -622,3 +622,156 @@ def test_categorical_encode_rejects_unknown_ordering(tmp_path: Path) -> None:
             plugin=IMAGE_PLUGIN,
             fitted_stats=FittedStatistics(tmp_path),
         )
+
+
+# ---------------------------------------------------------------------------
+# flatten (Story I.m / G9)
+# ---------------------------------------------------------------------------
+
+
+def test_flatten_reshapes_image_to_one_dimensional_vector(tmp_path: Path) -> None:
+    op = FeaturizationOp(
+        name="img_flat",
+        inputs=["image"],
+        output_field="image_flat",
+        op="flatten",
+        splits=["train"],
+    )
+    src = np.arange(4 * 4 * 3, dtype=np.uint8).reshape(4, 4, 3)
+    splits: dict[str, list[Mapping[str, Any]]] = {
+        "train": [{"image": src, "label": 0}],
+    }
+    result = apply_featurizations(
+        splits,
+        [op],
+        plugin=IMAGE_PLUGIN,
+        fitted_stats=FittedStatistics(tmp_path),
+    )
+    flat = result.splits["train"][0]["image_flat"]
+    assert flat.shape == (48,)
+    np.testing.assert_array_equal(flat, src.reshape(-1))
+
+
+def test_flatten_preserves_dtype(tmp_path: Path) -> None:
+    op = FeaturizationOp(
+        name="img_flat",
+        inputs=["image"],
+        output_field="image_flat",
+        op="flatten",
+        splits=["train"],
+    )
+    src = np.full((2, 2, 3), 0.5, dtype=np.float32)
+    result = apply_featurizations(
+        {"train": [{"image": src, "label": 0}]},
+        [op],
+        plugin=IMAGE_PLUGIN,
+        fitted_stats=FittedStatistics(tmp_path),
+    )
+    flat = result.splits["train"][0]["image_flat"]
+    assert flat.dtype == np.float32
+
+
+def test_flatten_does_not_drop_original_input_field(tmp_path: Path) -> None:
+    """The op writes ``output_field``; the source field stays in the record
+    so a downstream consumer can still observe the multi-dimensional view.
+    """
+    op = FeaturizationOp(
+        name="img_flat",
+        inputs=["image"],
+        output_field="image_flat",
+        op="flatten",
+        splits=["train"],
+    )
+    src = np.zeros((2, 2, 3), dtype=np.uint8)
+    result = apply_featurizations(
+        {"train": [{"image": src, "label": 0}]},
+        [op],
+        plugin=IMAGE_PLUGIN,
+        fitted_stats=FittedStatistics(tmp_path),
+    )
+    record = result.splits["train"][0]
+    assert "image" in record and "image_flat" in record
+    assert record["image"].shape == (2, 2, 3)
+
+
+def test_flatten_rejects_multiple_inputs(tmp_path: Path) -> None:
+    op = FeaturizationOp(
+        name="img_flat",
+        inputs=["image", "extra"],
+        output_field="image_flat",
+        op="flatten",
+        splits=["train"],
+    )
+    with pytest.raises(PluginError, match="exactly one"):
+        apply_featurizations(
+            {"train": [{"image": _img(), "extra": _img(), "label": 0}]},
+            [op],
+            plugin=IMAGE_PLUGIN,
+            fitted_stats=FittedStatistics(tmp_path),
+        )
+
+
+def test_flatten_rejects_zero_inputs(tmp_path: Path) -> None:
+    op = FeaturizationOp(
+        name="img_flat",
+        inputs=[],
+        output_field="image_flat",
+        op="flatten",
+        splits=["train"],
+    )
+    with pytest.raises(PluginError, match="exactly one"):
+        apply_featurizations(
+            {"train": [{"image": _img(), "label": 0}]},
+            [op],
+            plugin=IMAGE_PLUGIN,
+            fitted_stats=FittedStatistics(tmp_path),
+        )
+
+
+def test_flatten_variant_overlay_round_trips_through_apply_variant() -> None:
+    """A variant that introduces a `flatten` Featurization must parse
+    and apply cleanly via `apply_variant`, producing a valid Recipe.
+    """
+    from datarefinery.recipe.models import Recipe
+    from datarefinery.recipe.variants import apply_variant
+
+    recipe = Recipe.model_validate(
+        {
+            "schema_version": 1,
+            "plugin": "image_classification",
+            "Input": {
+                "sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]
+            },
+            "Output": {
+                "record_schema": {
+                    "image": {"dtype": "uint8", "shape": [4, 4, 3]},
+                    "label": {"dtype": "str"},
+                }
+            },
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": {"ratios": {"train": 0.6, "val": 0.2, "test": 0.2}, "seed": 11},
+            "variants": {
+                "mlp_flat": {
+                    "Featurizations": [
+                        {
+                            "name": "img_flat",
+                            "inputs": ["image"],
+                            "output_field": "image_flat",
+                            "op": "flatten",
+                            "splits": ["train", "val", "test"],
+                        }
+                    ]
+                }
+            },
+        }
+    )
+    selected = apply_variant(recipe, "mlp_flat")
+    assert len(selected.Featurizations) == 1
+    feat = selected.Featurizations[0]
+    assert feat.op == "flatten"
+    assert feat.inputs == ["image"]
+    assert feat.output_field == "image_flat"
+    # `apply_variant(None)` strips variants but leaves base unchanged.
+    base = apply_variant(recipe, None)
+    assert base.variants == {}
+    assert base.Featurizations == []

@@ -598,6 +598,17 @@ Featurizations:
 
 Mode 2 persists the derived vocabulary to `fitted_statistics/<name>/vocabulary.parquet`. The persisted vocab can be imported by a downstream recipe via FR-TRANS-1 (`params.stats_from_instance`), exactly the same way `normalize` imports per-channel mean/std across recipes. An apply-time label that isn't in the vocabulary fails with a clear `PluginError` naming the missing label.
 
+`flatten` (no fit) — reshape a multi-dimensional input field to a 1-D vector. Requires exactly one entry in `inputs`. The source field stays in the record so a downstream consumer can still observe the multi-dimensional view (useful pattern: a variant adds `flatten` to give an MLP-shaped consumer view of the same data a CNN-shaped consumer sees in the base recipe).
+
+```yaml
+Featurizations:
+  - name: img_flat
+    inputs: [image]
+    output_field: image_flat
+    op: flatten
+    splits: [train, val, test]
+```
+
 **Reserved `output_field` names.** A Featurization's `output_field` must not collide with a field the input loader stamps on every record. Validator check 23 (`featurization_output_field_loader_collision`) catches these at validate time. For the `image_classification` plugin the reserved set is:
 
 - `record_id`, `image`, `path` — always.
