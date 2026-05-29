@@ -626,7 +626,7 @@ Per [`dependency-gaps-v0.16.0.md` § G10](dependency-gaps-v0.16.0.md) and the pl
 
 ---
 
-### Story I.t: G1 — tag-driven `Splits.applies_to` [Planned]
+### Story I.t: G1 — tag-driven `Splits.applies_to` [Done]
 
 **Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
 
@@ -634,11 +634,13 @@ Per [`dependency-gaps-v0.16.0.md` § G1](dependency-gaps-v0.16.0.md): validator 
 
 **Tasks:**
 
-- [ ] Broaden check 20 in [`recipe/validator.py`](../../src/datarefinery/recipe/validator.py) to also accept `applies_to` matching `FilterOp.predicate.params.label` (where predicate op is in `{sample_per_class, sample_per_class_fractional}`).
-- [ ] Update [`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py) to learn the tag → partition pass-through: when `applies_to` names a tag, produce sub-splits per `ratios` for tagged records; emit untagged-or-other-tagged records as `<other_tag>` splits verbatim.
-- [ ] Unit + integration tests: two `sample_per_class` filters tagging `train_pool` and `test_pool` + `Splits.applies_to: train_pool` validates and materializes; counts match tag populations within stratification rounding; swapping filter order produces the same test-split membership (proving tag-driven determinism).
-- [ ] DOC: new "Sub-partitioning via tag" subsection in [`recipe-authoring.md` § Splits](../guides/recipe-authoring.md) paralleling the existing `InputSource.partition` subsection.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G1](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Broadened check 20 in [`recipe/validator.py`](../../src/datarefinery/recipe/validator.py) (via a `_sample_filter_labels` helper) to accept `applies_to` matching a `sample_per_class` / `sample_per_class_fractional` filter `label` (`predicate["label"]` where `predicate["op"]` is one of those ops), in addition to source partitions. Rejection message now names both the partition set and the filter-label set.
+- [x] Updated [`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py) with a tag-driven route (`_apply_tagged`): when no record carries `partition` but a record carries the named tag in `sample_per_class_tags`, the target-tagged records are ratio-sub-split (honoring `stratify_by`/`seed`); other-tagged records pass through verbatim under a split named after their tag; untagged records land in `unassigned`. Multi-tag ambiguity and ratio/other-tag name collisions raise `MaterializeError`. The tag field name is a local constant (`_SAMPLE_TAG_FIELD`) mirroring the plugin's `TAG_FIELD` so the generic stage avoids importing from a plugin.
+- [x] Unit + integration tests: validator tag acceptance (sample_per_class + fractional) and neither-partition-nor-tag rejection in [`test_validator.py`](../../tests/unit/test_validator.py); stage-level sub-split/pass-through, untagged→unassigned, seed-independence, collision, and unmatched-tag error in [`test_splits_stage.py`](../../tests/unit/test_splits_stage.py); cross-stage filters→splits disjoint-pool flow + seed-independent test-split membership in [`tests/integration/test_tag_driven_splits.py`](../../tests/integration/test_tag_driven_splits.py).
+- [x] DOC: new "Sub-partitioning via tag" subsection in [`recipe-authoring.md` § Splits](../guides/recipe-authoring.md) paralleling the `InputSource.partition` one (disjoint-pool example, pass-through-split naming, seed-independence / bit-identity guarantee, multi-tag rejection).
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G1](phase-i-dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0 (Story I.t)"; workarounds row.
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no contract surface change — `Splits.applies_to` tag semantics are internal recipe behavior; no manifest/report/record shape change (the only `applies_to` reference in the spec is the unrelated `class_balance` dict from Story I.s).
+- [x] CI parity: `pyve test` 1204 passed (+12 from this story); `pyve testenv run mypy src tests` clean across 196 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 ---
 

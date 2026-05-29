@@ -37,7 +37,7 @@ None of these require a `schema_version` bump.
 
 | ID | Title | Severity for consumer repo | Category |
 |---|---|---|---|
-| G1 | `Splits.applies_to` doesn't accept `sample_per_class_tags` labels | **Blocking (workaround used)** | Validator semantics |
+| G1 | `Splits.applies_to` doesn't accept `sample_per_class_tags` labels | **Closed in v0.18.0** (Story I.t) | Validator semantics |
 | G2 | `cast` Transformation: name + `scale` param + runtime factory missing | **Closed in v0.18.0** (Story I.k) | Plugin op registration |
 | G3 | `categorical_encode` Featurization missing from plugin | **Closed in v0.18.0** (Story I.l) | Plugin op registration |
 | G4 | `label_from_path` collides with `image_flat` + `label_from` loader | **Closed in v0.16.2** (Story I.c) | Validator semantics |
@@ -94,6 +94,8 @@ The recipe-side workarounds table at the bottom of this doc lists which G items 
 ---
 
 ## G1 — `Splits.applies_to` doesn't accept `sample_per_class_tags` labels
+
+**Status (Story I.t, v0.18.0):** **Closed.** Validator check 20 now accepts `Splits.applies_to` when it matches either a source `partition` *or* a `sample_per_class` / `sample_per_class_fractional` filter `label` (via `_sample_filter_labels`). The Splits stage ([`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py)) learned a tag-driven route (`_apply_tagged`): records carrying the named tag in `sample_per_class_tags` are ratio-sub-split (honoring `stratify_by` / `seed`); records carrying a *different* tag pass through verbatim under a split named after that tag; untagged records land in `unassigned`. Pass-through membership is filter-tag-determined (deterministic per-record ranking), so the heldout split is byte-identical across runs and independent of the Splits `seed` — restoring the disjoint-pool bit-identity guarantee the 0.16.0 workaround lost. A record carrying multiple non-`applies_to` tags, or a pass-through split colliding with a ratio split name, raises `MaterializeError`. Documented in `recipe-authoring.md § Splits → Sub-partitioning via tag`.
 
 **Severity:** Blocking for consumer repo (Recipe A & B both rely on disjoint-pool
 sampling per the phase plan).
@@ -1799,7 +1801,7 @@ corresponding deviation removed:
 
 | Gap | Recipe edit when fixed |
 |---|---|
-| G1 | Restore the two `sample_per_class` filters with `label: train_pool` / `label: test_pool` + `Splits.applies_to: train_pool, ratios: {train: 0.85, val: 0.15}`. Refactor the `imbalanced*` variants similarly. |
+| G1 | **Closed in v0.18.0 (Story I.t).** Restore the two `sample_per_class` filters with `label: train_pool` / `label: test` + `Splits.applies_to: train_pool, ratios: {train: 0.85, val: 0.15}` (the second filter's `label` becomes the pass-through split name). Refactor the `imbalanced*` variants similarly. |
 | G2 | **Closed in v0.18.0 (Story I.k).** Add `cast` Transformation (canonical name; not `cast_dtype`) before `normalize` with `params: { dtype: float32, scale: 0.00392156862745098 }`. Change `Output.record_schema.image.dtype` to `float32`. |
 | G3 | **Closed in v0.18.0 (Story I.l).** Add `categorical_encode` Featurization deriving `label_id`. Add `label_id: { dtype: int32 }` to `Output.record_schema`. |
 | G4 | **Closed in v0.16.2 (Story I.c).** Validator check 23 catches the collision at validate time. No recipe edit needed; Recipe A's existing structure (label from loader, no `label_from_path` Featurization) is still correct. The check now ensures any future author who reaches for the conflicting pattern is told before materialize runs. |

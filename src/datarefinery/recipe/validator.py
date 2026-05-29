@@ -839,6 +839,27 @@ def _read_manifest_for_validation(
 _PARTITION_PLUGINS = frozenset({"image_classification"})
 
 
+_SAMPLE_TAG_OPS = frozenset({"sample_per_class", "sample_per_class_fractional"})
+
+
+def _sample_filter_labels(recipe: Recipe) -> set[str]:
+    """Tag labels emitted by non-destructive sample_per_class* filters.
+
+    A `sample_per_class` / `sample_per_class_fractional` filter with a
+    `label` in its predicate tags the chosen records (in
+    `sample_per_class_tags`) rather than dropping the rest. `Splits.applies_to`
+    may target such a label (G1 / Story I.t).
+    """
+    labels: set[str] = set()
+    for op in recipe.Filters:
+        predicate = op.predicate
+        if predicate.get("op") in _SAMPLE_TAG_OPS:
+            label = predicate.get("label")
+            if isinstance(label, str):
+                labels.add(label)
+    return labels
+
+
 def check_20_partitions_consistent(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Validate `InputSource.partition` + `SplitsSection.applies_to`.
 
@@ -878,25 +899,31 @@ def check_20_partitions_consistent(recipe: Recipe, plugin: Plugin) -> CheckResul
         )
 
     partition_names = {s.partition for s in declared if s.partition is not None}
+    # G1 (Story I.t): applies_to may instead name a tag emitted by a
+    # sample_per_class / sample_per_class_fractional filter (its `label`
+    # param). Such records carry the tag in `sample_per_class_tags`; the
+    # Splits stage sub-partitions the tagged records and passes the others
+    # through under their own tag name.
+    tag_labels = _sample_filter_labels(recipe)
     splits_section = recipe.Splits
     applies_to = splits_section.applies_to
     if applies_to is not None:
-        if not partition_names:
-            issues.append(f"Splits.applies_to={applies_to!r} but no source declares 'partition'")
-        elif applies_to not in partition_names:
+        if applies_to in partition_names:
+            if splits_section.ratios:
+                sub_names = set(splits_section.ratios.keys())
+                siblings = partition_names - {applies_to}
+                collision = sub_names & siblings
+                if collision:
+                    issues.append(
+                        f"Splits.ratios produces split name(s) {sorted(collision)!r} that "
+                        f"collide with sibling partition(s)"
+                    )
+        elif applies_to not in tag_labels:
             issues.append(
-                f"Splits.applies_to={applies_to!r} not present in source partitions "
-                f"{sorted(partition_names)!r}"
+                f"Splits.applies_to={applies_to!r} matches no source partition "
+                f"{sorted(partition_names)!r} and no sample_per_class / "
+                f"sample_per_class_fractional filter label {sorted(tag_labels)!r}"
             )
-        if splits_section.ratios:
-            sub_names = set(splits_section.ratios.keys())
-            siblings = partition_names - {applies_to}
-            collision = sub_names & siblings
-            if collision:
-                issues.append(
-                    f"Splits.ratios produces split name(s) {sorted(collision)!r} that "
-                    f"collide with sibling partition(s)"
-                )
     else:
         if partition_names and splits_section.ratios:
             issues.append(

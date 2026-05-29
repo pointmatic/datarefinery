@@ -485,6 +485,34 @@ The result of materialize is three splits: `train` and `val` (carved out of the 
 
 Omitting `Splits` entirely (or writing `Splits: {}`) under declared partitions yields **Form A** — source partitions are the final splits. Setting `applies_to` *and* `ratios` yields **Form B** as above. Validator check 20 enforces consistency between source partitions and `Splits`; see § Input for the rules.
 
+#### Sub-partitioning via tag
+
+`Splits.applies_to` can also name a **tag** emitted by a `sample_per_class` / `sample_per_class_fractional` filter (its `label` parameter), not just a source partition. This is the *disjoint-pool* pattern: a pre-split filter deterministically tags a balanced subset (e.g. `train_pool`), a second filter tags a disjoint subset under another tag (e.g. `test`), and `Splits` then sub-partitions only the named pool:
+
+```yaml
+Filters:
+  - name: pick_train_pool
+    predicate: { op: sample_per_class, n_per_class: 200, label: train_pool, seed: 1 }
+    stages: [pre_split]
+  - name: pick_test
+    predicate:
+      op: sample_per_class
+      n_per_class: 100
+      label: test                       # tag name becomes the pass-through split name
+      exclude_already_labeled: [train_pool]
+      seed: 1
+    stages: [pre_split]
+Splits:
+  ratios: { train: 0.85, val: 0.15 }
+  applies_to: train_pool                 # sub-partition only the train_pool-tagged records
+  stratify_by: label
+  seed: 11
+```
+
+The result is three splits: `train` + `val` (carved from the `train_pool`-tagged records by the ratios) and `test` (the `test`-tagged records, passed through **verbatim** under their tag name). Records carrying no tag land in `unassigned` (surfaced as a materialize warning), so the destructive subset intent of the sampling filters is honored.
+
+Because the pool membership is fixed by the filter's deterministic per-record ranking — not by the Splits RNG — the `test` split is **byte-identical across runs and independent of the Splits `seed`**. A sibling recipe can replay the identical filters and `drop_by_label` to peel off the same disjoint subset bit-for-bit. Validator check 20 accepts `applies_to` when it matches either a source partition *or* a `sample_per_class*` filter label. (A record carrying two non-`applies_to` tags is rejected at materialize time, since the pass-through split would be ambiguous; the disjoint-pool `exclude_already_labeled` chain keeps tags disjoint.)
+
 ### `Transformations`
 
 Deterministic per-record operations: resize, normalize, cast dtype, etc. Each transformation declares the splits it applies to and, optionally, a **fit source** (the split whose statistics are persisted):

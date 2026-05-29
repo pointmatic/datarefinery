@@ -375,3 +375,70 @@ def test_mixed_partitioned_and_unpartitioned_records_errors() -> None:
     section = SplitsSection()
     with pytest.raises(MaterializeError, match="missing 'partition'"):
         apply_splits(records, section, seed=0)
+
+
+# ---------------------------------------------------------------------------
+# Tag-driven applies_to (Story I.t / G1)
+# ---------------------------------------------------------------------------
+
+
+def _tagged(rid: str, tags: tuple[str, ...], label: str = "x") -> dict[str, Any]:
+    return {"record_id": rid, "label": label, "sample_per_class_tags": tags}
+
+
+def test_tag_driven_applies_to_sub_splits_target_and_passes_others() -> None:
+    train_pool = [_tagged(f"t{i}", ("train_pool",)) for i in range(10)]
+    test_pool = [_tagged(f"e{i}", ("test",)) for i in range(3)]
+    section = SplitsSection(
+        ratios={"train": 0.8, "val": 0.2},
+        applies_to="train_pool",
+        seed=11,
+    )
+    result = apply_splits(train_pool + test_pool, section, seed=11)
+    assert set(result.splits.keys()) == {"train", "val", "test"}
+    # The other-tagged records flow through verbatim under their tag name.
+    assert [r["record_id"] for r in result.splits["test"]] == ["e0", "e1", "e2"]
+    # The target-tagged records are ratio-sub-split.
+    assert len(result.splits["train"]) + len(result.splits["val"]) == 10
+
+
+def test_tag_driven_untagged_records_go_to_unassigned() -> None:
+    train_pool = [_tagged(f"t{i}", ("train_pool",)) for i in range(4)]
+    untagged = [{"record_id": "u0", "label": "x", "sample_per_class_tags": ()}]
+    section = SplitsSection(ratios={"train": 0.5, "val": 0.5}, applies_to="train_pool", seed=3)
+    result = apply_splits(train_pool + untagged, section, seed=3)
+    assert [r["record_id"] for r in result.unassigned] == ["u0"]
+    assert "u0" not in {r["record_id"] for s in result.splits.values() for r in s}
+
+
+def test_tag_driven_other_tag_split_is_independent_of_split_seed() -> None:
+    """Membership of the pass-through split is filter-tag-determined, not seed-determined."""
+    records = [_tagged(f"t{i}", ("train_pool",)) for i in range(10)] + [
+        _tagged(f"e{i}", ("test",)) for i in range(3)
+    ]
+    a = apply_splits(
+        records,
+        SplitsSection(ratios={"train": 0.8, "val": 0.2}, applies_to="train_pool", seed=1),
+        seed=1,
+    )
+    b = apply_splits(
+        records,
+        SplitsSection(ratios={"train": 0.8, "val": 0.2}, applies_to="train_pool", seed=999),
+        seed=999,
+    )
+    assert a.splits["test"] == b.splits["test"]
+
+
+def test_tag_driven_collision_between_ratio_and_other_tag_errors() -> None:
+    records = [_tagged("t0", ("train_pool",)), _tagged("e0", ("val",))]
+    # ratios produce a 'val' split that collides with the other-tag 'val'.
+    section = SplitsSection(ratios={"train": 0.5, "val": 0.5}, applies_to="train_pool", seed=0)
+    with pytest.raises(MaterializeError, match="collid"):
+        apply_splits(records, section, seed=0)
+
+
+def test_tag_driven_applies_to_unmatched_tag_errors() -> None:
+    records = [_tagged("t0", ("train_pool",))]
+    section = SplitsSection(ratios={"train": 1.0}, applies_to="ghost_pool", seed=0)
+    with pytest.raises(MaterializeError, match=r"ghost_pool|no record carries"):
+        apply_splits(records, section, seed=0)

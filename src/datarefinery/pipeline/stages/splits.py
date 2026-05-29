@@ -41,6 +41,12 @@ from datarefinery.recipe.seeds import derive_seed
 
 Record = Mapping[str, Any]
 
+# Field that sample_per_class / sample_per_class_fractional stamp the chosen
+# records with (non-destructive tagging mode). Mirrors the image_classification
+# plugin's `filters_stratified_sampling.TAG_FIELD`; kept as a local constant so
+# this generic stage does not import from a plugin. Story I.t / G1.
+_SAMPLE_TAG_FIELD = "sample_per_class_tags"
+
 
 @dataclass(frozen=True)
 class SplitResult:
@@ -99,9 +105,14 @@ def apply_splits(
     if has_partition:
         return _apply_partitioned(materialized, section, seed)
     if section.applies_to is not None:
+        tag = section.applies_to
+        if any(tag in r.get(_SAMPLE_TAG_FIELD, ()) for r in materialized):
+            return _apply_tagged(materialized, section, seed, tag)
         raise MaterializeError(
-            "Splits.applies_to is set but no record carries a 'partition' field; "
-            "declare InputSource.partition on each source or remove applies_to"
+            f"Splits.applies_to={tag!r} is set but no record carries a 'partition' "
+            f"field or the named sample_per_class tag; declare InputSource.partition "
+            f"or a matching sample_per_class / sample_per_class_fractional 'label', "
+            f"or remove applies_to"
         )
     if section.key_assignment is not None:
         return _apply_key_assignment(materialized, section, seed)
@@ -184,6 +195,65 @@ def _apply_partitioned(
         unassigned=sub_result.unassigned,
         class_balance=section.class_balance,
         warnings=sub_result.warnings,
+        seed=seed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tag-driven splits (Story I.t / G1)
+# ---------------------------------------------------------------------------
+
+
+def _apply_tagged(
+    records: list[Record],
+    section: SplitsSection,
+    seed: int,
+    tag: str,
+) -> SplitResult:
+    """Sub-partition records carrying ``tag`` and pass the rest through.
+
+    Records whose ``sample_per_class_tags`` contains ``tag`` are ratio-sub-split
+    (honoring ``stratify_by`` / ``seed``). Every other record is emitted under a
+    split named after its own (single) sample tag; records carrying no other tag
+    land in ``unassigned``. The split membership of the pass-through records is
+    therefore filter-tag-determined, not splitter-seed-determined.
+    """
+    if not section.ratios:
+        raise MaterializeError(
+            "Splits.applies_to names a sample_per_class tag but no ratios declared; "
+            "tag-driven applies_to is only meaningful with a ratio-based sub-partition"
+        )
+    target = [r for r in records if tag in r.get(_SAMPLE_TAG_FIELD, ())]
+    others = [r for r in records if tag not in r.get(_SAMPLE_TAG_FIELD, ())]
+
+    sub = _apply_ratios(target, section, seed)
+    merged: dict[str, list[Record]] = dict(sub.splits)
+    unassigned: list[Record] = list(sub.unassigned)
+    other_splits: dict[str, list[Record]] = {}
+    for r in others:
+        remaining = sorted({t for t in r.get(_SAMPLE_TAG_FIELD, ()) if t != tag})
+        if not remaining:
+            unassigned.append(r)
+        elif len(remaining) == 1:
+            other_splits.setdefault(remaining[0], []).append(r)
+        else:
+            raise MaterializeError(
+                f"record {r.get('record_id')!r} carries multiple sample_per_class tags "
+                f"{remaining!r} (none is applies_to={tag!r}); cannot resolve a single "
+                f"pass-through split"
+            )
+    collision = set(other_splits) & set(merged)
+    if collision:
+        raise MaterializeError(
+            f"tag-driven applies_to produced pass-through split name(s) {sorted(collision)!r} "
+            f"that collide with ratio split names"
+        )
+    merged.update(other_splits)
+    return SplitResult(
+        splits=merged,
+        unassigned=unassigned,
+        class_balance=section.class_balance,
+        warnings=sub.warnings,
         seed=seed,
     )
 

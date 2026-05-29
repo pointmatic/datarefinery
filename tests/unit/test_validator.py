@@ -1308,7 +1308,76 @@ def test_check_20_fails_when_applies_to_set_without_partitions() -> None:
     payload = _ic_base_dict()
     payload["Splits"]["applies_to"] = "train"
     failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
-    assert failures and "no source declares 'partition'" in failures[0].message
+    assert failures and "no source partition" in failures[0].message
+
+
+# --- G1 (Story I.t): tag-driven applies_to ---
+
+
+def _ic_tagged_pool_dict() -> dict[str, Any]:
+    """Single source, no partitions; two sample_per_class filters tag pools."""
+    payload = _ic_base_dict()
+    payload["Filters"] = [
+        {
+            "name": "train_pool_filter",
+            "predicate": {
+                "op": "sample_per_class",
+                "n_per_class": 2,
+                "label": "train_pool",
+                "seed": 1,
+            },
+            "stages": ["pre_split"],
+        },
+        {
+            "name": "test_pool_filter",
+            "predicate": {
+                "op": "sample_per_class",
+                "n_per_class": 1,
+                "label": "test",
+                "exclude_already_labeled": ["train_pool"],
+                "seed": 1,
+            },
+            "stages": ["pre_split"],
+        },
+    ]
+    payload["Splits"] = {
+        "ratios": {"train": 0.8, "val": 0.2},
+        "applies_to": "train_pool",
+        "seed": 11,
+    }
+    return payload
+
+
+def test_check_20_accepts_tag_driven_applies_to() -> None:
+    report = validate(_build(_ic_tagged_pool_dict()), _ic_plugin())
+    assert not _failures_for(report, 20)
+
+
+def test_check_20_accepts_tag_from_fractional_filter() -> None:
+    payload = _ic_base_dict()
+    payload["Filters"] = [
+        {
+            "name": "pool",
+            "predicate": {
+                "op": "sample_per_class_fractional",
+                "n_per_class_base": 4,
+                "fractions": {"a": 0.5},
+                "label": "keep_pool",
+                "seed": 1,
+            },
+            "stages": ["pre_split"],
+        }
+    ]
+    payload["Splits"] = {"ratios": {"train": 0.5, "val": 0.5}, "applies_to": "keep_pool", "seed": 1}
+    report = validate(_build(payload), _ic_plugin())
+    assert not _failures_for(report, 20)
+
+
+def test_check_20_rejects_applies_to_matching_neither_partition_nor_tag() -> None:
+    payload = _ic_tagged_pool_dict()
+    payload["Splits"]["applies_to"] = "ghost_pool"
+    failures = _failures_for(validate(_build(payload), _ic_plugin()), 20)
+    assert failures and "ghost_pool" in failures[0].message
 
 
 def test_check_20_fails_on_sibling_collision_in_applies_to_ratios() -> None:
