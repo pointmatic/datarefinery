@@ -539,24 +539,71 @@ Per [`dependency-gaps-v0.16.0.md` § G18](dependency-gaps-v0.16.0.md): a new `Ge
 
 ---
 
-### Story I.r: G14 — SampleData `kind` + `splits` [Planned]
+### Story I.r.0: Spike — SampleData runtime semantics (G14 prerequisite) [Done]
 
-**Disposition: feature addition.** Part of Bundle 3 (v0.18.0 release).
+**Disposition: investigation spike** (throwaway; deliverable is the documented decision below, not code). Part of Bundle 3 (v0.18.0). No version bump, no code, no test change.
 
-Per [`dependency-gaps-v0.16.0.md` § G14](dependency-gaps-v0.16.0.md): `SampleSelector` gains `kind: Literal["uniform", "per_class"] = "uniform"` and `splits: list[str] | None = None`. `kind: per_class` requires `Labels.field` populated (validator check); selects `n` records per class from the declared splits. `kind: uniform` (default) preserves current behavior.
+**Trigger.** While starting Story I.r (G14 — add `kind` / `splits` to `SampleSelector`), the first task ("Runtime: per-class branch in the sample-data selector") had no foundation to build on: **`SampleData` is never applied at runtime today.** It is a fully wired *contract* surface — pydantic model (`SampleSelector` / `SampleDataSection`), validator check 16 (`sample_data_strict_subset`), loader `KNOWN_TOP_LEVEL_KEYS`, plugin `supported_sections`, and it participates in canonical cache bytes — but `recipe.SampleData` is read **nowhere** in `src/datarefinery/pipeline/` or `src/datarefinery/core/`. There is no `uniform` runtime path either; the section validates and shapes cache identity but produces no subset. Confirmed by exhaustive grep (zero runtime consumers).
 
-**Tasks:**
+**Why this blocks I.r as written.** I.r's task list and the G14 gap-doc "tests that would prove the fix" (`kind: per_class, n: 1 → exactly 10 records, one per class`) presuppose a materialize-time subsetting stage. That stage does not exist. Adding `kind`/`splits` to the model without a runtime would extend the existing "validated but inert" section rather than close G14's behavioral intent.
 
-- [ ] Widen `SampleSelector` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py).
-- [ ] Runtime: per-class branch in the sample-data selector.
-- [ ] New validator check: `kind: per_class` requires `Labels.field` and an available label source.
-- [ ] Unit tests: `kind: per_class, n: 1, splits: [train]` on a labeled fixture yields exactly N records, one per class, all from train; `kind: uniform` (default) regression; per_class on unlabeled source rejected at validate time.
-- [ ] DOC: rewrite [`recipe-authoring.md` § SampleData](../guides/recipe-authoring.md) with both kinds + the splits-selector example.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G14](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.18.0"; workarounds row.
+**Findings.**
+
+1. **No FR specifies SampleData runtime behavior.** `features.md` mentions `SampleData` only in the recipe-legibility vocabulary list, the skeleton example, and **FR-2 check #16** ("`SampleData` declaration is resolvable to a strict subset of the declared **input**"). `idea.md` frames it as "a small representative dataset for fast iteration, exploration, and tests." `tech-spec.md` calls `SampleDataSection` "declarative subset of `Input`." None of these pin *where* it runs or *what artifact* it yields.
+2. **Semantic tension introduced by G14.** FR-2 #16 + tech-spec say "subset of the **input**" (pre-pipeline). But G14's selector carries `splits: [train]` and `kind: per_class`, which require splitting and final labels to exist — i.e. sampling **post-Splits / post-pipeline**. The two framings are incompatible and must be reconciled before implementing.
+3. **The section already shapes cache identity**, so any runtime added later does not need a `schema_version` bump on identity grounds — but the *first* materialize that actually honors the selector changes output bytes for any recipe declaring `SampleData` (pre-prod invalidation per `project-essentials.md`).
+
+**Design axes (each needs a product decision).**
+
+- **Placement.** (P-input) subset raw records before the pipeline — matches FR-2 #16 but cannot satisfy `splits:`/`per_class`. (P-postpipeline) sample per-split after the final stage — satisfies G14's selector and lets `per_class` read final labels.
+- **Artifact semantics.** (M-replace) the sample *is* the materialized instance (whole instance becomes small — "fast iteration" reading). (M-sidecar) materialize writes the full instance **and** a `sample/` subset alongside it (the "for tests/exploration" reading; preserves the full dataset).
+- **Manifest/report.** M-sidecar needs a `manifest.sample` entry (counts, selector echo) and a `sample/` layout decision; M-replace folds into existing split counts.
+
+**Recommendation.**
+
+1. **Reframe Story I.r to schema-only** (matches G14's stated "Category: Schema"): add `kind: Literal["uniform","per_class"] = "uniform"` and `splits: list[str] | None = None` to `SampleSelector`; extend validator check 16 so `kind: per_class` requires `Labels.field` + an available label source; rewrite `recipe-authoring.md § SampleData` to document the fields **and explicitly state the runtime is not yet implemented**; update gap-doc § G14 status to "Schema landed in v0.18.0; runtime tracked separately." Drop the runtime task and the record-count proof-tests from I.r (move them to the runtime story). This keeps I.r tight, shippable in Bundle 3, and honest about current behavior.
+2. **Carve the SampleData *runtime* into its own story**, planned via `plan_phase` (it is architecturally distinct — a new pipeline stage plus the placement + artifact-semantics product decisions above, with manifest/cache implications). Recommended default to take into planning: **P-postpipeline + M-sidecar** (full dataset preserved; a `sample/` subset emitted for fast iteration; `per_class` reads final labels; `splits:` selects source splits), with FR-2 #16's "subset of the input" wording revisited to "subset of the prepared dataset."
+
+**Tasks (spike — investigation only):**
+
+- [x] Confirm whether `SampleData` has any runtime consumer (grep `src/datarefinery/pipeline/`, `core/`). Result: none.
+- [x] Trace the section's existing wiring (model, validator check 16, loader known-keys, plugin supported-sections, cache-identity participation).
+- [x] Survey intended semantics across `idea.md`, `features.md` (FR-2 #16), `tech-spec.md`, `concept.md`, `phase-i-recipe-focused-bug-fixes-plan.md § FR-I-9`. Result: no behavioral FR; "subset of input" vs. G14's `splits:`/`per_class` tension documented above.
+- [x] Document design axes (placement, artifact semantics, manifest/report) and a recommendation. (This story body.)
+- [x] No code, no test, no version bump. Present recommendation at the approval gate for the developer to choose I.r's path.
+
+**Out of Scope:**
+
+- Implementing any SampleData runtime. That is the carved-out story (recommendation #2), pending developer scoping.
+- Restructuring Phase I bundles or renumbering. The reframe of I.r (recommendation #1) is a developer decision at the gate.
 
 ---
 
-### Story I.s: G10 — `Splits.class_balance` dict shape (MF-binding hint) [Planned]
+### Story I.r: G14 — SampleData `kind` + `splits` (schema-only) [Done]
+
+**Disposition: feature addition (schema-only).** Part of Bundle 3 (v0.18.0 release).
+
+**Reframed by Story I.r.0 spike.** The original I.r assumed a SampleData runtime selector to add a `per_class` branch to. The spike found `SampleData` has **no runtime application at all** (validated + cache-participating but inert). Per the developer's decision at the I.r.0 gate, I.r now lands the **schema + validation surface only**; the SampleData *runtime* (uniform + per_class, plus the placement / artifact-semantics product decisions documented in I.r.0) is carved out into a separate story to be planned via `plan_phase`.
+
+Per [`dependency-gaps-v0.16.0.md` § G14](dependency-gaps-v0.16.0.md): `SampleSelector` gains `kind: Literal["uniform", "per_class"] = "uniform"` and `splits: list[str] | None = None`. `kind: per_class` requires `Labels.field` populated (validate-time guardrail); `splits` entries (when set) must name defined splits. `kind: uniform` (default) preserves the current schema shape. **No runtime behavior ships in this story** — the section remains inert at materialize time, consistent with its pre-I.r state.
+
+**Tasks:**
+
+- [x] Widen `SampleSelector` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py): add `kind: Literal["uniform", "per_class"] = "uniform"` and `splits: list[str] | None = None`.
+- [x] Extend validator **check 16** (`sample_data_strict_subset`) rather than adding a new check (keeps the check count stable — avoids churning the `N/N checks passed` assertions across the integration suite; all SampleData selector coherence lives in one place): when `kind == "per_class"`, require a label source available (rejects recipes where every Input source is `unlabeled`); when `splits` is set, every entry must match a defined split (reuses `_defined_split_names`, mirroring check 15).
+- [x] Unit tests in [`tests/unit/test_validator.py`](../../tests/unit/test_validator.py): `per_class` with a label source + valid `splits` passes; `per_class` on a fully-unlabeled recipe fails 16 naming `per_class`/`label`; a `splits` entry naming no defined split fails 16; `kind: uniform` default present on the model + existing n/fraction regression still pass. Cache-identity note: adding the defaults perturbs canonical bytes only for recipes that declare `SampleData` (the pinning fixture has none, stays green — verified).
+- [x] DOC: updated [`recipe-authoring.md` § SampleData](../guides/recipe-authoring.md) with the `kind` / `splits` fields and a worked example, with an explicit **"Runtime status (v0.18.0)"** callout stating the selector is not yet honored at materialize time (validates + shapes cache identity but does not subset; runtime tracked in the carved-out plan_phase story).
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G14](phase-i-dependency-gaps-v0.16.0.md): status block ("schema landed; runtime carved out", referencing the I.r.0 spike); priority summary → "Schema in v0.18.0 (Story I.r); runtime pending (plan_phase)"; workarounds row updated to note the selector is accepted but not yet honored.
+- [x] Cross-repo coordination check ([`modelfoundry/dependency-spec.md`](modelfoundry/dependency-spec.md)): no contract surface change — `SampleData`/`SampleSelector` are not referenced in the spec; the added optional fields don't change manifest/report/record shapes.
+- [x] CI parity: `pyve test` 1185 passed (+4 from this story); `pyve testenv run mypy src tests` clean across 195 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
+
+**Out of Scope:**
+
+- SampleData runtime application (uniform or per_class), placement, and artifact semantics. Carved out per Story I.r.0; to be planned via `plan_phase`. The record-count proof-tests from the original task list move to that runtime story.
+
+---
+
+### Story I.s: G10 — `Splits.class_balance` dict shape (MF-binding hint) [Done]
 
 **Disposition: feature addition + cross-repo contract.** Part of Bundle 3 (v0.18.0 release).
 
@@ -564,13 +611,14 @@ Per [`dependency-gaps-v0.16.0.md` § G10](dependency-gaps-v0.16.0.md) and the pl
 
 **Tasks:**
 
-- [ ] Widen `SplitsSection.class_balance` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py); add validator check that dict shape has required `strategy` + `applies_to` keys.
-- [ ] No runtime change in [`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py) — the field rides through `SplitResult.class_balance` as today.
-- [ ] Update `manifest.class_balance` emission to serialize the dict shape.
-- [ ] Unit tests: dict-shape validates with valid strategy names; bare-string shape still works (regression); manifest round-trips the dict shape.
-- [ ] DOC: rewrite [`recipe-authoring.md` § Filters vs Splits for class imbalance](../guides/recipe-authoring.md) to spell out the runtime-vs-training-time separation explicitly: DR does not resample; the strategy is a hint for the training tool. Reference dependency-spec.md as the binding contract.
-- [ ] **Cross-repo coordination required.** Update [`dependency-spec.md`](modelfoundry/dependency-spec.md) with the dict-shape contract: keys, allowed strategy values, applies_to semantics, MF's responsibility to honor the hint at training time. Document the strategy vocabulary v1 supports (e.g., `oversample_minority_to_majority`, `emit_inverse_frequency_weights`).
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G10](dependency-gaps-v0.16.0.md): status block recording the MF-side decision; priority summary → "Closed in v0.18.0"; workarounds row.
+- [x] Widened `SplitsSection.class_balance` to `str | dict[str, Any] | None` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py); also widened `SplitResult.class_balance` in [`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py). Extended validator **check 10** (not a new check — keeps the check count stable) to validate the dict shape via a `_class_balance_dict_error` helper: `strategy` non-empty string, `applies_to` a list of defined split names, no unknown keys.
+- [x] No runtime change in [`pipeline/stages/splits.py`](../../src/datarefinery/pipeline/stages/splits.py) — the field rides through `SplitResult.class_balance` as today (dict or string).
+- [x] Added `manifest.class_balance` emission. **Latent gap closed:** `Manifest` had **no** `class_balance` field and `SplitResult.class_balance` was never reaching the manifest. Added `Manifest.class_balance: str | dict[str, Any] | None = None` in [`pipeline/manifest.py`](../../src/datarefinery/pipeline/manifest.py), emitted verbatim from `recipe.Splits.class_balance` at both the full and partial manifest-build sites in [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py).
+- [x] Unit tests: validator dict-shape cases (valid; missing `strategy`; missing `applies_to`; unknown key; undefined `applies_to` split) + bare-string regression in [`test_validator.py`](../../tests/unit/test_validator.py); dict-shape pass-through in [`test_splits_stage.py`](../../tests/unit/test_splits_stage.py); manifest round-trip (None default, string, dict) in [`test_report.py`](../../tests/unit/test_report.py).
+- [x] DOC: rewrote [`recipe-authoring.md` § Filters vs Splits for class imbalance](../guides/recipe-authoring.md) to spell out the runtime-vs-training-time separation (DR does not resample; the strategy is a hint), documenting both the bare-string and dict forms and referencing `dependency-spec.md` as the binding contract.
+- [x] **Cross-repo coordination.** Updated [`dependency-spec.md`](modelfoundry/dependency-spec.md): added the `class_balance` manifest-field row + a `manifest.class_balance` shape subsection (three forms, division of responsibility, illustrative strategy vocabulary `oversample_minority_to_majority` / `emit_inverse_frequency_weights`, "unknown strategy → refuse" guidance). Additive — no `schema_version` bump (bare-string recipes' canonical bytes unchanged; the dict option is opt-in).
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G10](phase-i-dependency-gaps-v0.16.0.md): status block (MF-side decision; closed); priority summary → "Closed in v0.18.0 (Story I.s)"; workarounds row updated to the dict form.
+- [x] CI parity: `pyve test` 1194 passed (+9 from this story); `pyve testenv run mypy src tests` clean across 195 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
 
 **Out of Scope:**
 
@@ -747,6 +795,27 @@ The schema-v2 migration is cache-invalidating per [`project-essentials.md` § "C
 - [ ] Ensure the v1→v2 migration is exercised by an integration test that loads a representative v1 recipe, applies the migration, and produces a canonical instance.
 - [ ] Cross-repo coordination: confirm `dependency-spec.md` is consistent across all three v2 reshapes (Filters, Generation, assertions).
 - [ ] Update `recipe-authoring.md`'s overall introduction (or the schema-version subsection) to enumerate `schema_version: 2` as the canonical recipe version.
+
+---
+
+### Story I.z: Phase J planning context prompt (ModelFoundry + NbFoundry integration) [Planned]
+
+**Disposition: documentation-only.** No version bump (no code change). Phase-bridging handoff; trails the Phase I release ceremony (I.y) deliberately — its job is to hand off to the next phase, so it sits last.
+
+Phase J will be the consumer-integration phase (ModelFoundry + NbFoundry), run as a **catch-all** that accretes stories as real integration work surfaces — not a pre-planned backlog. This story produces a **context prompt** the developer pastes into a fresh `plan_phase` conversation to kick Phase J off: it states the theme, surfaces the known "not ready for consumption" gaps (the SampleData runtime gap from Story I.r.0 first, plus stub plugins, the `distributional` placeholder, the `class_balance` hint-not-resampling contract, single-section report structure, the schema_version 2 recipe reshape, and residual consumer-context framing in internal specs), and stands up the cross-repo contract discipline (`dependency-spec.md` is ModelFoundry-specific; NbFoundry has no contract doc yet).
+
+Per the code_test_first **scope-of-authority** rule, this story does **not** create the `## Phase J:` heading — that is `plan_phase`'s exclusive job. I.z only *prepares* the input `plan_phase` will consume.
+
+**Tasks:**
+
+- [x] Author the context prompt at [`docs/specs/phase-j-context-prompt.md`](phase-j-context-prompt.md): theme statement, read-first orientation list (go.md, stories.md, project-essentials.md, dependency-spec.md, features/tech-spec), priority-ordered "not ready for consumption" gap list, cross-repo contract discipline, and suggested first planning moves. Written as a paste-ready prompt with an explicit "verify current repo state, don't trust the snapshot" instruction.
+- [ ] No code, no test change, no version bump. Bundled with no release (documentation handoff; the developer runs `plan_phase` in a fresh conversation when ready to start Phase J).
+
+**Out of Scope:**
+
+- Creating the `## Phase J:` heading, its theme paragraph, or any Phase J stories — exclusively `plan_phase`'s job.
+- Solving the surfaced gaps (SampleData runtime, stub plugins, etc.) — those become Phase J stories, scoped during planning.
+- Standing up the NbFoundry contract document — flagged in the prompt as an early Phase J task, not done here.
 
 ---
 

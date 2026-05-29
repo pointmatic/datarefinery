@@ -362,7 +362,8 @@ def check_10_class_imbalance_strategy_in_one_place(recipe: Recipe, plugin: Plugi
     """
     del plugin
     descriptor = "class_imbalance_strategy_in_one_place"
-    splits_handles = recipe.Splits.class_balance is not None
+    class_balance = recipe.Splits.class_balance
+    splits_handles = class_balance is not None
     filter_handles = any("class_balance" in op.predicate for op in recipe.Filters)
     if splits_handles and filter_handles:
         return CheckResult(
@@ -375,7 +376,42 @@ def check_10_class_imbalance_strategy_in_one_place(recipe: Recipe, plugin: Plugi
                 "and a Filters predicate; consolidate to one site"
             ),
         )
+    # G10 (Story I.s): the dict shape is a forward-declared MF-binding hint
+    # `{strategy: <str>, applies_to: [<split>, …]}`. DataRefinery passes it
+    # through verbatim and never resamples; this only validates the shape.
+    if isinstance(class_balance, dict):
+        shape_error = _class_balance_dict_error(class_balance, _defined_split_names(recipe))
+        if shape_error is not None:
+            return CheckResult(
+                check_id=10,
+                descriptor=descriptor,
+                status="fail",
+                location="Splits.class_balance",
+                message=shape_error,
+            )
     return _passed(10, descriptor)
+
+
+def _class_balance_dict_error(value: dict[str, object], defined_splits: set[str]) -> str | None:
+    """Return a failure message for a malformed class_balance dict, else None."""
+    allowed = {"strategy", "applies_to"}
+    unknown = set(value) - allowed
+    if unknown:
+        return (
+            f"class_balance dict has unknown key(s) {sorted(unknown)}; allowed: {sorted(allowed)}"
+        )
+    strategy = value.get("strategy")
+    if not isinstance(strategy, str) or not strategy:
+        return "class_balance dict requires a non-empty string 'strategy'"
+    applies_to = value.get("applies_to")
+    if not isinstance(applies_to, list) or not all(isinstance(s, str) for s in applies_to):
+        return "class_balance dict requires 'applies_to' as a list of split names"
+    if not applies_to:
+        return "class_balance dict 'applies_to' must be non-empty"
+    bad = [s for s in applies_to if s not in defined_splits]
+    if bad:
+        return f"class_balance 'applies_to' references undefined splits {bad}"
+    return None
 
 
 def check_11_visualization_mode_declared(recipe: Recipe, plugin: Plugin) -> CheckResult:
@@ -556,6 +592,31 @@ def check_16_sample_data_strict_subset(recipe: Recipe, plugin: Plugin) -> CheckR
             location="SampleData.selector.fraction",
             message=(f"fraction must be in (0, 1) for a strict subset, got {selector.fraction}"),
         )
+    # G14 (Story I.r): kind / splits coherence. Schema-only — the selector
+    # is not yet honored at runtime (see stories.md Story I.r.0 spike); these
+    # checks keep an author from declaring an unsatisfiable selector.
+    if selector.kind == "per_class" and not any(not src.unlabeled for src in recipe.Input.sources):
+        return CheckResult(
+            check_id=16,
+            descriptor=descriptor,
+            status="fail",
+            location="SampleData.selector.kind",
+            message=(
+                "kind 'per_class' requires a label source, but every Input source "
+                "is unlabeled; declare at least one labeled source or use kind 'uniform'"
+            ),
+        )
+    if selector.splits is not None:
+        defined = _defined_split_names(recipe)
+        bad_splits = [s for s in selector.splits if s not in defined]
+        if bad_splits:
+            return CheckResult(
+                check_id=16,
+                descriptor=descriptor,
+                status="fail",
+                location="SampleData.selector.splits",
+                message=f"references undefined splits {bad_splits}",
+            )
     return _passed(16, descriptor)
 
 

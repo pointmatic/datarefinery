@@ -48,7 +48,7 @@ class SplitResult:
 
     splits: Mapping[str, list[Record]]
     unassigned: list[Record]
-    class_balance: str | None
+    class_balance: str | dict[str, Any] | None
     warnings: tuple[str, ...]
     seed: int
 

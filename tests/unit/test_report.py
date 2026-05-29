@@ -19,6 +19,7 @@ from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.manifest import (
     Manifest,
     ManifestWarning,
+    read_manifest,
     write_manifest,
 )
 from datarefinery.recipe.canonical import to_canonical_bytes
@@ -82,6 +83,31 @@ def _manifest(recipe: Recipe, *, warnings: list[ManifestWarning] | None = None) 
         record_counts={"train": 6, "val": 2, "test": 2},
         warnings=warnings or [],
     )
+
+
+# ---------------------------------------------------------------------------
+# manifest.class_balance round-trip (Story I.s / G10)
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_class_balance_defaults_none(tmp_path: Path) -> None:
+    m = _manifest(_recipe())
+    assert m.class_balance is None
+
+
+def test_manifest_round_trips_class_balance_string(tmp_path: Path) -> None:
+    m = _manifest(_recipe()).model_copy(update={"class_balance": "oversample"})
+    path = manifest_path(tmp_path)
+    write_manifest(path, m)
+    assert read_manifest(path).class_balance == "oversample"
+
+
+def test_manifest_round_trips_class_balance_dict(tmp_path: Path) -> None:
+    hint = {"strategy": "oversample_minority_to_majority", "applies_to": ["train"]}
+    m = _manifest(_recipe()).model_copy(update={"class_balance": hint})
+    path = manifest_path(tmp_path)
+    write_manifest(path, m)
+    assert read_manifest(path).class_balance == hint
 
 
 # ---------------------------------------------------------------------------

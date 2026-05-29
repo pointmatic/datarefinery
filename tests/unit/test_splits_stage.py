@@ -232,6 +232,22 @@ def test_class_balance_does_not_resample() -> None:
     assert total == 20  # no resampling applied at the splits stage
 
 
+def test_class_balance_dict_shape_is_passed_through_unchanged() -> None:
+    """The dict-shape hint (Story I.s / G10) rides through verbatim, unresampled."""
+    section = SplitsSection(
+        ratios={"train": 0.5, "val": 0.5},
+        class_balance={"strategy": "emit_inverse_frequency_weights", "applies_to": ["train"]},
+    )
+    records = _records(20, classes=2)
+    result = apply_splits(records, section, seed=0)
+    assert result.class_balance == {
+        "strategy": "emit_inverse_frequency_weights",
+        "applies_to": ["train"],
+    }
+    total = sum(len(s) for s in result.splits.values()) + len(result.unassigned)
+    assert total == 20  # still no resampling
+
+
 # ---------------------------------------------------------------------------
 # Seed precedence helper
 # ---------------------------------------------------------------------------

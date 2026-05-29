@@ -135,6 +135,8 @@ class SampleSelector(_Frozen):
     n: int | None = None
     fraction: float | None = None
     seed: int | SeedDerivationSpec | None = None
+    kind: Literal["uniform", "per_class"] = "uniform"
+    splits: list[str] | None = None
 
 
 class SampleDataSection(_Frozen):
@@ -278,7 +280,7 @@ class SplitsSection(_Frozen):
     key_assignment: KeyAssignment | None = None
     stratify_by: str | None = None
     seed: int | SeedDerivationSpec | None = None
-    class_balance: str | None = None
+    class_balance: str | dict[str, Any] | None = None
     applies_to: str | None = None
 
 

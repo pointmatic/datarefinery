@@ -559,6 +559,62 @@ def test_check_10_passes_when_only_filter_handles_imbalance() -> None:
     assert not _failures_for(report, 10)
 
 
+# --- G10 (Story I.s): class_balance dict shape (MF-binding hint) ---
+
+
+def test_check_10_passes_for_valid_dict_class_balance() -> None:
+    ok = _base_dict()
+    ok["Splits"]["class_balance"] = {
+        "strategy": "oversample_minority_to_majority",
+        "applies_to": ["train"],
+    }
+    recipe = _build(ok)
+    assert recipe.Splits.class_balance == {
+        "strategy": "oversample_minority_to_majority",
+        "applies_to": ["train"],
+    }
+    assert not _failures_for(validate(recipe, _Plugin()), 10)
+
+
+def test_check_10_fails_dict_missing_strategy() -> None:
+    bad = _base_dict()
+    bad["Splits"]["class_balance"] = {"applies_to": ["train"]}
+    failures = _failures_for(validate(_build(bad), _Plugin()), 10)
+    assert len(failures) == 1
+    assert "strategy" in failures[0].message
+
+
+def test_check_10_fails_dict_missing_applies_to() -> None:
+    bad = _base_dict()
+    bad["Splits"]["class_balance"] = {"strategy": "oversample_minority_to_majority"}
+    failures = _failures_for(validate(_build(bad), _Plugin()), 10)
+    assert len(failures) == 1
+    assert "applies_to" in failures[0].message
+
+
+def test_check_10_fails_dict_unknown_key() -> None:
+    bad = _base_dict()
+    bad["Splits"]["class_balance"] = {
+        "strategy": "oversample_minority_to_majority",
+        "applies_to": ["train"],
+        "bogus": 1,
+    }
+    failures = _failures_for(validate(_build(bad), _Plugin()), 10)
+    assert len(failures) == 1
+    assert "bogus" in failures[0].message
+
+
+def test_check_10_fails_dict_applies_to_undefined_split() -> None:
+    bad = _base_dict()
+    bad["Splits"]["class_balance"] = {
+        "strategy": "oversample_minority_to_majority",
+        "applies_to": ["nope"],
+    }
+    failures = _failures_for(validate(_build(bad), _Plugin()), 10)
+    assert len(failures) == 1
+    assert "nope" in failures[0].message
+
+
 def test_check_11_passes_for_valid_visualization_mode() -> None:
     ok = _base_dict()
     ok["Visualizations"] = [
@@ -798,6 +854,57 @@ def test_check_16_passes_for_valid_fraction() -> None:
     ok["SampleData"] = {"selector": {"fraction": 0.1, "seed": 1}}
     report = validate(_build(ok), _Plugin())
     assert not _failures_for(report, 16)
+
+
+# --- G14 (Story I.r): kind / splits on the selector (schema-only) ---
+
+
+def test_check_16_passes_for_per_class_with_label_source() -> None:
+    ok = _base_dict()
+    ok["SampleData"] = {"selector": {"n": 1, "kind": "per_class", "splits": ["train"]}}
+    report = validate(_build(ok), _Plugin())
+    assert not _failures_for(report, 16)
+
+
+def test_check_16_fails_per_class_without_label_source() -> None:
+    bad = _base_dict()
+    # Every source unlabeled => no label source for per_class bucketing.
+    bad["Input"] = {
+        "sources": [
+            {
+                "name": "infer",
+                "type": "image_flat",
+                "path": "/data/infer",
+                "unlabeled": True,
+                "partition": "test",
+            }
+        ]
+    }
+    bad["SampleData"] = {"selector": {"n": 1, "kind": "per_class"}}
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 16)
+    assert len(failures) == 1
+    assert "per_class" in failures[0].message
+    assert "label" in failures[0].message
+
+
+def test_check_16_fails_when_splits_entry_undefined() -> None:
+    bad = _base_dict()
+    bad["SampleData"] = {"selector": {"n": 1, "splits": ["nope"]}}
+    report = validate(_build(bad), _Plugin())
+    failures = _failures_for(report, 16)
+    assert len(failures) == 1
+    assert "nope" in failures[0].message
+
+
+def test_check_16_passes_when_kind_uniform_default() -> None:
+    ok = _base_dict()
+    ok["SampleData"] = {"selector": {"n": 5}}
+    recipe = _build(ok)
+    assert recipe.SampleData is not None
+    assert recipe.SampleData.selector.kind == "uniform"
+    assert recipe.SampleData.selector.splits is None
+    assert not _failures_for(validate(recipe, _Plugin()), 16)
 
 
 def test_check_17_fails_when_input_contract_field_undeclared() -> None:

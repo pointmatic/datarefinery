@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,6 +71,12 @@ class Manifest(BaseModel):
     completed_through: str | None = None
     record_counts: dict[str, int] = Field(default_factory=dict)
     warnings: list[ManifestWarning] = Field(default_factory=list)
+    # Forward-declared class-imbalance hint copied verbatim from
+    # `Splits.class_balance` (bare string or `{strategy, applies_to}` dict).
+    # DataRefinery does NOT resample or emit weights — consumer tools
+    # (ModelFoundry) honor this at training time. Story I.s / G10; the
+    # cross-repo contract is pinned in `modelfoundry/dependency-spec.md`.
+    class_balance: str | dict[str, Any] | None = None
     sinks: dict[str, SinkManifestEntry] = Field(default_factory=dict)
     # Sinks declared on the recipe whose host stage was not reached
     # under a `--stage` partial run. Maps sink name -> declared stage.

@@ -46,11 +46,11 @@ None of these require a `schema_version` bump.
 | G7 | All reporting visualizations run at `post_pipeline` only | Friction (pre/post-normalize merged) | Pipeline runner |
 | G8 | `tensor`-typed fields can't satisfy `dtype` / `range` assertions | **Closed in v0.16.1** (Story I.b) | Contracts evaluator |
 | G9 | `flatten` Featurization missing from plugin | **Closed in v0.18.0** (Story I.m) | Plugin op registration |
-| G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Blocking for Phase D Module 9 `imbalanced_oversample` / `imbalanced_classweight` variants** | Schema + pipeline runner |
+| G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Closed in v0.18.0** (Story I.s; dict shape + `manifest.class_balance`, MF-side resampling) | Schema + pipeline runner |
 | G11 | `seed_derive_from: master` not recognized on Filters / Generation | **Closed in v0.18.0** (Story I.n) | Schema |
 | G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
 | G13 | `tag_fields` rename mapping for `imagecorruptions_apply` (`list[str]` vs `dict[str, str]`) | Friction (canonical names used) | Schema (param shape) |
-| G14 | `SampleData.selector` lacks `kind` and `splits` | Friction (`SampleData` section dropped) | Schema |
+| G14 | `SampleData.selector` lacks `kind` and `splits` | **Schema in v0.18.0** (Story I.r); runtime pending (plan_phase) | Schema |
 | G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Blocking (recipe doesn't parse)** | Schema (cross-section consistency) |
 | G16 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
 | G17 | `class_distribution_histogram` lacks `group_by` param | **Closed in v0.18.0** (Story I.p) | Plugin op param schema |
@@ -799,6 +799,8 @@ undocumented).
 
 ## G10 — `Splits.class_balance` is metadata-only; dict shape and runtime resampling unsupported
 
+**Status (Story I.s, v0.18.0):** **Closed (MF-side decision).** `SplitsSection.class_balance` widened to `str | dict[str, Any] | None` ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)); the dict shape is `{strategy: <str>, applies_to: [<split>, …]}`. The hint now also surfaces in the manifest: a new `Manifest.class_balance` field ([`pipeline/manifest.py`](../../src/datarefinery/pipeline/manifest.py)) is emitted verbatim from `Splits.class_balance` at both the full and partial manifest-build sites. Validator check 10 was extended (not a new check) to validate the dict shape (`strategy` non-empty string; `applies_to` a list of defined split names; no unknown keys). **The MF-side decision stands: DataRefinery performs no resampling and no weight emission** — `class_balance` is a forward-declared training-time hint that ModelFoundry honors via framework primitives (`WeightedRandomSampler`, `class_weight=`). DR-side resampling remains deferred to `stories.md § Future`. Cross-repo contract pinned in [`modelfoundry/dependency-spec.md` § `manifest.class_balance`](modelfoundry/dependency-spec.md) (manifest field row + shape subsection + strategy vocabulary). Additive — no `schema_version` bump (bare-string recipes' canonical bytes are unchanged). Documented in `recipe-authoring.md § Filters vs Splits for class imbalance`.
+
 **Severity:** Blocking for Phase D Module 9 `imbalanced_oversample` and
 `imbalanced_classweight` variants.
 
@@ -1176,6 +1178,8 @@ rename).
 ---
 
 ## G14 — `SampleData.selector` lacks `kind` and `splits`
+
+**Status (Story I.r, v0.18.0):** **Schema landed; runtime carved out.** `SampleSelector` now declares `kind: Literal["uniform", "per_class"] = "uniform"` and `splits: list[str] | None = None` ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)). Validator check 16 (`sample_data_strict_subset`) was extended (rather than adding a new check, to keep the check count stable): `kind: per_class` requires a label source (rejects fully-unlabeled recipes); `splits` entries must name defined splits. **No runtime behavior shipped** — a Story I.r.0 spike found `SampleData` has never been applied at materialize time (validated + cache-participating but inert, with no functional requirement specifying placement or artifact semantics). Per the developer's decision, I.r landed the schema/validation surface only; the SampleData *runtime* (uniform + per_class, plus the placement and replace-vs-sidecar product decisions documented in Story I.r.0) is carved out to be planned via `plan_phase`. The G14 "tests that would prove the fix" (record-count outcomes) move to that runtime story.
 
 **Severity:** Friction (SampleData dropped in spec workaround).
 
@@ -1804,11 +1808,11 @@ corresponding deviation removed:
 | G7 | Split `sample_grid` into `pre_normalize` + `post_normalize` versions with appropriate `stage:` values. |
 | G8 | **Closed in v0.16.1 (Story I.b).** `dtype: uint8` and `range: {min, max}` on tensor fields now work. (`tensor_range` / `tensor_shape` as separate kinds remain G16.) |
 | G9 | **Closed in v0.18.0 (Story I.m).** Restore the `flatten` Featurization in the `mlp_flat` variant. |
-| G10 | Restore the `imbalanced_oversample` and `imbalanced_classweight` variants once the resampling design is decided (recipe-side shape depends on the decision). |
+| G10 | **Closed in v0.18.0 (Story I.s).** Restore the `imbalanced_oversample` / `imbalanced_classweight` variants using the dict form `class_balance: { strategy: <name>, applies_to: [train] }`. The strategy rides through to `manifest.class_balance`; ModelFoundry resamples/weights at training time (DR does not). |
 | G11 | **Closed in v0.18.0 (Story I.n).** Restore `seed_derive_from: master` on every filter and on Recipe B's `apply_corruptions` Generation op. |
 | G12 | Rewrite Recipe B's `Generation` block in the new shape: top-level `op:`, `splits:` (not `applies_at:`), `output_schema: matches_input`, and `seed_derive_from: master`. |
 | G13 | Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption: corruption_type, severity: severity, source_path: original_path }`. |
-| G14 | Restore the `SampleData` section in Recipe A: `selector: { kind: per_class, n: 1, splits: [train] }`. |
+| G14 | **Schema in v0.18.0 (Story I.r); runtime pending.** The `SampleData` section now *accepts* `selector: { kind: per_class, n: 1, splits: [train] }` (validated, cache-participating), but the selector is not yet honored at materialize time — restoring it is forward-looking until the carved-out runtime story (plan_phase) lands. |
 | G15 | Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. |
 | G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames still open** (Bundle 4, Story I.x.3, `schema_version` bump). Rewrite every assertion in both recipes to use the new naming + the new kinds. |
 | G17 | **Closed in v0.18.0 (Story I.p).** Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |

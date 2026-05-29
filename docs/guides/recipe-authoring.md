@@ -327,14 +327,23 @@ record field. Use this when neither of the direct routes fits — for example, w
 
 ### `SampleData` (optional)
 
-Declares a selector for a small inline sample of the inputs. Provide exactly one of `n` (record count, ≥ 1) or `fraction` (in the open interval `(0, 1)`), with an optional `seed`:
+Declares a selector for a small representative sample. Provide exactly one of `n` (record count, ≥ 1) or `fraction` (in the open interval `(0, 1)`), with an optional `seed`. Two further selector fields shape *what* is sampled:
+
+- `kind` — `uniform` (default) samples without regard to class; `per_class` samples `n` records per label class (and therefore requires a label source — a recipe whose every Input source is `unlabeled` is rejected by the validator).
+- `splits` — an optional list of split names to sample from (e.g. `[train]`); each entry must name a defined split. Omitted means "all".
 
 ```yaml
 SampleData:
-  selector: { n: 4, seed: 7 }
+  selector:
+    kind: per_class
+    n: 1
+    splits: [train]
+    seed: 7
 ```
 
-`SampleData` is a recipe-level declaration; the validator (check 16) checks the selector is well-formed. It is part of the recipe surface so downstream tools and future smoke-run flags can resolve a stable, recipe-declared sample without re-deciding what "a small subset" means per consumer.
+`SampleData` is a recipe-level declaration; the validator (check 16) checks the selector is well-formed (exactly one of `n`/`fraction`; `per_class` has a label source; `splits` entries are defined). The selector is part of the recipe surface and **participates in cache identity**.
+
+> **Runtime status (v0.18.0).** The SampleData selector is **not yet honored at materialize time** — declaring it shapes cache identity and is validated, but it does not currently produce a sampled subset. The runtime (and the decision of whether the sample replaces the instance or is emitted as a sidecar artifact, and where in the pipeline it runs) is tracked as a separate, to-be-planned story. Authoring a `SampleData` block today is forward-looking, not a working subset.
 
 ### `InputContracts`
 
@@ -982,7 +991,9 @@ Class imbalance shows up in almost every classification dataset. The v1 recipe s
 
   Removed records do not appear in any split and do not factor into any downstream metric.
 
-- **Weight at training time → `Splits.class_balance`.** When the imbalance is not severe enough to warrant data loss, declare a sampling strategy on Splits. ModelFoundry honors it during training (e.g. a `WeightedRandomSampler`); the train split itself still contains every record.
+- **Weight at training time → `Splits.class_balance`.** When the imbalance is not severe enough to warrant data loss, declare a strategy on Splits. **DataRefinery does not act on it** — `class_balance` is a *forward-declared hint* that rides through to `manifest.class_balance` verbatim. The consumer (ModelFoundry) honors it at training time via framework primitives (e.g. PyTorch `WeightedRandomSampler`, Keras `class_weight=`). The materialized train split still contains every record at its natural frequency; **no resampling and no weight column happen at materialize time.**
+
+  Two forms are accepted. A bare string (strategy name, no scoping):
 
   ```yaml
   Splits:
@@ -992,7 +1003,19 @@ Class imbalance shows up in almost every classification dataset. The v1 recipe s
     class_balance: weighted_sampling
   ```
 
-  No records are dropped; the imbalance is corrected at iteration time, not at materialization time.
+  Or a dict that names the strategy and the splits it applies to:
+
+  ```yaml
+  Splits:
+    ratios: { train: 0.7, val: 0.15, test: 0.15 }
+    seed: 11
+    stratify_by: label
+    class_balance:
+      strategy: oversample_minority_to_majority   # passed through verbatim; the consumer owns its meaning
+      applies_to: [train]                          # which splits the strategy targets
+  ```
+
+  The validator checks only the dict *shape* (`strategy` is a non-empty string; `applies_to` is a list of defined split names). It does not enforce a fixed strategy vocabulary — the strategy name is the consumer's contract. The supported strategy names and ModelFoundry's training-time responsibility are documented in [`modelfoundry/dependency-spec.md` § `manifest.class_balance`](../specs/modelfoundry/dependency-spec.md). No records are dropped; the imbalance is corrected at iteration time, not at materialization time.
 
 When in doubt, prefer `Splits.class_balance`. Filters are a heavier hammer — they delete information from the instance, so the same recipe cannot be re-used to study the un-balanced distribution without authoring a variant that disables the filter.
 

@@ -129,6 +129,7 @@ The `manifest.json` at the instance root is the authoritative metadata document.
 | `warnings`             | `list[ManifestWarning]`    | Non-fatal issues raised during the run; each has `stage` + `message`. |
 | `is_partial`           | `bool`                     | True when materialization stopped early via `--stop-after`. |
 | `failed_stage`         | `str | null`               | Stage at which a partial run stopped. |
+| `class_balance`        | `str | dict | null`        | Forward-declared class-imbalance hint copied verbatim from `Splits.class_balance` (Story I.s / G10). `null` when unset. **DataRefinery does not resample or emit weights** — ModelFoundry honors this at training time. See `manifest.class_balance` shape below. |
 | `sinks`                | `dict[str, SinkManifestEntry]` | Per-sink summary of disk-output artifacts captured at materialize time (Story I.d). Empty dict when the recipe declares no `Sinks` section. |
 | `sinks_skipped`        | `dict[str, str]`           | Sinks declared on the recipe whose host stage was not reached under a partial `--stage` run (Story I.f.1). Maps sink name → declared stage. Empty on full materializes. |
 
@@ -147,6 +148,23 @@ Added in DataRefinery v0.17.0 alongside the `Sinks` recipe section. Each declare
 Sink output lives under `<instance>/<path_template_resolved_root>/...` inside the same atomic temp-then-promote unit as `dataset/`, `fitted_statistics/`, and `report/`. The format vocabulary is extensible (additional formats are planned in Future); consumers SHOULD ignore unknown `format` values rather than fail.
 
 `record_counts["train"]` reflects the **post-augmentation** count for aggressive recipes. ModelFoundry consumers reading the count to estimate training duration should not double-count by applying expansion themselves.
+
+### `manifest.class_balance` shape
+
+Added in DataRefinery v0.18.0 (Story I.s / G10). The field mirrors the recipe's `Splits.class_balance` verbatim and takes one of three forms:
+
+- `null` — no class-imbalance handling declared.
+- a bare **string** — a strategy name with no split scoping (legacy form, still accepted).
+- a **dict** `{ "strategy": <str>, "applies_to": [<split>, …] }` — a strategy plus the splits it targets.
+
+**Division of responsibility.** This is a *forward-declared training-time hint*. DataRefinery performs **no resampling and no weight emission** — `record_counts` and the materialized `dataset/` are unchanged by `class_balance`. ModelFoundry is responsible for honoring the strategy at training time using framework primitives (e.g. PyTorch `WeightedRandomSampler`, Keras `class_weight=`), scoped to the splits named in `applies_to`.
+
+**Strategy vocabulary (v1, illustrative).** DataRefinery passes `strategy` through verbatim and does **not** enforce a closed set — the validator checks only the dict *shape*. ModelFoundry owns the meaning of each strategy name. Names in use:
+
+- `oversample_minority_to_majority` — at training time, sample minority-class records more frequently so each class is seen at the majority class's effective rate.
+- `emit_inverse_frequency_weights` — weight the loss per record by inverse class frequency.
+
+Unknown strategy names SHOULD be treated as a configuration error by ModelFoundry (refuse rather than silently ignore), since the author declared an imbalance intent the consumer cannot honor.
 
 ## Report subsections
 

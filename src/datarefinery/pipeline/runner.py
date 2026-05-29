@@ -486,6 +486,7 @@ class PipelineRunner:
                 elapsed_seconds=elapsed,
                 record_counts={name: len(records) for name, records in split_map.items()},
                 warnings=warnings,
+                class_balance=self.recipe.Splits.class_balance,
                 sinks={
                     r.name: SinkManifestEntry(
                         stage=r.stage,
@@ -575,6 +576,7 @@ class PipelineRunner:
             completed_through=completed_through,
             record_counts=record_counts,
             warnings=warnings,
+            class_balance=self.recipe.Splits.class_balance,
             sinks=sinks_map,
             sinks_skipped=sinks_skipped,
         )
