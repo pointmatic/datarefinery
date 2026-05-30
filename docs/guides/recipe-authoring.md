@@ -104,7 +104,7 @@ The two materializations produce two different instances; the variant overlay ch
 
 | Field | Required | Purpose |
 |-------|----------|---------|
-| `schema_version` | yes | Recipe schema version. Supported values: `1` (auto-migrated to v2 at load time) and `2` (current). New recipes should write `2`. The loader rejects unknown values (FR-1). |
+| `schema_version` | yes | Recipe schema version. **Current: `2`** (canonical for new recipes; shipped in v0.19.0, Phase I bundle 4). Legacy `1` is still accepted; the loader auto-migrates it to v2 in memory via `recipe.migrations.v1_to_v2` (Filters reshape, Generation reshape, assertion-naming pass). The loader rejects unknown values (FR-1). |
 | `plugin` | yes | Plugin name that supplies the operations referenced in this recipe. |
 | `seed` | no (default `0`) | Recipe-level seed. Combined with the canonical recipe hash and the raw-input hash to form the cache identity. |
 | `Input` | yes | Raw data sources (FR see-below). |

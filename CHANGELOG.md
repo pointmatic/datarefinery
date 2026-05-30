@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-05-30
+
+Phase I Bundle 4. Closes Story I.y and Phase I overall. **Recipe
+`schema_version` bumped from 1 to 2** — the cluster of three reshape
+stories (I.x.1 / I.x.2 / I.x.3) ships together as one deliberate
+cache-invalidation event, per the ceremony documented in
+[`project-essentials.md` § "Cache identity is the reproducibility
+contract — invalidations are ceremonious"](docs/specs/project-essentials.md).
+v1 recipes are auto-migrated by the loader (`recipe.migrations.v1_to_v2`);
+authors do not need to manually rewrite anything, but cached materialized
+instances built against v1-shape canonical bytes are now stale and must
+be re-materialized once at upgrade. This is a one-time event per
+installation. Pre-production rules apply: the recompute cost is
+recipe-dependent (single-input dev recipes are seconds; large production
+recipes are minutes-to-hours), no schema_version re-pinning is required
+beyond the v1→v2 bump itself.
+
+The migration handles three reshapes in one composed chain
+(`recipe/migrations.py`): G15 / Story I.x.1 (Filters flat shape), G12 /
+Story I.x.2 (Generation reshape + `output_schema: "matches_input"`
+shorthand), G16a / Story I.x.3 (assertion `kind` naming pass).
+
+### Schema
+
+- **`schema_version: 2`** is the canonical recipe version going forward.
+  v1 recipes still load (auto-migrated); the cached `recipe.json` always
+  reflects the v2 canonical shape. The loader's
+  `SUPPORTED_SCHEMA_VERSIONS` is `{1, 2}` and `LATEST_SCHEMA_VERSION = 2`.
+  Cross-repo consumers binding directly against the recipe model
+  (ModelFoundry today; future tools) should track the v2 names; see
+  [`dependency-spec.md` § Cache-identity contract → Schema v1 → v2](docs/specs/modelfoundry/dependency-spec.md)
+  for the per-field migration rules.
+
+### Changed
+
+- **G15 — `FilterOp` flat shape (Story I.x.1).** v1's nested
+  `predicate: {op, ...rest, seed?}` reshapes to top-level
+  `{op, params, seed?}`, matching every other section. Auto-migrated by
+  `filters_reshape_v1_to_v2`. Documented in
+  [`recipe-authoring.md` § Filters](docs/guides/recipe-authoring.md).
+  `tests/unit/test_filters_stage.py` and the eight other filter-touching
+  test files were swept to the v2 shape; `FilterOp.predicate` is no
+  longer a model field.
+
+- **G12 — `GenerationOp` reshape (Story I.x.2).** v1's implicit op (the
+  recipe's `name` doubled as the op-name) becomes explicit
+  `op: str` at top level; `applies_at` renames to `splits`;
+  `output_schema` widens to accept the literal `"matches_input"`
+  shorthand (resolved at materialize time to `Output.record_schema` +
+  declared `tag_fields`). Auto-migrated by `generation_reshape_v1_to_v2`,
+  which also handles the documented v1 workaround patterns of stashing
+  `op:` inside `params:` and `output_schema_matches_input: true` at the
+  op level. Documented in
+  [`recipe-authoring.md` § Generation](docs/guides/recipe-authoring.md).
+
+- **G16a — Assertion `kind` naming pass (Story I.x.3).** Three v1
+  bare-verb names rename to predicate-sentence form:
+  `dtype` → `dtype_equals`, `range` → `value_range`,
+  `record_count` → `record_count_in_range`. `required_field` and the
+  `distributional` placeholder are unchanged. v1 names are removed
+  (not aliased); post-migration recipes still using bare `dtype:` /
+  `range:` / `record_count:` hit the evaluator's "unknown assertion
+  kind" branch. Auto-migrated by `assertion_naming_v1_to_v2`.
+  Documented in
+  [`recipe-authoring.md` § InputContracts](docs/guides/recipe-authoring.md).
+
+### Added
+
+- **End-to-end migration integration test
+  ([`tests/integration/test_v1_v2_migration_end_to_end.py`](tests/integration/test_v1_v2_migration_end_to_end.py)).**
+  A single v1 YAML exercising all three reshapes (Filters + Generation +
+  assertion-naming) loads through `recipe.loader.load`, the migration
+  chain runs implicitly, and `PipelineRunner` materializes a complete
+  instance against the migrated shape. A second `load + run` produces a
+  cache hit — the migrated `recipe_hash` is stable. Bundle-level
+  complement to the unit-level migration round-trip tests in
+  `tests/unit/test_migrations.py`.
+
+### Notes
+
+- **Cache invalidation (pre-production).** Every cached materialized
+  instance built against a v1-shape recipe is stale after upgrade.
+  Re-materialize once. Recipes that do not declare any of the three
+  reshaped sections (no Filters, no Generation, and no Contracts/
+  Expectations using the three renamed kinds) see no canonical-bytes
+  perturbation and their caches survive. The pinned canonical-hash test
+  fixture (`tests/unit/test_canonical_hash_pin.py`) falls into this
+  category and its digest (`146b2059…`) held unchanged across all three
+  bundle stories. The fixture is authored as `schema_version: 1`, so it
+  also exercises the loader's migration path through the pinned digest.
+
+- **Cross-repo coordination.**
+  [`dependency-spec.md` § Cache-identity contract → Schema v1 → v2](docs/specs/modelfoundry/dependency-spec.md)
+  documents the v1↔v2 shape diffs for FilterOp, GenerationOp, and
+  assertion `kind` names. ModelFoundry consumers should rely on
+  loader-emitted v2 shape; binding against v1 names directly is no
+  longer supported.
+
 ## [0.18.0] - 2026-05-28
 
 Phase I Bundle 3. Closes Story I.w with twelve work stories (I.k–I.v)

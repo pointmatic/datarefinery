@@ -807,7 +807,7 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G16a](phase-i-dependency-gaps-v0.16
 
 ---
 
-### Story I.y: Release v0.19.0 (Phase I bundle 4, schema_version 1→2) [Planned]
+### Story I.y: Release v0.19.0 (Phase I bundle 4, schema_version 1→2) [Done]
 
 **Disposition: release ceremony + schema-bump ceremony.** Minor bump (`v0.18.0 → v0.19.0`). Closes Bundle 4 and Phase I.
 
@@ -815,16 +815,14 @@ The schema-v2 migration is cache-invalidating per [`project-essentials.md` § "C
 
 **Tasks:**
 
-- [ ] Bump `pyproject.toml` `version = "0.18.0"` → `"0.19.0"`.
-- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
-- [ ] Update the canonical-hash pinning test fixtures: confirm v2-shape canonical bytes for representative recipes; record the new pinned hashes. A reviewer must consciously sign off on the pinned hash change.
-- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.19.0]`:
-   - **Schema:** "Recipe `schema_version` bumped from 1 to 2. The v1→v2 migration is automatic via the recipe loader; recipes do not need manual rewriting. **Cache invalidation:** all existing materialized instances become stale and must be re-materialized. This is a one-time event per installation."
-   - **Changed:** G15 (Filters flat shape), G12 (Generation reshape), G16a (assertion naming pass).
-   - **Notes:** "Pre-production cache invalidation per `project-essentials.md`. See migration entries in `recipe.loader.migrations` for the precise reshape rules."
-- [ ] Ensure the v1→v2 migration is exercised by an integration test that loads a representative v1 recipe, applies the migration, and produces a canonical instance.
-- [ ] Cross-repo coordination: confirm `dependency-spec.md` is consistent across all three v2 reshapes (Filters, Generation, assertions).
-- [ ] Update `recipe-authoring.md`'s overall introduction (or the schema-version subsection) to enumerate `schema_version: 2` as the canonical recipe version.
+- [x] Bumped `pyproject.toml` `version = "0.18.0"` → `"0.19.0"`.
+- [x] Bumped `src/datarefinery/__init__.py` `__version__` to `"0.19.0"`.
+- [x] **Canonical-hash pin held at `146b2059…`** — the pin fixture has no Filters / Generation / Contracts / Expectations, so none of the three Bundle 4 reshapes perturb its canonical bytes. The fixture stays authored as `schema_version: 1`, so the pin continues to exercise the loader's migration path (the v1 → v2 schema_version field bump alone perturbed the digest at I.x.1; nothing in I.x.2 or I.x.3 added to that). No reviewer sign-off needed on a pin change — the pre-condition recorded across I.x.1/2/3 ("pin unchanged") held all the way to release. The pin's preface comment in [`test_canonical_hash_pin.py`](../../tests/unit/test_canonical_hash_pin.py) (updated at I.x.1) already documents the bundle's deliberate-invalidation context.
+- [x] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.19.0] - 2026-05-30` added: opening paragraph names the bundle, the ceremony reference, the one-time re-materialization cost framing, and the chain composition; **Schema** subsection (`schema_version: 2` is canonical; v1 still loads; pointer to the dependency-spec cross-repo entries); **Changed** subsection (per-G entry for I.x.1 / I.x.2 / I.x.3 with reshape-shape diffs + auto-migration callouts + doc links); **Added** subsection (the new end-to-end integration test); **Notes** subsection (cache-invalidation pre-prod framing + carve-out for recipes that don't touch the reshaped surface + pin-held statement + cross-repo coordination summary).
+- [x] Added [`tests/integration/test_v1_v2_migration_end_to_end.py`](../../tests/integration/test_v1_v2_migration_end_to_end.py) (2 tests): a single v1 YAML on disk exercises all three reshapes (Filters + Generation + assertion-naming) through `recipe.loader.load` and `PipelineRunner.run`, producing a complete materialized instance — bundle-level complement to the unit-level round-trips in `test_migrations.py`. A second `load + run` confirms cache-hit semantics: the migrated `recipe_hash` is stable, so the same instance directory is reused.
+- [x] **Cross-repo coordination confirmed.** [`dependency-spec.md` § Cache-identity contract → "Schema v1 → v2 (Phase I bundle 4, v0.19.0)"](modelfoundry/dependency-spec.md) is consistent across all three reshapes: lines 187–191 enumerate `FilterOp` (I.x.1), `GenerationOp` (I.x.2), and assertion-`kind` naming (I.x.3) with v1↔v2 field diffs and migration pointers. No further edits needed at release time — I.x.1/I.x.2/I.x.3 each maintained the cross-repo doc in lockstep.
+- [x] Updated [`recipe-authoring.md` § Top-level keys](../guides/recipe-authoring.md) `schema_version` row: emphasized that **`2` is the current canonical value** (shipped in v0.19.0, Phase I bundle 4), with `1` still accepted and auto-migrated. The reference recipe at the top of the file already authors `schema_version: 2` (updated at I.x.1); no further change needed there.
+- [x] CI parity: `pyve test` 1246 passed (+2 from this story's integration test); `pyve testenv run mypy src tests` clean across 199 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean. Version stamp verified at `0.19.0` in both `pyproject.toml` and `src/datarefinery/__init__.py`.
 
 ---
 
