@@ -19,6 +19,7 @@ from datarefinery.core.errors import RecipeError
 from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import SUPPORTED_SCHEMA_VERSIONS, load, migrations
 from datarefinery.recipe.migrations import (
+    assertion_naming_v1_to_v2,
     filters_reshape_v1_to_v2,
     generation_reshape_v1_to_v2,
 )
@@ -531,6 +532,212 @@ def test_v1_generation_recipe_round_trips_to_v2_canonical_bytes(tmp_path: Path) 
     v1_path.write_text(_V1_RECIPE_WITH_GENERATION, encoding="utf-8")
     v2_path = tmp_path / "v2.yaml"
     v2_path.write_text(_V2_RECIPE_WITH_GENERATION, encoding="utf-8")
+    v1_bytes = to_canonical_bytes(load(v1_path))
+    v2_bytes = to_canonical_bytes(load(v2_path))
+    assert v1_bytes == v2_bytes
+    assert hashlib.sha256(v1_bytes).hexdigest() == hashlib.sha256(v2_bytes).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# assertion_naming_v1_to_v2 (Story I.x.3 / G16a)
+# ---------------------------------------------------------------------------
+
+
+def test_assertion_naming_renames_dtype_to_dtype_equals() -> None:
+    v1 = {
+        "InputContracts": [{"field": "image", "assertion": {"kind": "dtype", "expected": "uint8"}}]
+    }
+    v2 = assertion_naming_v1_to_v2(v1)
+    assertion = v2["InputContracts"][0]["assertion"]
+    assert assertion["kind"] == "dtype_equals"
+    # Param shape carries through verbatim.
+    assert assertion["expected"] == "uint8"
+
+
+def test_assertion_naming_renames_range_to_value_range() -> None:
+    v1 = {
+        "InputContracts": [
+            {"field": "score", "assertion": {"kind": "range", "min": 0.0, "max": 1.0}}
+        ]
+    }
+    v2 = assertion_naming_v1_to_v2(v1)
+    assertion = v2["InputContracts"][0]["assertion"]
+    assert assertion["kind"] == "value_range"
+    assert assertion["min"] == 0.0
+    assert assertion["max"] == 1.0
+
+
+def test_assertion_naming_renames_record_count_to_record_count_in_range() -> None:
+    v1 = {"OutputExpectations": [{"assertion": {"kind": "record_count", "min": 10, "max": 1000}}]}
+    v2 = assertion_naming_v1_to_v2(v1)
+    assertion = v2["OutputExpectations"][0]["assertion"]
+    assert assertion["kind"] == "record_count_in_range"
+
+
+def test_assertion_naming_preserves_required_field_and_distributional() -> None:
+    """The two unchanged v1 kinds pass through verbatim."""
+    v1 = {
+        "InputContracts": [
+            {"field": "label", "assertion": {"kind": "required_field"}},
+            {"assertion": {"kind": "distributional", "metric": "ks"}},
+        ]
+    }
+    v2 = assertion_naming_v1_to_v2(v1)
+    assert v2["InputContracts"][0]["assertion"]["kind"] == "required_field"
+    assert v2["InputContracts"][1]["assertion"]["kind"] == "distributional"
+
+
+def test_assertion_naming_renames_in_both_sections_and_leaves_others_untouched() -> None:
+    """Both InputContracts and OutputExpectations get the rename pass; the
+    v2-only kinds added in Story I.o (split_record_counts, value_in_set, etc.)
+    are already v2-shaped and pass through verbatim."""
+    v1 = {
+        "InputContracts": [{"field": "image", "assertion": {"kind": "dtype", "expected": "uint8"}}],
+        "OutputExpectations": [
+            {"assertion": {"kind": "record_count", "min": 1}},
+            {
+                "assertion": {
+                    "kind": "split_record_counts",
+                    "counts": {"train": 800, "val": 100, "test": 100},
+                }
+            },
+            {"field": "label", "assertion": {"kind": "value_in_set", "value": ["a", "b"]}},
+        ],
+    }
+    v2 = assertion_naming_v1_to_v2(v1)
+    assert v2["InputContracts"][0]["assertion"]["kind"] == "dtype_equals"
+    assert v2["OutputExpectations"][0]["assertion"]["kind"] == "record_count_in_range"
+    assert v2["OutputExpectations"][1]["assertion"]["kind"] == "split_record_counts"
+    assert v2["OutputExpectations"][2]["assertion"]["kind"] == "value_in_set"
+
+
+def test_assertion_naming_handles_missing_or_non_string_kind_gracefully() -> None:
+    """The migration leaves malformed entries alone — the model layer (or
+    the runtime evaluator) is the right place to complain about them."""
+    v1 = {
+        "InputContracts": [
+            {"assertion": {}},  # missing kind
+            {"assertion": {"kind": 42}},  # non-string kind
+            {"assertion": {"kind": "unknown_custom_kind"}},  # unknown but well-typed
+        ]
+    }
+    v2 = assertion_naming_v1_to_v2(v1)
+    # Each entry passes through unchanged.
+    assert v2["InputContracts"][0]["assertion"] == {}
+    assert v2["InputContracts"][1]["assertion"]["kind"] == 42
+    assert v2["InputContracts"][2]["assertion"]["kind"] == "unknown_custom_kind"
+
+
+def test_assertion_naming_no_contracts_or_expectations_is_noop() -> None:
+    v1: dict[str, object] = {"plugin": "image_classification"}
+    assert assertion_naming_v1_to_v2(v1) == v1
+    v1b: dict[str, object] = {"InputContracts": [], "OutputExpectations": []}
+    assert assertion_naming_v1_to_v2(v1b) == v1b
+
+
+def test_assertion_naming_is_idempotent_on_v2_input() -> None:
+    """Re-running on v2 input leaves it unchanged (no v2 names rename to anything)."""
+    v2_in = {
+        "InputContracts": [
+            {"field": "image", "assertion": {"kind": "dtype_equals", "expected": "uint8"}},
+            {"field": "score", "assertion": {"kind": "value_range", "min": 0.0, "max": 1.0}},
+        ],
+        "OutputExpectations": [
+            {"assertion": {"kind": "record_count_in_range", "min": 1}},
+        ],
+    }
+    assert assertion_naming_v1_to_v2(v2_in) == v2_in
+
+
+# ---------------------------------------------------------------------------
+# End-to-end loader: v1 recipe with assertions migrates to v2 canonical bytes
+# byte-identical to a directly-authored v2 recipe.
+# ---------------------------------------------------------------------------
+
+
+_V1_RECIPE_WITH_ASSERTIONS = """\
+schema_version: 1
+plugin: image_classification
+seed: 7
+Input:
+  sources:
+    - name: train
+      type: image_folder
+      path: /data/train
+Output:
+  record_schema:
+    image:
+      dtype: uint8
+      shape: [32, 32, 3]
+    label:
+      dtype: int32
+Labels:
+  field: label
+  source:
+    kind: derived
+    derivation: parent_directory_name
+InputContracts:
+  - assertion: { kind: record_count, min: 1 }
+  - field: image
+    assertion: { kind: dtype, expected: uint8 }
+  - field: image
+    assertion: { kind: range, min: 0, max: 255 }
+OutputExpectations:
+  - field: label
+    assertion: { kind: required_field }
+Splits:
+  ratios:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+  seed: 7
+"""
+
+
+_V2_RECIPE_WITH_ASSERTIONS = """\
+schema_version: 2
+plugin: image_classification
+seed: 7
+Input:
+  sources:
+    - name: train
+      type: image_folder
+      path: /data/train
+Output:
+  record_schema:
+    image:
+      dtype: uint8
+      shape: [32, 32, 3]
+    label:
+      dtype: int32
+Labels:
+  field: label
+  source:
+    kind: derived
+    derivation: parent_directory_name
+InputContracts:
+  - assertion: { kind: record_count_in_range, min: 1 }
+  - field: image
+    assertion: { kind: dtype_equals, expected: uint8 }
+  - field: image
+    assertion: { kind: value_range, min: 0, max: 255 }
+OutputExpectations:
+  - field: label
+    assertion: { kind: required_field }
+Splits:
+  ratios:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+  seed: 7
+"""
+
+
+def test_v1_assertion_recipe_round_trips_to_v2_canonical_bytes(tmp_path: Path) -> None:
+    v1_path = tmp_path / "v1.yaml"
+    v1_path.write_text(_V1_RECIPE_WITH_ASSERTIONS, encoding="utf-8")
+    v2_path = tmp_path / "v2.yaml"
+    v2_path.write_text(_V2_RECIPE_WITH_ASSERTIONS, encoding="utf-8")
     v1_bytes = to_canonical_bytes(load(v1_path))
     v2_bytes = to_canonical_bytes(load(v2_path))
     assert v1_bytes == v2_bytes

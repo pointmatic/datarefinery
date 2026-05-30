@@ -37,7 +37,7 @@ def _records(n: int = 3, **overrides: Any) -> list[dict[str, Any]]:
 
 
 def test_record_count_within_bounds_passes() -> None:
-    contract = Contract(assertion={"kind": "record_count", "min": 1, "max": 10})
+    contract = Contract(assertion={"kind": "record_count_in_range", "min": 1, "max": 10})
     report = evaluate_input_contracts(_records(3), [contract])
     assert report.passed
     assert report.results[0].passed
@@ -45,22 +45,22 @@ def test_record_count_within_bounds_passes() -> None:
 
 
 def test_record_count_below_min_fails() -> None:
-    contract = Contract(assertion={"kind": "record_count", "min": 5})
+    contract = Contract(assertion={"kind": "record_count_in_range", "min": 5})
     report = evaluate_input_contracts(_records(3), [contract])
     assert not report.passed
-    assert report.failures[0].kind == "record_count"
+    assert report.failures[0].kind == "record_count_in_range"
     assert "below min" in report.failures[0].message
 
 
 def test_record_count_above_max_fails() -> None:
-    contract = Contract(assertion={"kind": "record_count", "max": 2})
+    contract = Contract(assertion={"kind": "record_count_in_range", "max": 2})
     report = evaluate_input_contracts(_records(5), [contract])
     assert not report.passed
     assert "above max" in report.failures[0].message
 
 
 def test_record_count_missing_both_bounds_passes_vacuously() -> None:
-    contract = Contract(assertion={"kind": "record_count"})
+    contract = Contract(assertion={"kind": "record_count_in_range"})
     report = evaluate_input_contracts(_records(3), [contract])
     assert report.passed
 
@@ -109,7 +109,7 @@ def test_required_field_assertion_without_field_fails() -> None:
 def test_dtype_match_passes() -> None:
     contract = Contract(
         field="value",
-        assertion={"kind": "dtype", "expected": "float"},
+        assertion={"kind": "dtype_equals", "expected": "float"},
     )
     report = evaluate_input_contracts(_records(3), [contract])
     assert report.passed
@@ -120,7 +120,7 @@ def test_dtype_mismatch_fails() -> None:
     records[1]["value"] = "not a float"
     contract = Contract(
         field="value",
-        assertion={"kind": "dtype", "expected": "float"},
+        assertion={"kind": "dtype_equals", "expected": "float"},
     )
     report = evaluate_input_contracts(records, [contract])
     assert not report.passed
@@ -130,7 +130,7 @@ def test_dtype_mismatch_fails() -> None:
 def test_dtype_numpy_alias_tolerates_python_int() -> None:
     contract = Contract(
         field="id",
-        assertion={"kind": "dtype", "expected": "int32"},
+        assertion={"kind": "dtype_equals", "expected": "int32"},
     )
     report = evaluate_input_contracts(_records(3), [contract])
     assert report.passed
@@ -141,7 +141,7 @@ def test_dtype_int_rejects_bool() -> None:
     records[0]["id"] = True  # bool subclasses int but should be rejected
     contract = Contract(
         field="id",
-        assertion={"kind": "dtype", "expected": "int"},
+        assertion={"kind": "dtype_equals", "expected": "int"},
     )
     report = evaluate_input_contracts(records, [contract])
     assert not report.passed
@@ -150,7 +150,7 @@ def test_dtype_int_rejects_bool() -> None:
 def test_dtype_unknown_tag_fails() -> None:
     contract = Contract(
         field="id",
-        assertion={"kind": "dtype", "expected": "complex128"},
+        assertion={"kind": "dtype_equals", "expected": "complex128"},
     )
     report = evaluate_input_contracts(_records(1), [contract])
     assert not report.passed
@@ -158,7 +158,7 @@ def test_dtype_unknown_tag_fails() -> None:
 
 
 def test_dtype_assertion_without_field_fails() -> None:
-    contract = Contract(assertion={"kind": "dtype", "expected": "int"})
+    contract = Contract(assertion={"kind": "dtype_equals", "expected": "int"})
     report = evaluate_input_contracts(_records(1), [contract])
     assert not report.passed
 
@@ -171,7 +171,7 @@ def test_dtype_assertion_without_field_fails() -> None:
 def test_range_within_bounds_passes() -> None:
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 0.0, "max": 1.0},
+        assertion={"kind": "value_range", "min": 0.0, "max": 1.0},
     )
     report = evaluate_input_contracts(_records(3), [contract])
     assert report.passed
@@ -182,7 +182,7 @@ def test_range_below_min_fails() -> None:
     records[0]["value"] = -0.5
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 0.0, "max": 1.0},
+        assertion={"kind": "value_range", "min": 0.0, "max": 1.0},
     )
     report = evaluate_input_contracts(records, [contract])
     assert not report.passed
@@ -194,7 +194,7 @@ def test_range_above_max_fails() -> None:
     records[2]["value"] = 5.0
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 0.0, "max": 1.0},
+        assertion={"kind": "value_range", "min": 0.0, "max": 1.0},
     )
     report = evaluate_input_contracts(records, [contract])
     assert not report.passed
@@ -203,14 +203,14 @@ def test_range_above_max_fails() -> None:
 def test_range_one_sided_min_only() -> None:
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 0.0},
+        assertion={"kind": "value_range", "min": 0.0},
     )
     report = evaluate_input_contracts(_records(3), [contract])
     assert report.passed
 
 
 def test_range_assertion_with_neither_bound_fails() -> None:
-    contract = Contract(field="value", assertion={"kind": "range"})
+    contract = Contract(field="value", assertion={"kind": "value_range"})
     report = evaluate_input_contracts(_records(1), [contract])
     assert not report.passed
     assert "at least one" in report.failures[0].message
@@ -239,7 +239,7 @@ def test_distributional_placeholder_always_passes() -> None:
 def test_warning_severity_failure_does_not_make_report_fail() -> None:
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 100.0},
+        assertion={"kind": "value_range", "min": 100.0},
         severity="warning",
     )
     report = evaluate_input_contracts(_records(3), [contract])
@@ -251,7 +251,7 @@ def test_warning_severity_failure_does_not_make_report_fail() -> None:
 def test_error_severity_failure_makes_report_fail() -> None:
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 100.0},
+        assertion={"kind": "value_range", "min": 100.0},
         severity="error",
     )
     report = evaluate_input_contracts(_records(3), [contract])
@@ -263,7 +263,7 @@ def test_error_severity_failure_makes_report_fail() -> None:
 def test_raise_for_status_raises_on_error_failure() -> None:
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 100.0},
+        assertion={"kind": "value_range", "min": 100.0},
         severity="error",
     )
     report = evaluate_input_contracts(_records(3), [contract])
@@ -274,7 +274,7 @@ def test_raise_for_status_raises_on_error_failure() -> None:
 def test_raise_for_status_silent_on_warning_only() -> None:
     contract = Contract(
         field="value",
-        assertion={"kind": "range", "min": 100.0},
+        assertion={"kind": "value_range", "min": 100.0},
         severity="warning",
     )
     report = evaluate_input_contracts(_records(3), [contract])
@@ -283,7 +283,7 @@ def test_raise_for_status_silent_on_warning_only() -> None:
 
 def test_raise_for_status_silent_when_all_pass() -> None:
     contract = Contract(
-        assertion={"kind": "record_count", "min": 1, "max": 10},
+        assertion={"kind": "record_count_in_range", "min": 1, "max": 10},
     )
     report = evaluate_input_contracts(_records(3), [contract])
     report.raise_for_status()
@@ -296,11 +296,11 @@ def test_raise_for_status_silent_when_all_pass() -> None:
 
 def test_aggregator_does_not_short_circuit() -> None:
     contracts = [
-        Contract(assertion={"kind": "record_count", "min": 999}),  # fail
+        Contract(assertion={"kind": "record_count_in_range", "min": 999}),  # fail
         Contract(field="value", assertion={"kind": "required_field"}),  # pass
         Contract(
             field="value",
-            assertion={"kind": "range", "min": 100.0},
+            assertion={"kind": "value_range", "min": 100.0},
         ),  # fail
     ]
     report = evaluate_input_contracts(_records(3), contracts)
@@ -332,10 +332,10 @@ def test_evaluate_input_contracts_consumes_iterable_once() -> None:
         yield {"value": 0.7}
 
     contracts = [
-        Contract(assertion={"kind": "record_count", "min": 2}),
+        Contract(assertion={"kind": "record_count_in_range", "min": 2}),
         Contract(
             field="value",
-            assertion={"kind": "range", "min": 0.0, "max": 1.0},
+            assertion={"kind": "value_range", "min": 0.0, "max": 1.0},
         ),
     ]
     report = evaluate_input_contracts(gen(), contracts)
@@ -356,10 +356,10 @@ def test_empty_contract_list_returns_empty_report() -> None:
 
 def test_output_expectations_evaluates_same_assertion_kinds() -> None:
     expectations = [
-        Expectation(assertion={"kind": "record_count", "min": 1}),
+        Expectation(assertion={"kind": "record_count_in_range", "min": 1}),
         Expectation(
             field="value",
-            assertion={"kind": "range", "min": 0.0, "max": 1.0},
+            assertion={"kind": "value_range", "min": 0.0, "max": 1.0},
         ),
     ]
     report = evaluate_output_expectations(_records(3), expectations)
@@ -369,7 +369,7 @@ def test_output_expectations_evaluates_same_assertion_kinds() -> None:
 
 def test_output_expectations_failure_raises_via_status() -> None:
     expectations = [
-        Expectation(assertion={"kind": "record_count", "min": 999}),
+        Expectation(assertion={"kind": "record_count_in_range", "min": 999}),
     ]
     report = evaluate_output_expectations(_records(3), expectations)
     with pytest.raises(ContractError):
@@ -421,7 +421,7 @@ def test_g8_dtype_on_uint8_ndarray_field_passes() -> None:
     ]
     contract = Contract(
         field="image",
-        assertion={"kind": "dtype", "expected": "uint8"},
+        assertion={"kind": "dtype_equals", "expected": "uint8"},
     )
     report = evaluate_input_contracts(records, [contract])
     assert report.passed, (
@@ -441,7 +441,7 @@ def test_g8_dtype_on_float32_ndarray_field_passes() -> None:
     ]
     contract = Contract(
         field="image",
-        assertion={"kind": "dtype", "expected": "float32"},
+        assertion={"kind": "dtype_equals", "expected": "float32"},
     )
     report = evaluate_input_contracts(records, [contract])
     assert report.passed, report.results[0].message
@@ -459,7 +459,7 @@ def test_g8_dtype_on_wrong_ndarray_dtype_fails_with_clear_message() -> None:
     ]
     contract = Contract(
         field="image",
-        assertion={"kind": "dtype", "expected": "uint8"},
+        assertion={"kind": "dtype_equals", "expected": "uint8"},
     )
     report = evaluate_input_contracts(records, [contract])
     assert not report.passed
@@ -483,7 +483,7 @@ def test_g8_range_on_tensor_field_does_not_raise() -> None:
     ]
     contract = Contract(
         field="image",
-        assertion={"kind": "range", "min": 0.0, "max": 1.0},
+        assertion={"kind": "value_range", "min": 0.0, "max": 1.0},
     )
     # Today this raises ValueError inside the evaluator. After the fix the
     # report passes (all values are in [0, 1]).
@@ -505,7 +505,7 @@ def test_g8_range_on_tensor_field_detects_out_of_bounds() -> None:
     ]
     contract = Contract(
         field="image",
-        assertion={"kind": "range", "min": 0.0, "max": 1.0},
+        assertion={"kind": "value_range", "min": 0.0, "max": 1.0},
     )
     report = evaluate_input_contracts(records, [contract])
     assert not report.passed
@@ -541,14 +541,14 @@ def _split_map(
 
 def test_output_expectations_accepts_split_mapping() -> None:
     splits = _split_map(train=6, val=2, test=2)
-    expectations = [Expectation(assertion={"kind": "record_count", "min": 1})]
+    expectations = [Expectation(assertion={"kind": "record_count_in_range", "min": 1})]
     report = evaluate_output_expectations(splits, expectations)
     assert report.passed
 
 
 def test_output_expectations_flat_iterable_still_supported() -> None:
     # Backward compatibility: a flat list routes as a single implicit split.
-    expectations = [Expectation(assertion={"kind": "record_count", "min": 1})]
+    expectations = [Expectation(assertion={"kind": "record_count_in_range", "min": 1})]
     report = evaluate_output_expectations(_records(3), expectations)
     assert report.passed
 

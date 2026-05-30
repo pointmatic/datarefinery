@@ -772,31 +772,38 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G12](phase-i-dependency-gaps-v0.16.
 
 ---
 
-### Story I.x.3: G16a — assertion `kind` naming pass [Planned]
+### Story I.x.3: G16a — assertion `kind` naming pass [Done]
 
-**Disposition: schema reshape (canonical-bytes-perturbing).** Part of Bundle 4 (v0.19.0 release). Sub-numbered story 3 of 3.
+**Disposition: schema reshape (canonical-bytes-perturbing for recipes that declare InputContracts / OutputExpectations using the three renamed kinds).** Part of Bundle 4 (v0.19.0 release). Sub-numbered story 3 of 3. Completes the v1→v2 schema cluster.
 
-Per [`dependency-gaps-v0.16.0.md` § G16a](dependency-gaps-v0.16.0.md): the contracts-evaluator naming convention shifts from bare verbs + struct-shape (`dtype: {expected: X}`, `range: {min, max}`) to predicate-sentence form (`dtype_equals: {value: X}`, `value_range: {min, max}`, `value_in_set: {value: […]}`, etc.). The five existing v1 kinds (`dtype`, `range`, `record_count`, `required_field`, `distributional`) each get a v2 canonical name; v1 names are removed (not aliased) and the migration entry rewrites them.
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G16a](phase-i-dependency-gaps-v0.16.0.md): the contracts-evaluator naming convention shifts from bare verbs to predicate-sentence form. The three v1 kinds that conflicted with structural names (`FieldSpec.dtype`, value ranges) get v2 canonical names; v1 names are removed (not aliased) and the migration rewrites them at load time. The two v1 kinds that already read as sentences (`required_field`, `distributional`) are unchanged.
 
 **Mapping (v1 → v2):**
 
 - `dtype` → `dtype_equals`
 - `range` → `value_range`
 - `record_count` → `record_count_in_range`
-- `required_field` → unchanged (the verb form already reads as a sentence)
-- `distributional` → unchanged (placeholder; will gain real form post-Phase-I)
+- `required_field` → unchanged
+- `distributional` → unchanged (placeholder; gains a real evaluator post-Phase-I)
 
 **Tasks:**
 
-- [ ] Rename each evaluator in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py); update the dispatch table to the v2 names.
-- [ ] Implement `assertion_naming_v1_to_v2` migration: walks every `InputContracts[i].assertion` and `OutputExpectations[i].assertion`, rewrites `kind` per the mapping.
-- [ ] Register the migration in `migrations[(1, 2)]` alongside the prior two reshapes.
-- [ ] Migration round-trip test extends the v1→v2 fixture to include assertions.
-- [ ] Update the existing five-kind tests for the new names (matches v2 schema).
-- [ ] DOC: update the assertion-kinds tables in [`recipe-authoring.md` § InputContracts and § OutputExpectations](../guides/recipe-authoring.md) with v2 names; remove v1 names.
-- [ ] Update [`tech-spec.md`](tech-spec.md) assertion-kind enumeration.
-- [ ] Cross-repo coordination: update `dependency-spec.md` with v2 assertion-kind names.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G16a](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.19.0"; workarounds row.
+- [x] Renamed the three evaluator dispatch entries in [`pipeline/contracts.py`](../../src/datarefinery/pipeline/contracts.py) (`_evaluate_one`); module docstring updated to enumerate the v2 names with a pointer to the migration. Updated error messages inside `_eval_dtype` / `_eval_range` to reference the v2 names (`dtype_equals assertion missing 'expected'`, `value_range assertion needs at least one of 'min'/'max'`).
+- [x] Implemented `assertion_naming_v1_to_v2` in [`recipe/migrations.py`](../../src/datarefinery/recipe/migrations.py): module-level `_ASSERTION_KIND_V1_TO_V2` mapping holds the three renames; the function walks `InputContracts[*].assertion` and `OutputExpectations[*].assertion`, rewriting `kind` per the mapping. Lenient on malformed entries (missing/non-string/unknown `kind` passes through) — model/runtime are the right place to surface those, and leniency keeps the migration robust under partial application. Idempotent on already-v2 input.
+- [x] Registered as the third entry in `_V1_TO_V2_FUNCS` alongside `filters_reshape_v1_to_v2` (I.x.1) and `generation_reshape_v1_to_v2` (I.x.2); the loader's existing chain composition picks it up under `migrations[(1, 2)]`.
+- [x] Migration tests in [`tests/unit/test_migrations.py`](../../tests/unit/test_migrations.py) (+9 cases): each rename in isolation; `required_field` / `distributional` preservation; mixed `InputContracts` + `OutputExpectations` with v2-only kinds pass-through; malformed-entry tolerance; no-contracts no-op; idempotence. New end-to-end round-trip (`test_v1_assertion_recipe_round_trips_to_v2_canonical_bytes`): a v1 recipe with all three renamed kinds loads + canonicalizes byte-identically to the directly-authored v2 equivalent.
+- [x] Swept `tests/unit/test_contracts.py` (62 fixtures across the three renamed kinds — bulk rename via `replace_all` on the three `"kind": "..."` literals; one kind-string assertion at line 51 hand-updated). Updated `tests/unit/test_validator.py` (one fixture using `kind: range`). The four fixtures using `kind: record_count_min` in `test_cache_identity_properties.py` and `test_failure_modes.py` are intentional opaque-kind placeholders for "unknown assertion kind" / cache-identity / check_17 (field=None) tests; left untouched.
+- [x] DOC: updated [`recipe-authoring.md` § InputContracts](../guides/recipe-authoring.md) assertion-kinds table with the three v2 names; added a v2-naming-pass callout pointing at the auto-migration and the "unknown assertion kind" behavior for post-migration use of the v1 names. Tensor-fields worked example updated to v2 names. Reference recipe (top of doc) `record_count` → `record_count_in_range`; combined example at the bottom of § "Contracts and expectations" updated to v2 names. Pre-existing § OutputExpectations example using `kind: dtype` updated.
+- [x] Updated [`tech-spec.md`](tech-spec.md) `pipeline.contracts` flat-kinds enumeration with the v2 names + the G16a note. The `recipe.migrations` chain description now spells out the I.x.3 step (rename map; `required_field` and `distributional` unchanged).
+- [x] **Cross-repo coordination.** Extended the "Schema v1 → v2" subsection in [`dependency-spec.md` § Cache-identity contract](modelfoundry/dependency-spec.md) with the assertion-kind rename entry: enumerates the three renames; notes that the mapping applies in both `InputContracts` and `OutputExpectations`; flags that v1 names are removed (not aliased) post-migration; clarifies that the Story I.o seven kinds are unaffected.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G16a](phase-i-dependency-gaps-v0.16.0.md): status block inserted at the head of the subsection; the prior "G16a remains open" paragraph rewritten to point at the status block; priority-summary row for G16 updated to record both halves closed.
+- [x] **Canonical-hash pin unchanged.** The pin fixture has no Contracts/Expectations and is unaffected by the renames. Recipes using one or more of the three renamed kinds see canonical-bytes perturbation (the `kind:` string is in canonical bytes); the pin still equals `146b2059…` from Story I.x.1 since it doesn't exercise the renamed surface.
+- [x] CI parity: `pyve test` 1244 passed (+9 net from this story). `pyve testenv run mypy src tests` clean across 198 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
+
+**Out of Scope:**
+
+- Replacing the `distributional` placeholder with a real evaluator (KS test, JS divergence). Tracked in [`stories.md § Future`](stories.md) ("Real `distributional` assertion kind"); the v2 name is unchanged so a future real implementation slots in without another rename.
+- Updating any `recipes/*.yaml` fixture authored as `schema_version: 1` to v2 names directly. The auto-migration covers v1 fixtures end-to-end.
 
 ---
 

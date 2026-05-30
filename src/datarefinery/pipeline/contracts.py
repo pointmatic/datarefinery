@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 """FR-23 pipeline contracts: InputContracts and OutputExpectations evaluation.
 
-Assertion kinds supported in v1:
+Assertion kinds (G16a / Story I.x.3 — names lifted to the predicate-sentence
+form; v1 names ``dtype``/``range``/``record_count`` are auto-migrated by
+:func:`datarefinery.recipe.migrations.assertion_naming_v1_to_v2`):
 
-- ``record_count``     dataset-level record count bounds (``min``, ``max``)
-- ``required_field``   every record contains the field (non-None)
-- ``dtype``            every value of the field matches a Python type tag
-- ``range``            every value of the field lies in ``[min, max]``
-- ``distributional``   placeholder (always passes in v1; full machinery is
-                       post-v1; see features.md FR-23 edge cases)
+- ``record_count_in_range`` dataset-level record count bounds (``min``, ``max``)
+- ``required_field``        every record contains the field (non-None)
+- ``dtype_equals``          every value of the field matches a Python type tag
+- ``value_range``           every value of the field lies in ``[min, max]``
+- ``distributional``        placeholder (always passes in v1; full machinery is
+                            post-v1; see features.md FR-23 edge cases)
 
 Per-split / per-class / structural kinds (G6 + G16b, Story I.o; valid in
 ``OutputExpectations`` only — they require the per-split structure):
@@ -183,10 +185,12 @@ def _eval_dtype(
 ) -> tuple[bool, str]:
     expected = assertion.get("expected")
     if not isinstance(expected, str):
-        return False, (f"dtype assertion missing string 'expected' (got {type(expected).__name__})")
+        return False, (
+            f"dtype_equals assertion missing string 'expected' (got {type(expected).__name__})"
+        )
     accepted = _PY_DTYPE_TAGS.get(expected)
     if accepted is None:
-        return False, f"dtype assertion expected tag {expected!r} unknown"
+        return False, f"dtype_equals assertion expected tag {expected!r} unknown"
     # `bool` is a subclass of `int` in Python; for `int` checks we want to
     # reject bools since callers writing `dtype: int` mean numeric ints.
     reject_bool = expected.startswith(("int", "uint", "float"))
@@ -222,7 +226,7 @@ def _eval_range(
     lo = assertion.get("min")
     hi = assertion.get("max")
     if lo is None and hi is None:
-        return False, "range assertion needs at least one of 'min'/'max'"
+        return False, "value_range assertion needs at least one of 'min'/'max'"
     bad: list[tuple[int, Any]] = []
     for i, r in enumerate(records):
         v = r.get(field)
@@ -474,19 +478,19 @@ def _evaluate_one(
         return None
 
     try:
-        if kind == "record_count":
+        if kind == "record_count_in_range":
             ok, msg = _eval_record_count(records, assertion)
         elif kind == "required_field":
             if (miss := _need_field()) is not None:
                 return miss
             assert field is not None
             ok, msg = _eval_required_field(records, field, skip_missing_field=skip_missing)
-        elif kind == "dtype":
+        elif kind == "dtype_equals":
             if (miss := _need_field()) is not None:
                 return miss
             assert field is not None
             ok, msg = _eval_dtype(records, field, assertion)
-        elif kind == "range":
+        elif kind == "value_range":
             if (miss := _need_field()) is not None:
                 return miss
             assert field is not None

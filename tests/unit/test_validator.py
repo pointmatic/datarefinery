@@ -962,7 +962,7 @@ def test_check_17_fails_when_input_contract_field_undeclared() -> None:
 def test_check_17_fails_when_output_expectation_field_undeclared() -> None:
     bad = _base_dict()
     bad["OutputExpectations"] = [
-        {"field": "ghost", "assertion": {"kind": "range"}, "severity": "warning"}
+        {"field": "ghost", "assertion": {"kind": "value_range"}, "severity": "warning"}
     ]
     report = validate(_build(bad), _Plugin())
     failures = _failures_for(report, 17)

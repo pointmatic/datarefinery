@@ -1409,7 +1409,11 @@ diagnosability gap in the spec.
 
 **Decompose into two sub-gaps:**
 
-**G16a — Naming consistency.** The spec uses `*_equals` (e.g.,
+**G16a — Naming consistency.**
+
+> **Status (2026-05-30):** Closed in v0.19.0 (Story I.x.3). Three v1 bare-verb kinds renamed to predicate-sentence form — `dtype` → `dtype_equals`, `range` → `value_range`, `record_count` → `record_count_in_range`. `required_field` and `distributional` already read as sentences and are unchanged. v1 recipes auto-migrate via `recipe.migrations.assertion_naming_v1_to_v2`, which joins the v1→v2 chain with G15 (Story I.x.1) and G12 (Story I.x.2). v1 names are removed (not aliased) — post-migration recipes that still use bare `dtype:` / `range:` / `record_count:` hit the evaluator's "unknown assertion kind" branch with a clear error.
+
+The spec uses `*_equals` (e.g.,
 `dtype_equals`) for exact-match kinds and `value_range` for bounded.
 DR uses bare verbs (`dtype`, `range`). The naming difference is small
 in code but produces a 1:1 author confusion: an author who reads
@@ -1442,9 +1446,8 @@ and `recipe-authoring.md § OutputExpectations` rows:
   implemented; the per-split kinds require the post-Splits mapping and
   are rejected in `InputContracts`.
 
-**G16a — Naming-rename pass for existing kinds remains open** (Bundle 4,
-Story I.x.3); it is cache-invalidating and ships with the
-`schema_version` bump.
+**G16a — Naming-rename pass for existing kinds:** Closed in v0.19.0
+(Story I.x.3); see the G16a status block above.
 
 **Workaround in 0.16.0.** Drop all assertions except the five DR
 recognizes; rewrite those into the bare-verb shape with the right param
@@ -1826,7 +1829,7 @@ corresponding deviation removed:
 | G13 | **Closed in v0.18.0 (Story I.u).** Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption_type: corruption, severity: severity, original_path: source_path }` (keys are the authored output-field names; values are the canonical tag names). |
 | G14 | **Schema in v0.18.0 (Story I.r); runtime pending.** The `SampleData` section now *accepts* `selector: { kind: per_class, n: 1, splits: [train] }` (validated, cache-participating), but the selector is not yet honored at materialize time — restoring it is forward-looking until the carved-out runtime story (plan_phase) lands. |
 | G15 | **Closed in v0.19.0 (Story I.x.1).** Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. v1 recipes are auto-migrated; consumers binding directly against the recipe model should track the v2 shape. |
-| G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames still open** (Bundle 4, Story I.x.3, `schema_version` bump). Rewrite every assertion in both recipes to use the new naming + the new kinds. |
+| G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames closed in v0.19.0 (Story I.x.3)** (`dtype` → `dtype_equals`, `range` → `value_range`, `record_count` → `record_count_in_range`; auto-migrated). Rewrite every assertion in both recipes to use the new naming + the new kinds. |
 | G17 | **Closed in v0.18.0 (Story I.p).** Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
 | G18 | **Closed in v0.18.0 (Story I.q).** Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |
 | G19 | **Closed in v0.17.1 (Story I.i).** Replace Recipe B's pinned literal `params.mean` / `params.std` with the FR-TRANS-1 form: `params: { stats_from_instance: { recipe: recipes/cifar10-base.yaml, op_id: normalize_per_channel } }`. Remove the G19-workaround comment block from the recipe header. (Bonus: once the future variant-selector form lands, the consumer recipe can pin a specific sibling-variant of Recipe A's normalize stats — relevant for Module 9's imbalance variants whose normalize stats may legitimately differ.) |

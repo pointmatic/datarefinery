@@ -38,7 +38,7 @@ Labels:
     derivation: parent_directory_name
 
 InputContracts:
-  - assertion: { kind: record_count, min: 10 }
+  - assertion: { kind: record_count_in_range, min: 10 }
     severity: error
 
 Splits:
@@ -351,7 +351,7 @@ Pre-pipeline assertions on the raw inputs. Failures abort materialization before
 
 ```yaml
 InputContracts:
-  - assertion: { kind: record_count, min: 10, max: 1_000_000 }
+  - assertion: { kind: record_count_in_range, min: 10, max: 1_000_000 }
     severity: error
   - field: path
     assertion: { kind: required_field }
@@ -362,26 +362,28 @@ Assertion kinds:
 
 | `kind` | Required keys | Optional keys | What it checks |
 |--------|---------------|---------------|-----------------|
-| `record_count` | one of `min`/`max` | — | Total record count is in bounds. |
+| `record_count_in_range` | one of `min`/`max` | — | Total record count is in bounds. |
 | `required_field` | `field` (on the contract) | — | Field is present and non-`None` in every record. |
-| `dtype` | `field`, `expected` (dtype tag like `int64`, `float32`, `uint8`, `str`) | — | Field values match the expected dtype. Scalar fields are checked via Python `isinstance`; **ndarray fields** are checked via `v.dtype.name == expected`. |
-| `range` | `field`, one of `min`/`max` | — | Numeric field values are within `[min, max]`. Scalar fields are compared directly; **ndarray fields** pass when every element is in `[min, max]` (checked via `v.min()` / `v.max()` reductions). |
-| `distributional` | `field`, `kind: distributional`, plus distributional params | — | Distribution-shape checks (see `pipeline/contracts.py`). |
+| `dtype_equals` | `field`, `expected` (dtype tag like `int64`, `float32`, `uint8`, `str`) | — | Field values match the expected dtype. Scalar fields are checked via Python `isinstance`; **ndarray fields** are checked via `v.dtype.name == expected`. |
+| `value_range` | `field`, one of `min`/`max` | — | Numeric field values are within `[min, max]`. Scalar fields are compared directly; **ndarray fields** pass when every element is in `[min, max]` (checked via `v.min()` / `v.max()` reductions). |
+| `distributional` | `field`, `kind: distributional`, plus distributional params | — | Distribution-shape checks (see `pipeline/contracts.py`). Placeholder in v1; always passes. |
 
 `severity: warning` records the violation in the manifest but does not
 fail materialization; `severity: error` aborts.
 
+> **Schema v2 naming pass (Story I.x.3 / G16a).** v1 used bare-verb names — `record_count`, `dtype`, `range` — which collided with the recipe's structural vocabulary (`FieldSpec.dtype`, value ranges) and read awkwardly inside `assertion: { kind: ... }`. v2 lifts the three to predicate-sentence form. Recipes authored as `schema_version: 1` are auto-migrated by the loader; the v1 names are removed (not aliased), so any post-migration recipe using bare `dtype:` / `range:` / `record_count:` will fail dispatch with an "unknown assertion kind" error pointing at the v2 names. `required_field` and `distributional` already read as sentences and are unchanged.
+
 **Tensor fields example.** When the recipe's `Output.record_schema`
 declares a tensor field (e.g., `image: { dtype: uint8, shape: [32, 32, 3] }`),
-`dtype` and `range` assertions on that field apply element-wise:
+`dtype_equals` and `value_range` assertions on that field apply element-wise:
 
 ```yaml
 OutputExpectations:
   - field: image
-    assertion: { kind: dtype, expected: uint8 }   # ndarray dtype, not element type
+    assertion: { kind: dtype_equals, expected: uint8 }   # ndarray dtype, not element type
     severity: error
   - field: image
-    assertion: { kind: range, min: 0, max: 255 }  # every pixel in [0, 255]
+    assertion: { kind: value_range, min: 0, max: 255 }   # every pixel in [0, 255]
     severity: error
 ```
 
@@ -832,7 +834,7 @@ OutputExpectations:
     assertion: { kind: required_field }
     severity: error
   - field: image
-    assertion: { kind: dtype, expected: uint8 }
+    assertion: { kind: dtype_equals, expected: uint8 }
     severity: error
 ```
 
@@ -1118,7 +1120,7 @@ A combined example:
 
 ```yaml
 InputContracts:
-  - assertion: { kind: record_count, min: 100 }
+  - assertion: { kind: record_count_in_range, min: 100 }
     severity: error
   - field: path
     assertion: { kind: required_field }
@@ -1129,7 +1131,7 @@ OutputExpectations:
     assertion: { kind: required_field }
     severity: error
   - field: image
-    assertion: { kind: dtype, expected: uint8 }
+    assertion: { kind: dtype_equals, expected: uint8 }
     severity: error
 ```
 

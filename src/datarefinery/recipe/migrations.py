@@ -147,12 +147,63 @@ def generation_reshape_v1_to_v2(recipe_dict: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-# Registry of (from_version, to_version) -> composed migration. Other
-# Bundle 4 stories (I.x.3) extend this by re-composing more callables
-# into the (1, 2) entry.
+# G16a (Story I.x.3) — naming pass for the v1 contracts-evaluator kinds.
+# Two of the v1 names (`dtype`, `range`) clash with field-shape names
+# elsewhere in the recipe (FieldSpec `dtype`, value `range`), so the v2
+# names are predicate-sentence forms that read naturally in
+# ``assertion: { kind: ... }``. The two v1 kinds that already read as
+# sentences (`required_field`, `distributional`) are unchanged.
+_ASSERTION_KIND_V1_TO_V2: dict[str, str] = {
+    "dtype": "dtype_equals",
+    "range": "value_range",
+    "record_count": "record_count_in_range",
+}
+
+
+def assertion_naming_v1_to_v2(recipe_dict: dict[str, Any]) -> dict[str, Any]:
+    """G16a / Story I.x.3: rename the v1 contracts-evaluator kinds to
+    their v2 predicate-sentence form.
+
+    Walks every ``InputContracts[i].assertion`` and
+    ``OutputExpectations[i].assertion``, rewriting ``kind`` per
+    :data:`_ASSERTION_KIND_V1_TO_V2`. The param shape inside each
+    assertion is untouched (the rename only affects the dispatch key).
+
+    Malformed entries (missing ``kind``, non-string ``kind``, unknown
+    ``kind``) pass through unchanged — the model layer or runtime
+    evaluator is responsible for surfacing those, and being lenient
+    here keeps the migration robust under partial application.
+
+    Idempotent on already-v2 input (v2 names are not present in the
+    rename mapping's domain).
+    """
+    out = dict(recipe_dict)
+    for section in ("InputContracts", "OutputExpectations"):
+        entries = out.get(section)
+        if not entries:
+            continue
+        new_entries: list[dict[str, Any]] = []
+        for entry in entries:
+            new_entry = dict(entry)
+            assertion = new_entry.get("assertion")
+            if isinstance(assertion, dict):
+                kind = assertion.get("kind")
+                if isinstance(kind, str) and kind in _ASSERTION_KIND_V1_TO_V2:
+                    new_assertion = dict(assertion)
+                    new_assertion["kind"] = _ASSERTION_KIND_V1_TO_V2[kind]
+                    new_entry["assertion"] = new_assertion
+            new_entries.append(new_entry)
+        out[section] = new_entries
+    return out
+
+
+# Registry of (from_version, to_version) -> composed migration. Each
+# Bundle 4 reshape story registers a step here; the loader composes
+# them in declaration order.
 _V1_TO_V2_FUNCS: list[Callable[[dict[str, Any]], dict[str, Any]]] = [
     filters_reshape_v1_to_v2,
     generation_reshape_v1_to_v2,
+    assertion_naming_v1_to_v2,
 ]
 
 
