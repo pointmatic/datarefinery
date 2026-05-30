@@ -695,22 +695,20 @@ Closing G5: `augmented_sample_grid` runs at `stage: post_Filters` and reads uint
 
 ---
 
-### Story I.w: Release v0.18.0 (Phase I bundle 3) [Planned]
+### Story I.w: Release v0.18.0 (Phase I bundle 3) [Done]
 
 **Disposition: release ceremony.** Minor bump (`v0.17.1 → v0.18.0`). Closes Bundle 3.
 
-Twelve additive feature stories (I.k–I.v) ship as one minor bump because each is opt-in or backward-compatible (no canonical-bytes perturbation for existing recipes) and the capabilities are interrelated. Dedicated commit for the version bump.
+Twelve work stories (I.k–I.v) plus the I.r.0 design spike ship as one minor bump. Every feature is additive or opt-in for **existing recipes**, with the carve-out (folded into the release notes below) that I.q and I.r each add a defaulted pydantic field whose presence perturbs canonical bytes for recipes that declare the affected sections (`Generation:` and `SampleData:` respectively) — a pre-prod re-materialization event for those recipes only. Dedicated commit for the version bump.
 
 **Tasks:**
 
-- [ ] Bump `pyproject.toml` `version = "0.17.1"` → `"0.18.0"`.
-- [ ] Bump `src/datarefinery/__init__.py` `__version__` accordingly.
-- [ ] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.18.0]` with subsections for each closed G:
-   - **Added:** G2 (`cast` Transformation), G3 (`categorical_encode`), G9 (`flatten`), G11 (`seed_derive_from: master`), G6+G16b (seven new assertion kinds), G17 (`group_by` histogram), G18 (`replace_input_records`), G14 (SampleData `kind`/`splits`), G10 (class_balance dict hint), G1 (tag-driven applies_to), G13 (tag_fields dict-rename), G7 (stage-aware viz, closes G5).
-   - **Removed:** `cast_dtype` and `to_grayscale` OperationSpec entries (formerly declared-but-unimplemented).
-   - **Docs:** DOC-rule backfill across Transformations, Featurizations, Filters, Generation, Visualizations, InputContracts, OutputExpectations, Splits, SampleData sections of `recipe-authoring.md`.
-- [ ] Cross-repo coordination: confirm `dependency-spec.md` was updated by I.s (class_balance dict contract) and I.v (per-stage subsections clarification).
-- [ ] No schema bump — all changes are additive / opt-in.
+- [x] Bumped `pyproject.toml` `version = "0.17.1"` → `"0.18.0"`.
+- [x] Bumped `src/datarefinery/__init__.py` `__version__` to `"0.18.0"`.
+- [x] [`CHANGELOG.md`](../../CHANGELOG.md) `## [0.18.0] - 2026-05-28` added with: per-G **Added** entries (G2, G3, G9, G11, G6+G16b, G17, G18, G14 schema-only, G10, G1, G13, G7 closes G5); **Changed** (check 11 rename + extension; `evaluate_output_expectations` signature widening); **Removed** (`cast_dtype` and `to_grayscale` OperationSpec entries); **Cache-identity notes** explicitly carving out the recipes-with-Generation / recipes-with-SampleData perturbation (re-materialize once); **Cross-repo coordination** subsection summarizing the dependency-spec.md additions (manifest.class_balance from I.s, stage indirection note from I.v); **Documentation** DOC-rule backfill summary; **Notes** flagging the carved-out SampleData runtime (plan_phase) and the deferred broad consumer-context rewrite.
+- [x] Cross-repo coordination: confirmed [`dependency-spec.md`](modelfoundry/dependency-spec.md) is current — I.s added the `manifest.class_balance` row and shape subsection; I.v added the stage-indirection clarification under report subsections. No other Bundle 3 story altered a contract surface.
+- [x] No `schema_version` bump — the v1 → v2 reshape ships in Bundle 4. The two canonical-bytes perturbations are pre-prod invalidations, documented prominently in the release notes per `project-essentials.md`.
+- [x] CI parity: `pyve test` 1215 passed; `pyve testenv run mypy src tests` clean (196 source files); `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean. Version stamp verified at `0.18.0` in both `pyproject.toml` and `src/datarefinery/__init__.py`.
 
 ---
 

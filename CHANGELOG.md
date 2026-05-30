@@ -7,6 +7,264 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-05-28
+
+Phase I Bundle 3. Closes Story I.w with twelve work stories (I.k–I.v)
+plus the I.r.0 design spike. Minor bump: every feature is additive or
+opt-in for *existing* recipes, though two model changes do perturb
+canonical bytes for recipes that declare the affected sections
+(see **Cache-identity notes** below). No `schema_version` bump — that's
+deferred to Bundle 4 / v0.19.0. Cross-repo contract surface
+(`modelfoundry/dependency-spec.md`) gains the `manifest.class_balance`
+shape (I.s) plus a clarifying note that stage-aware visualization
+dispatch is internal (I.v).
+
+### Added
+
+- **G2 — `cast` Transformation op (Story I.k).** Single-pass dtype
+  conversion plus optional `scale` multiplier, covering the canonical
+  `uint8 → float32 / 255` pre-normalize pattern as one op. Replaces the
+  declared-but-unimplemented `cast_dtype` `OperationSpec` entry; the
+  old name now fails validator check 18 cleanly. Documented in
+  [`recipe-authoring.md` § Transformations](docs/guides/recipe-authoring.md).
+
+- **G3 — `categorical_encode` Featurization op (Story I.l).** Encodes a
+  categorical input field to integers. Two modes: recipe-declared
+  `vocabulary` (persisted verbatim) and fit-on-train (vocabulary derived
+  from train labels with `ordering: alphabetical | first_seen`,
+  persisted to `fitted_statistics/<op_name>/vocabulary.parquet`,
+  replayed identically on val/test). Carries an `output_dtype` (default
+  `int32`) and accepts FR-TRANS-1 `stats_from_instance` like
+  `normalize`. The Featurizations stage runner gained a `cache_root`
+  parameter and a `stats_from_instance` branch so any fit-on-train
+  Featurization can import sibling-instance statistics.
+
+- **G9 — `flatten` Featurization op (Story I.m).** Deterministic
+  reshape of a multi-dimensional input field to a 1-D vector, preserving
+  the source field alongside the new `output_field`. Unblocks variants
+  that want both the original tensor and a flattened view (e.g.
+  MLP-shaped vs. CNN-shaped consumption from one recipe).
+
+- **G11 — `seed_derive_from: master` on every seeded op (Story I.n).**
+  New `SeedDerivationSpec` pydantic model accepts
+  `seed: { from: master }` as an alternative to a literal integer at
+  every seeded-op site: `FilterOp.predicate.seed`, `SplitsSection.seed`,
+  `GenerationOp.seed`, `AugmentationOp.seed`, `SampleSelector.seed`.
+  Resolution at materialize time via
+  `recipe.seeds.derive_seed(master, op_name) = SHA-256(master_u64 + op_name)[:8]`
+  — pinned by `tests/unit/test_seeds.py`. Master-seed changes propagate
+  to every derived op without per-site edits. `SeedDerivationSpec` is
+  preserved in canonical bytes so the cached `recipe.json` records the
+  YAML intent.
+
+- **G6 + G16b — Per-split / per-class / structural assertion kinds
+  (Story I.o).** Seven new `OutputExpectations` assertion kinds:
+  `split_record_counts`, `per_class_count_per_split` (rounding-tolerant
+  via `tolerance`, default 1), `count_by_field`, `count_by_fields`,
+  `shape_equals`, `value_in_set`, `per_class_count_equals`. The
+  `evaluate_output_expectations` signature widens from
+  `Iterable[Record]` to `Mapping[str, Sequence[Record]]`; a flat
+  iterable is still accepted for backward compatibility (routed as one
+  implicit split). Per-split kinds reject use in `InputContracts`
+  (which runs pre-Splits). The G16a naming-rename pass for existing
+  kinds is deferred to Bundle 4 (Story I.x.3).
+
+- **G17 — `class_distribution_histogram` accepts `group_by` (Story I.p).**
+  Optional `group_by: <field>` selects the bucketing field; default
+  remains `Labels.field`. A new validator **check 25**
+  (`visualization_group_by_resolvable`) rejects a `group_by` that
+  doesn't resolve to a known recipe field
+  (`Output.record_schema`, Generation `tag_fields`, or Featurization
+  output). Test-count assertions across the integration suite bumped
+  24 → 25.
+
+- **G18 — `GenerationOp.replace_input_records` (Story I.q).** New
+  `replace_input_records: bool = False` field declares whether a
+  Generation op's output *augments* the input records (current
+  behavior, default) or *replaces* them. Covers the transformation-style
+  case (e.g. on-the-fly `imagecorruptions_apply`) that emits N records
+  per input and doesn't want the originals along.
+
+- **G14 — `SampleData.selector` gains `kind` + `splits` (Story I.r, schema-only).**
+  `SampleSelector` widened with `kind: Literal["uniform", "per_class"] = "uniform"`
+  and `splits: list[str] | None = None`. Validator check 16 extended to
+  reject `per_class` on a fully-unlabeled recipe and to reject `splits`
+  entries that don't name a defined split. **No SampleData runtime in
+  this release** — the original story's runtime task was reframed by
+  the **Story I.r.0 spike** after the spike found `SampleData` has never
+  been honored at materialize time. The runtime (which needs a product
+  decision on placement and replace-vs-sidecar artifact semantics) is
+  carved out to be planned via `plan_phase`. `recipe-authoring.md §
+  SampleData` carries an explicit "Runtime status (v0.18.0)" callout.
+
+- **G10 — `Splits.class_balance` dict shape + `manifest.class_balance`
+  emission (Story I.s).** `SplitsSection.class_balance` widened to
+  `str | dict[str, Any] | None`; the dict shape is
+  `{ strategy: <str>, applies_to: [<split>, …] }`. Check 10 was
+  extended to validate the dict shape (no new check). The forward-
+  declared hint now reaches the consumer through a new
+  **`manifest.class_balance`** field (the original `SplitResult.class_balance`
+  never made it into the manifest; this latent gap is also closed).
+  DataRefinery still performs no resampling / no weight emission —
+  ModelFoundry honors the strategy at training time per the cross-repo
+  contract in
+  [`dependency-spec.md` § `manifest.class_balance`](docs/specs/modelfoundry/dependency-spec.md).
+
+- **G1 — Tag-driven `Splits.applies_to` (Story I.t).** Validator
+  check 20 (`partitions_consistent`) broadened to accept `applies_to`
+  matching either a source partition **or** a `sample_per_class` /
+  `sample_per_class_fractional` filter `label`. The Splits stage
+  learned a tag-driven route: records carrying the named tag in
+  `sample_per_class_tags` are ratio-sub-split (honoring `stratify_by` /
+  `seed`); records carrying a different tag pass through verbatim under
+  a split named after their tag; untagged records land in `unassigned`.
+  Pass-through split membership is filter-tag-determined, so the heldout
+  split is byte-identical across runs and independent of the Splits
+  `seed`. Multi-tag ambiguity and ratio/other-tag name collisions raise
+  `MaterializeError`. Restores the disjoint-pool bit-identity guarantee.
+
+- **G13 — `tag_fields` dict-rename form on `imagecorruptions_apply`
+  (Story I.u).** `ImageCorruptionsApplyParams.tag_fields` widened to
+  `list[str] | dict[str, str]`. The dict form is a
+  `{ authored_field_name: canonical_name }` rename map; the canonical
+  set `{corruption, severity, source_path}` is now a module-level
+  constant. The model `_validate` rejects unknown canonical values and
+  duplicate canonical mappings (the rename map must be one-to-one).
+  The list form (canonical names verbatim) is unchanged.
+
+- **G7 — Stage-aware visualization dispatch (Story I.v, closes G5).**
+  `VisualizationOp.stage` is now a closed `VizStage` Literal:
+  `{ post_InputContracts, post_Filters, post_Splits, post_Generation,
+  post_Transformations, post_Augmentations, post_Featurizations,
+  post_pipeline }` — mirrors `SinkStage`'s grammar but drops the
+  entries that don't change records, and keeps `post_pipeline` as the
+  alias for the final snapshot (the scaffolder default). The pipeline
+  runner snapshots `split_map` at the END of each named stage into a
+  `viz_snapshots` dict; `apply_reporting_visualizations` dispatches
+  each viz op against `snapshots[op.stage]` and accepts either the
+  full snapshots map or a flat splits dict (auto-wrapped as
+  `post_pipeline`, for backward compatibility with `re_render_report`
+  and pre-existing tests). **G5 is closed structurally:**
+  `augmented_sample_grid` declared at `stage: post_Filters` renders
+  against the uint8 snapshot and never sees the post-normalize floats.
+  The `_tile` clip-cast at `augmented_sample_grid.py:144` is kept as
+  defense-in-depth (documented) for non-canonical-but-valid stage
+  placements like `post_Featurizations` after a cast.
+
+### Changed
+
+- **Validator check 11 renamed** `visualization_mode_declared` →
+  `visualization_well_formed` and extended with the empty-stage rule
+  (Story I.v). The check id stays 11 to avoid churning the
+  `N/N checks passed` assertions across the integration suite.
+
+- **`evaluate_output_expectations` signature widened** to
+  `Mapping[str, Sequence[Record]]` keyed by split (Story I.o). A flat
+  iterable is still accepted and routed as one implicit `__all__`
+  split; existing call sites and recipes are unaffected.
+
+### Removed
+
+- **`cast_dtype` and `to_grayscale` `OperationSpec` entries (Story I.k).**
+  Both were declared-but-unimplemented stubs that raised
+  `NotImplementedError` at materialize time. Recipes using `op:
+  cast_dtype` are migrated to the new `op: cast` (which adds a `scale`
+  parameter). `to_grayscale` is tracked as a future enhancement in
+  `stories.md § Future` until a real implementation is needed.
+
+### Cache-identity notes
+
+Two model changes in this bundle perturb canonical bytes — *only for
+recipes that declare the affected sections.* Recipes without those
+sections are byte-identical and re-use their existing cache instances.
+
+- **Recipes declaring a `Generation:` block** now serialize an
+  additional `replace_input_records: false` default per op (Story I.q).
+- **Recipes declaring a `SampleData:` block** now serialize the
+  additional `kind: "uniform"` and `splits: null` defaults on the
+  selector (Story I.r).
+
+Both are pre-production cache invalidation events per
+[`project-essentials.md` § "Cache identity is the reproducibility
+contract — invalidations are ceremonious"](docs/specs/project-essentials.md):
+re-materialize the affected recipes once at upgrade. The
+canonical-hash pinning fixture in
+`tests/unit/test_canonical_hash_pin.py` declares neither section and
+stays green. No `schema_version` bump (the v1 → v2 reshape ships
+together with the deliberate Filters / Generation / assertion-name
+reshapes in Bundle 4 / v0.19.0).
+
+### Cross-repo coordination
+
+- `manifest.class_balance` field row + dict-shape subsection added to
+  [`dependency-spec.md`](docs/specs/modelfoundry/dependency-spec.md)
+  (Story I.s). Documents the v1 strategy vocabulary
+  (`oversample_minority_to_majority`,
+  `emit_inverse_frequency_weights`) and ModelFoundry's training-time
+  responsibility (`WeightedRandomSampler`, `class_weight=`).
+- Report-subsection note in `dependency-spec.md` clarifies that
+  stage-aware visualization dispatch is **internal**: the on-disk
+  surface (`report/visualizations/<viz_name>.png`, single `report.md`
+  section) is unchanged regardless of how many pipeline stages a
+  recipe spans (Story I.v).
+- No `dependency-spec.md` change for I.r.0 / I.r (the SampleData
+  selector shape isn't bound by the spec), I.t (recipe-side semantics
+  only), or I.u (per-recipe op authoring).
+
+### Documentation
+
+DOC-rule backfill across [`recipe-authoring.md`](docs/guides/recipe-authoring.md):
+
+- **§ Transformations** — `cast` worked example with the
+  `uint8 → float32 / 255` pattern, plus backfill summaries for
+  `resize`, `mean_subtract`, `normalize`; "FR-TRANS-1 across variants"
+  remains from v0.17.1.
+- **§ Featurizations** — `categorical_encode` (both modes), `flatten`,
+  plus backfill of `image_size_stats` and `label_from_path`
+  alternative sources.
+- **§ Filters** — referenced from the new "Sub-partitioning via tag"
+  block under § Splits; full Filters rewrite is deferred to Bundle 4
+  (Story I.x.1).
+- **§ Generation** — "When to use `replace_input_records`",
+  "`tag_fields` on `imagecorruptions_apply`" (list + dict forms),
+  per-record-seed persistence remains from v0.17.0.
+- **§ Splits** — "Sub-partitioning via tag" subsection paralleling the
+  existing source-partition one; "Filters vs Splits for class imbalance"
+  rewritten to spell out the DR-doesn't-resample / MF-honors-at-training
+  separation and document the `class_balance` dict form.
+- **§ Visualizations** — "Stage-aware dispatch (G7)" subsection with
+  the closed `VizStage` table, the pre-vs-post-normalize worked
+  example, the validator empty-stage rule, the re-render limitation,
+  plus `group_by` carried over from I.p.
+- **§ SampleData** — `kind` / `splits` documented with an explicit
+  "Runtime status (v0.18.0)" callout that the selector is validated
+  and cache-participating but **not yet honored at materialize time**;
+  runtime carved to a plan_phase story per Story I.r.0.
+- **§ InputContracts** and **§ OutputExpectations** — the seven new
+  per-split / per-class / structural assertion kinds (Story I.o),
+  cross-split assertion notes, and per-split rejection in
+  `InputContracts`.
+- **§ Seeds and determinism** — `seed_derive_from: master` documented
+  alongside literal-int seeds (Story I.n).
+
+`tech-spec.md` updated alongside (`recipe.seeds`, the
+`apply_reporting_visualizations` snapshot mapping, the widened
+`evaluate_output_expectations` signature).
+
+### Notes
+
+- The **G14 SampleData runtime** is the most visible carved-out item:
+  the schema landed in this release; the runtime story (placement,
+  artifact semantics) is intended for `plan_phase` framing in
+  Phase J. See Story I.r.0 for the design axes already documented.
+- The **broad consumer-context rewrite of internal specs** (Recipe A/B
+  framing, Module N references, consumer recipe filenames in
+  `phase-i-*.md`) remains deferred to a post-course Future story.
+- The validator check count is now **25** (unchanged this release;
+  every new validation in this bundle was folded into an existing
+  check by design, so the integration `N/N checks passed` assertions
+  did not need to move).
+
 ## [0.17.1] - 2026-05-27
 
 Phase I Bundle 2. Closes Story I.j. Patch release bundling one bug fix
