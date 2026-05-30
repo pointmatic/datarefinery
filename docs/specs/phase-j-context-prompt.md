@@ -11,6 +11,11 @@ Authored as Story I.z (documentation-only). It is a point-in-time
 snapshot — the planning conversation should **verify current repo state**
 (see the prompt) rather than trust the gap list verbatim.
 
+**Last refreshed:** 2026-05-30 (Story I.y close — Phase I shipped
+v0.19.0 with schema_version 2; every Phase I story including the
+Bundle 4 reshape cluster is now `[Done]`). The gap list below is
+current as of that closure; verify before planning.
+
 ---
 
 ## Prompt (paste this into a fresh `plan_phase` conversation)
