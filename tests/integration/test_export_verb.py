@@ -91,13 +91,14 @@ def _base_recipe_dict(*, with_sink: bool) -> dict[str, Any]:
         "Generation": [
             {
                 "name": "imagecorruptions_apply",
+                "op": "imagecorruptions_apply",
                 "inputs": ["image"],
                 "output_schema": {
                     "image": {"dtype": "uint8", "shape": [32, 32, 3]},
                     "label": {"dtype": "str"},
                 },
                 "seed": 42,
-                "applies_at": ["train"],
+                "splits": ["train"],
                 "params": {
                     "corruption_types": ["gaussian_noise"],
                     "severities": [3],

@@ -87,11 +87,72 @@ def filters_reshape_v1_to_v2(recipe_dict: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def generation_reshape_v1_to_v2(recipe_dict: dict[str, Any]) -> dict[str, Any]:
+    """G12 / Story I.x.2: reshape each ``GenerationOp`` to v2 form.
+
+    Three changes (none of which can collide with each other):
+
+    1. **Lift ``op`` to top level.** v1 stored the op-name in
+       ``GenerationOp.name`` (the runtime called
+       ``plugin.operation_factory("Generation", op.name)``); the v2
+       model has a separate ``op: str`` field, matching every other
+       section. The migration sets ``op = name`` for the canonical v1
+       shape, or lifts ``params["op"]`` if a recipe used the workaround
+       pattern documented in the gap doc.
+    2. **Rename ``applies_at`` -> ``splits``.** Same semantics, new
+       name; every other section already says ``splits:``.
+    3. **Lift ``output_schema_matches_input: true`` (workaround) ->
+       ``output_schema: "matches_input"``.** Explicit dicts pass through
+       unchanged — the migration cannot inflate to ``matches_input``
+       without runtime context per the gap-doc fix-direction note.
+
+    Idempotent on already-v2 input (entries with top-level ``op`` and
+    ``splits`` pass through verbatim).
+    """
+    generation = recipe_dict.get("Generation")
+    if not generation:
+        return recipe_dict
+    new_generation: list[dict[str, Any]] = []
+    for entry in generation:
+        new_entry = dict(entry)
+        if "op" not in new_entry:
+            # Lift from params (workaround pattern) if present, else
+            # default to the canonical v1 convention of name == op-name.
+            params = dict(new_entry.get("params") or {})
+            if "op" in params and isinstance(params["op"], str):
+                new_entry["op"] = params.pop("op")
+                new_entry["params"] = params
+            else:
+                name = new_entry.get("name")
+                if not isinstance(name, str):
+                    raise RecipeError(
+                        f"Generation[{name!r}]: cannot infer 'op' for v1->v2 "
+                        "migration (entry has no top-level 'op', no string "
+                        "'name', and no 'op' inside params)"
+                    )
+                new_entry["op"] = name
+        if "applies_at" in new_entry:
+            if "splits" in new_entry:
+                raise RecipeError(
+                    f"Generation[{new_entry.get('name')!r}]: cannot reshape — "
+                    "entry has both 'applies_at' and 'splits'; resolve the "
+                    "ambiguity by removing one"
+                )
+            new_entry["splits"] = new_entry.pop("applies_at")
+        if new_entry.pop("output_schema_matches_input", False) is True:
+            new_entry["output_schema"] = "matches_input"
+        new_generation.append(new_entry)
+    out = dict(recipe_dict)
+    out["Generation"] = new_generation
+    return out
+
+
 # Registry of (from_version, to_version) -> composed migration. Other
-# Bundle 4 stories (I.x.2, I.x.3) extend this by re-composing more
-# callables into the (1, 2) entry.
+# Bundle 4 stories (I.x.3) extend this by re-composing more callables
+# into the (1, 2) entry.
 _V1_TO_V2_FUNCS: list[Callable[[dict[str, Any]], dict[str, Any]]] = [
     filters_reshape_v1_to_v2,
+    generation_reshape_v1_to_v2,
 ]
 
 

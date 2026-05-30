@@ -174,17 +174,16 @@ def _fail_generation(d: dict[str, Any]) -> dict[str, Any]:
     d["Generation"] = [
         {
             "name": "boom_gen",
+            "op": "duplicate_minority_class",
             "inputs": ["image", "label"],
             "output_schema": {
                 "image": {"dtype": "uint8", "shape": [4, 4, 3]},
                 "label": {"dtype": "str"},
             },
             "seed": 1,
-            "applies_at": ["train"],
+            "splits": ["train"],
         }
     ]
-    # Use a real op name that we'll force the plugin to fail on.
-    d["Generation"][0]["name"] = "duplicate_minority_class"
     return d
 
 

@@ -739,12 +739,13 @@ def test_check_14_fails_when_generation_field_not_in_record_schema() -> None:
     bad["Generation"] = [
         {
             "name": "synth",
+            "op": "synth",
             "inputs": ["image"],
             "output_schema": {
                 "ghost_field": {"dtype": "uint8", "shape": [32, 32, 3]},
             },
             "seed": 1,
-            "applies_at": ["train"],
+            "splits": ["train"],
         }
     ]
     report = validate(_build(bad), _Plugin())
@@ -758,13 +759,14 @@ def test_check_14_fails_on_dtype_mismatch() -> None:
     bad["Generation"] = [
         {
             "name": "synth",
+            "op": "synth",
             "inputs": ["image"],
             "output_schema": {
                 # `image` declared as uint8 in Output; Generation says float32 -> mismatch
                 "image": {"dtype": "float32", "shape": [32, 32, 3]},
             },
             "seed": 1,
-            "applies_at": ["train"],
+            "splits": ["train"],
         }
     ]
     report = validate(_build(bad), _Plugin())
@@ -778,13 +780,14 @@ def test_check_14_passes_when_generation_matches_record_schema() -> None:
     ok["Generation"] = [
         {
             "name": "synth",
+            "op": "synth",
             "inputs": ["image"],
             "output_schema": {
                 "image": {"dtype": "uint8", "shape": [32, 32, 3]},
                 "label": {"dtype": "int32"},
             },
             "seed": 1,
-            "applies_at": ["train"],
+            "splits": ["train"],
         }
     ]
     report = validate(_build(ok), _Plugin())
@@ -807,15 +810,16 @@ def test_check_15_fails_when_transformation_references_undefined_split() -> None
     assert "ghost" in failures[0].message
 
 
-def test_check_15_fails_when_generation_applies_at_undefined_split() -> None:
+def test_check_15_fails_when_generation_splits_undefined_split() -> None:
     bad = _base_dict()
     bad["Generation"] = [
         {
             "name": "synth",
+            "op": "synth",
             "inputs": ["image"],
             "output_schema": {"image": {"dtype": "uint8", "shape": [32, 32, 3]}},
             "seed": 1,
-            "applies_at": ["unknown_split"],
+            "splits": ["unknown_split"],
         }
     ]
     report = validate(_build(bad), _Plugin())
@@ -1107,10 +1111,11 @@ def test_multi_violation_recipe_spans_every_check_1_through_18() -> None:
     bad["Generation"] = [
         {
             "name": "synth",
+            "op": "synth",
             "inputs": ["image"],
             "output_schema": {"image": {"dtype": "float32", "shape": [32, 32, 3]}},
             "seed": 1,
-            "applies_at": ["train"],
+            "splits": ["train"],
         }
     ]  # check 14
     bad["SampleData"] = {"selector": {}}  # check 16
@@ -1811,6 +1816,7 @@ def test_check_25_passes_when_group_by_is_generation_tag_field() -> None:
     ok["Generation"] = [
         {
             "name": "corrupt",
+            "op": "corrupt",
             "inputs": ["image"],
             "output_schema": {"image": {"dtype": "uint8", "shape": [32, 32, 3]}},
             "seed": 1,

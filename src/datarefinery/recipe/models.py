@@ -295,11 +295,25 @@ class ImageCorruptionsApplyParams(_Frozen):
 
 
 class GenerationOp(_Frozen):
+    """G12 / Story I.x.2: flat-shape ``GenerationOp`` mirroring every
+    other section. ``op`` names the plugin operation (lifted to top
+    level from v1's ``name``-doubles-as-op convention); ``splits``
+    replaces v1's ``applies_at``; ``output_schema`` accepts either a
+    concrete ``dict[str, FieldSpec]`` or the literal ``"matches_input"``
+    shorthand that the runtime expands to the input record shape plus
+    declared ``tag_fields``.
+
+    The v1 shape is auto-migrated by
+    :func:`datarefinery.recipe.migrations.generation_reshape_v1_to_v2`
+    inside the loader; the model itself only accepts v2 shape.
+    """
+
     name: str
+    op: str
     inputs: list[str]
-    output_schema: dict[str, FieldSpec]
+    output_schema: dict[str, FieldSpec] | Literal["matches_input"]
     seed: int | SeedDerivationSpec
-    applies_at: list[str] = Field(default_factory=lambda: ["train"])
+    splits: list[str] = Field(default_factory=lambda: ["train"])
     params: dict[str, Any] = Field(default_factory=dict)
     replace_input_records: bool = False
 

@@ -129,6 +129,7 @@ def test_generation_op_accepts_seed_derivation_spec() -> None:
     op = GenerationOp.model_validate(
         {
             "name": "corrupt",
+            "op": "corrupt",
             "inputs": ["image"],
             "output_schema": {"image": {"dtype": "uint8", "shape": [4, 4, 3]}},
             "seed": {"from": "master"},

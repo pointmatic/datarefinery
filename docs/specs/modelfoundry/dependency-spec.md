@@ -187,8 +187,9 @@ Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SC
 **Schema v1 → v2 (Phase I bundle 4, v0.19.0).** Three reshape stories (I.x.1 / G15 Filters, I.x.2 / G12 Generation, I.x.3 / G16a assertion naming) ship together as a `schema_version` bump. v1 recipes are auto-migrated by the loader (`recipe.migrations.v1_to_v2`); the cached `recipe.json` always reflects the v2 canonical shape. ModelFoundry consumers that bind against recipe-model fields directly need to track the v2 names — most notably:
 
 - **`FilterOp`** (Story I.x.1 / G15): v1 nested `predicate: {op, ...rest, seed?}`; v2 lifts to top-level `{op, params, seed?}` (matches every other section). The migration is one-way; ModelFoundry should bind against the v2 shape and rely on the loader to migrate v1 recipes on read.
+- **`GenerationOp`** (Story I.x.2 / G12): v1 left `op` implicit (the recipe's `name` doubled as the op lookup key), called the splits field `applies_at`, and required `output_schema` to be an explicit `dict[str, FieldSpec]`. v2 has explicit `op: str` at top level, renames `applies_at` → `splits`, and widens `output_schema` to accept the literal `"matches_input"` shorthand (resolved at materialize time to `Output.record_schema` plus declared tag fields). The migration handles all three reshapes and the documented v1 workaround pattern of stashing `op:` inside `params:`; ModelFoundry should bind against the v2 names and treat `output_schema: "matches_input"` as a possible value.
 
-I.x.2 and I.x.3 add their own deprecation-horizon entries here when they land.
+I.x.3 adds its own deprecation-horizon entry here when it lands.
 
 ## Schema-version coordination policy
 

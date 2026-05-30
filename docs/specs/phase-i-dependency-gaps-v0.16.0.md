@@ -48,7 +48,7 @@ None of these require a `schema_version` bump.
 | G9 | `flatten` Featurization missing from plugin | **Closed in v0.18.0** (Story I.m) | Plugin op registration |
 | G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Closed in v0.18.0** (Story I.s; dict shape + `manifest.class_balance`, MF-side resampling) | Schema + pipeline runner |
 | G11 | `seed_derive_from: master` not recognized on Filters / Generation | **Closed in v0.18.0** (Story I.n) | Schema |
-| G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
+| G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Closed in v0.19.0 (Story I.x.2)** | Schema |
 | G13 | `tag_fields` rename mapping for `imagecorruptions_apply` (`list[str]` vs `dict[str, str]`) | **Closed in v0.18.0** (Story I.u) | Schema (param shape) |
 | G14 | `SampleData.selector` lacks `kind` and `splits` | **Schema in v0.18.0** (Story I.r); runtime pending (plan_phase) | Schema |
 | G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Closed in v0.19.0 (Story I.x.1)** | Schema (cross-section consistency) |
@@ -978,6 +978,8 @@ cache identity), and the per-op-seed escape hatch.
 
 ## G12 — `Generation` schema shape divergence
 
+> **Status (2026-05-30):** Closed in v0.19.0 (Story I.x.2). `GenerationOp` reshaped to top-level `op: str`, renamed `applies_at` → `splits`, widened `output_schema` to accept the literal `"matches_input"` shorthand. The loader's `generation_reshape_v1_to_v2` joins the v1→v2 chain alongside G15 (Story I.x.1) and (still open) G16a (Story I.x.3). Materialize-time expansion of `"matches_input"` reads `Output.record_schema` plus declared `tag_fields`. v1 recipes — including the documented "stash `op:` inside `params`" and "`output_schema_matches_input: true`" workaround patterns — auto-migrate.
+
 **Severity:** Blocking for Recipe B (`cifar10c_eval.yaml`).
 
 **Category:** Schema.
@@ -1820,7 +1822,7 @@ corresponding deviation removed:
 | G9 | **Closed in v0.18.0 (Story I.m).** Restore the `flatten` Featurization in the `mlp_flat` variant. |
 | G10 | **Closed in v0.18.0 (Story I.s).** Restore the `imbalanced_oversample` / `imbalanced_classweight` variants using the dict form `class_balance: { strategy: <name>, applies_to: [train] }`. The strategy rides through to `manifest.class_balance`; ModelFoundry resamples/weights at training time (DR does not). |
 | G11 | **Closed in v0.18.0 (Story I.n).** Restore `seed_derive_from: master` on every filter and on Recipe B's `apply_corruptions` Generation op. |
-| G12 | Rewrite Recipe B's `Generation` block in the new shape: top-level `op:`, `splits:` (not `applies_at:`), `output_schema: matches_input`, and `seed_derive_from: master`. |
+| G12 | **Closed in v0.19.0 (Story I.x.2).** Rewrite Recipe B's `Generation` block in the new shape: top-level `op:`, `splits:` (not `applies_at:`), `output_schema: matches_input`, and `seed_derive_from: master`. v1 recipes are auto-migrated; consumers binding against the recipe model directly should track the v2 shape. |
 | G13 | **Closed in v0.18.0 (Story I.u).** Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption_type: corruption, severity: severity, original_path: source_path }` (keys are the authored output-field names; values are the canonical tag names). |
 | G14 | **Schema in v0.18.0 (Story I.r); runtime pending.** The `SampleData` section now *accepts* `selector: { kind: per_class, n: 1, splits: [train] }` (validated, cache-participating), but the selector is not yet honored at materialize time — restoring it is forward-looking until the carved-out runtime story (plan_phase) lands. |
 | G15 | **Closed in v0.19.0 (Story I.x.1).** Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. v1 recipes are auto-migrated; consumers binding directly against the recipe model should track the v2 shape. |

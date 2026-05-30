@@ -53,6 +53,7 @@ def _recipe_dict(image_root: Path, *, with_sink: bool) -> dict[str, object]:
         "Generation": [
             {
                 "name": "imagecorruptions_apply",
+                "op": "imagecorruptions_apply",
                 "inputs": ["image"],
                 "output_schema": {
                     "image": {"dtype": "uint8", "shape": [32, 32, 3]},
@@ -60,7 +61,7 @@ def _recipe_dict(image_root: Path, *, with_sink: bool) -> dict[str, object]:
                     "path": {"dtype": "str"},
                 },
                 "seed": 42,
-                "applies_at": ["train"],
+                "splits": ["train"],
                 "params": {
                     "corruption_types": ["gaussian_noise"],
                     "severities": [3],

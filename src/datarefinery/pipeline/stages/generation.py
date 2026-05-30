@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """FR-9 Generation stage: record-count-changing operations.
 
-Each ``GenerationOp`` runs against the splits listed in ``applies_at``
-(default ``["train"]`` per model). The op's ``name`` doubles as the
-operation lookup key (Generation has no separate ``op`` field in the
-model, unlike Transformations / Augmentations / etc.).
+Each ``GenerationOp`` runs against the splits listed in ``splits``
+(default ``["train"]`` per model). Story I.x.2 / G12 lifted the
+operation name to a top-level ``op`` field; the v1 convention of
+"``name`` doubles as op-name" lives on inside
+:func:`datarefinery.recipe.migrations.generation_reshape_v1_to_v2`.
 
 Operation signature (Generation section):
 
@@ -16,10 +17,17 @@ Operation signature (Generation section):
            label_field: str | None,
            op_name: str) -> list[Record]
 
-``op_name`` is the recipe's ``GenerationOp.name`` — passed through so
-per-record-stochastic ops can stamp a ``<op_name>_seed`` column on
-each output record (Story I.e), keyed on the recipe identifier so two
-ops of the same op kind never collide on a single seed column.
+``op_name`` is the recipe's ``GenerationOp.name`` (the recipe-author
+identifier — not the op kind), passed through so per-record-stochastic
+ops can stamp a ``<op_name>_seed`` column on each output record
+(Story I.e), keyed on the recipe identifier so two ops of the same op
+kind never collide on a single seed column.
+
+The ``output_schema`` value passed to the op is always a concrete
+``Mapping[str, FieldSpec]``; the v2 shorthand ``"matches_input"`` is
+expanded by :func:`_resolve_output_schema` before invocation by copying
+the recipe's ``Output.record_schema`` and inflating any declared
+``tag_fields`` from the op's params (G12 / Story I.x.2).
 
 Operations return only the *new* records to add. By default the stage
 concatenates them onto the split's existing records. When
@@ -81,20 +89,28 @@ def apply_generation(
     output_fields = frozenset(output_record_schema.keys())
 
     for op in generation_ops:
-        for split_name in op.applies_at:
+        resolved_output_schema = _resolve_output_schema(op, output_record_schema)
+        for split_name in op.splits:
             if split_name not in out:
-                # Validator check 15 enforces that applies_at references a
+                # Validator check 15 enforces that splits references a
                 # declared split; if we somehow got here without that
                 # check, fail loudly rather than silently.
                 raise MaterializeError(
-                    f"Generation[{op.name!r}].applies_at references undeclared split {split_name!r}"
+                    f"Generation[{op.name!r}].splits references undeclared split {split_name!r}"
                 )
             if split_name not in {"train"}:
                 warnings.append(
                     f"Generation[{op.name!r}] runs on non-train split "
                     f"{split_name!r}; atypical (FR-9 edge case)"
                 )
-            new_records = _invoke_one(op, out[split_name], plugin, label_field, master_seed)
+            new_records = _invoke_one(
+                op,
+                out[split_name],
+                plugin,
+                label_field,
+                master_seed,
+                resolved_output_schema,
+            )
             _validate_against_output_schema(op.name, split_name, new_records, output_fields)
             if op.replace_input_records:
                 out[split_name] = list(new_records)
@@ -121,18 +137,59 @@ def _invoke_one(
     plugin: Plugin,
     label_field: str | None,
     master_seed: int,
+    resolved_output_schema: Mapping[str, FieldSpec],
 ) -> list[Record]:
-    callable_: GenerationCallable = plugin.operation_factory("Generation", op.name)
+    callable_: GenerationCallable = plugin.operation_factory("Generation", op.op)
     resolved_seed = resolve_seed(op.seed, master_seed=master_seed, op_name=op.name)
     return callable_(
         records,
         seed=resolved_seed,
         inputs=list(op.inputs),
-        output_schema=op.output_schema,
+        output_schema=resolved_output_schema,
         params=dict(op.params),
         label_field=label_field,
         op_name=op.name,
     )
+
+
+def _resolve_output_schema(
+    op: GenerationOp,
+    output_record_schema: Mapping[str, FieldSpec],
+) -> Mapping[str, FieldSpec]:
+    """Expand the v2 ``output_schema: "matches_input"`` shorthand.
+
+    The shorthand resolves to ``Output.record_schema`` with any declared
+    ``tag_fields`` from the op's params added as ``FieldSpec(dtype=...)``
+    entries — for ``imagecorruptions_apply`` that's ``corruption``,
+    ``severity``, and ``source_path`` (or whatever the dict-rename form
+    of ``tag_fields`` declares). The list / dict shape of ``tag_fields``
+    is the plugin's concern; this resolver only walks the declared
+    output-field *names*, since FieldSpec details for tag fields come
+    from ``Output.record_schema``.
+    """
+    if isinstance(op.output_schema, dict):
+        # Explicit dict — pass through unchanged.
+        return op.output_schema
+    resolved: dict[str, FieldSpec] = dict(output_record_schema)
+    tag_fields = op.params.get("tag_fields")
+    if isinstance(tag_fields, list):
+        tag_names: list[str] = [t for t in tag_fields if isinstance(t, str)]
+    elif isinstance(tag_fields, dict):
+        # Dict form (G13 / Story I.u) maps authored_name -> canonical.
+        tag_names = [k for k in tag_fields if isinstance(k, str)]
+    else:
+        tag_names = []
+    for tag_name in tag_names:
+        if tag_name in resolved:
+            continue
+        field_spec = output_record_schema.get(tag_name)
+        if field_spec is None:
+            raise MaterializeError(
+                f"Generation[{op.name!r}] output_schema='matches_input' references "
+                f"tag field {tag_name!r} but Output.record_schema does not declare it"
+            )
+        resolved[tag_name] = field_spec
+    return resolved
 
 
 def _validate_against_output_schema(

@@ -47,10 +47,11 @@ def _imbalanced_train_split() -> list[Mapping[str, Any]]:
 def test_generation_brings_minority_class_up_to_majority() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=7,
-        applies_at=["train"],
+        splits=["train"],
     )
     splits = {"train": _imbalanced_train_split(), "val": [_record(0)]}
     result = apply_generation(
@@ -71,6 +72,7 @@ def test_generation_brings_minority_class_up_to_majority() -> None:
 def test_generation_records_pre_and_post_counts() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=7,
@@ -90,6 +92,7 @@ def test_generation_records_pre_and_post_counts() -> None:
 def test_generation_is_deterministic_for_fixed_seed() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=99,
@@ -115,12 +118,14 @@ def test_generation_is_deterministic_for_fixed_seed() -> None:
 def test_generation_different_seeds_produce_different_clones() -> None:
     op_a = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=1,
     )
     op_b = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=2,
@@ -148,6 +153,7 @@ def test_generation_different_seeds_produce_different_clones() -> None:
 def test_generation_no_op_when_already_balanced() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=0,
@@ -169,6 +175,7 @@ def test_generation_no_op_when_already_balanced() -> None:
 def test_generation_requires_label_field() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image"],
         output_schema=_output_schema(),
         seed=0,
@@ -183,13 +190,14 @@ def test_generation_requires_label_field() -> None:
 
 
 # ---------------------------------------------------------------------------
-# applies_at handling
+# splits handling (v1's ``applies_at`` was renamed to ``splits``; G12 / Story I.x.2)
 # ---------------------------------------------------------------------------
 
 
-def test_default_applies_at_is_train_only() -> None:
+def test_default_splits_is_train_only() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=0,
@@ -211,13 +219,14 @@ def test_default_applies_at_is_train_only() -> None:
     assert result.counts_after["test"] == result.counts_before["test"]
 
 
-def test_applies_at_non_train_emits_warning() -> None:
+def test_splits_non_train_emits_warning() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=0,
-        applies_at=["val"],
+        splits=["val"],
     )
     result = apply_generation(
         {"val": _imbalanced_train_split(), "train": []},
@@ -229,13 +238,14 @@ def test_applies_at_non_train_emits_warning() -> None:
     assert any("non-train" in w and "'val'" in w for w in result.warnings)
 
 
-def test_applies_at_undeclared_split_raises_materialize_error() -> None:
+def test_splits_undeclared_split_raises_materialize_error() -> None:
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=0,
-        applies_at=["train", "no_such_split"],
+        splits=["train", "no_such_split"],
     )
     with pytest.raises(MaterializeError, match="undeclared split"):
         apply_generation(
@@ -288,6 +298,7 @@ def test_generation_record_missing_output_field_raises_materialize_error() -> No
     plugin = _DropFieldPlugin()
     op = GenerationOp(
         name="bad_gen",
+        op="bad_gen",
         inputs=["image"],
         output_schema={"image": FieldSpec(dtype="uint8", shape=[1])},
         seed=0,
@@ -347,6 +358,7 @@ def test_replace_input_records_replaces_split_with_generated_records() -> None:
     plugin = _ReplacingPlugin()
     op = GenerationOp(
         name="gen2",
+        op="gen2",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=0,
@@ -372,6 +384,7 @@ def test_replace_input_records_defaults_false_and_appends() -> None:
     plugin = _ReplacingPlugin()
     op = GenerationOp(
         name="gen2",
+        op="gen2",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=0,
@@ -416,6 +429,7 @@ def test_returned_splits_are_fresh_lists() -> None:
     splits = {"train": original_train}
     op = GenerationOp(
         name="duplicate_minority_class",
+        op="duplicate_minority_class",
         inputs=["image", "label"],
         output_schema=_output_schema(),
         seed=0,

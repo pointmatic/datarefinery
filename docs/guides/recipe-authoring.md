@@ -481,19 +481,53 @@ Filters are also the place to handle class imbalance by *removing* records — s
 
 ### `Generation` (optional)
 
-Synthesize new records. Each Generation op declares its inputs, an output schema (must match the recipe's `Output`), a seed, and the splits it applies to (default `[train]`):
+Synthesize new records. Each Generation op declares an `op` (the plugin operation), its `inputs`, an output schema (must match the recipe's `Output`), a seed, and the splits it applies to (default `[train]`):
 
 ```yaml
 Generation:
   - name: oversample_minority
-    inputs: [train]
+    op: duplicate_minority_class
+    inputs: [image, label]
     output_schema:
       image: { dtype: uint8, shape: [8, 8, 3] }
       label: { dtype: str }
       path:  { dtype: str }
     seed: 99
-    applies_at: [train]
+    splits: [train]
 ```
+
+A `GenerationOp` carries:
+
+- `name` — unique identifier; also the op-name in derived seeds (see [Seeds and determinism](#seeds-and-determinism)) and the prefix of any persisted per-record seed (`<name>_seed`).
+- `op` — the plugin operation in the `Generation` section (image plugin: `duplicate_minority_class`, `imagecorruptions_apply`).
+- `inputs` — record fields the op consumes.
+- `output_schema` — either an explicit `dict[str, FieldSpec]` declaring every field the op writes, or the shorthand `"matches_input"` (see below).
+- `seed` — integer literal or the master-derivation form `{ from: master }` (G11 / Story I.n).
+- `splits` — splits the op runs against (default `[train]`).
+- `params` — the operation's parameters.
+- `replace_input_records` — see below.
+
+> **Schema v2 reshape (Story I.x.2 / G12).** In schema_version 1, `GenerationOp` left the op-name implicit (the recipe's `name` doubled as both the recipe-author identifier and the operation lookup key), and called the splits field `applies_at`. v2 makes `op` explicit (matching every other section) and renames `applies_at` → `splits`. Recipes authored as `schema_version: 1` are auto-migrated by the loader — see [Top-level keys](#top-level-keys) for the migration ceremony.
+
+#### `output_schema: matches_input` shorthand
+
+When a Generation op preserves the input record shape and only adds tag fields (the canonical `imagecorruptions_apply` case), re-stating the full `output_schema` is busywork. The shorthand `output_schema: "matches_input"` resolves at materialize time to `Output.record_schema` plus any fields named in the op's `tag_fields` param. The runtime expansion looks up each tag field's `FieldSpec` from `Output.record_schema` (so you still declare `corruption`, `severity`, `source_path` there) and adds them to the per-op output schema.
+
+```yaml
+Generation:
+  - name: corrupt
+    op: imagecorruptions_apply
+    inputs: [image]
+    output_schema: matches_input        # expanded from Output.record_schema + tag_fields
+    seed: 42
+    splits: [train]
+    params:
+      corruption_types: [gaussian_noise, fog]
+      severities: [1, 3]
+      tag_fields: [corruption, severity, source_path]
+```
+
+Explicit dicts always work — use the shorthand when the op preserves the input shape and only adds declared tag fields; use the dict when the op writes new non-tag fields or omits any of the input fields.
 
 Generation changes the record count; counts are recorded in the manifest and the report. Generated records must satisfy `OutputExpectations`.
 
@@ -504,13 +538,14 @@ By default a Generation op **augments** the split: its output records are append
 ```yaml
 Generation:
   - name: corrupt
+    op: imagecorruptions_apply
     inputs: [image]
     output_schema:
       record_id: { dtype: str }
       image:     { dtype: uint8, shape: [64, 64, 3] }
       path:      { dtype: str }
     seed: 42
-    applies_at: [train]
+    splits: [train]
     replace_input_records: true       # output replaces the originals
     params:
       corruption_types: [gaussian_noise, fog]

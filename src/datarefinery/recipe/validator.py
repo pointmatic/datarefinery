@@ -519,6 +519,11 @@ def check_14_generation_output_schema_consistent(recipe: Recipe, plugin: Plugin)
     issues: list[str] = []
     record_schema = recipe.Output.record_schema
     for op in recipe.Generation:
+        # G12 / Story I.x.2: ``"matches_input"`` is resolved at materialize
+        # time from ``Output.record_schema`` (+ declared tag fields), so it
+        # is structurally consistent by construction; skip the per-field check.
+        if op.output_schema == "matches_input":
+            continue
         for field_name, field_spec in op.output_schema.items():
             target = record_schema.get(field_name)
             if target is None:
@@ -570,7 +575,7 @@ def check_15_split_references_defined(recipe: Recipe, plugin: Plugin) -> CheckRe
     for feat in recipe.Featurizations:
         _check("Featurizations", feat.name, feat.splits)
     for gen in recipe.Generation:
-        _check("Generation", gen.name, gen.applies_at)
+        _check("Generation", gen.name, gen.splits)
 
     if not issues:
         return _passed(15, descriptor)
@@ -709,8 +714,8 @@ def check_18_plugin_operation_params_validate(recipe: Recipe, plugin: Plugin) ->
     for viz in recipe.Visualizations:
         _validate("Visualizations", viz.name, viz.op, viz.params)
     for gen in recipe.Generation:
-        # Generation uses `name` as the op-name (no separate `op` field).
-        _validate("Generation", gen.name, gen.name, gen.params)
+        # Story I.x.2 / G12: ``op`` is now a top-level field.
+        _validate("Generation", gen.name, gen.op, gen.params)
 
     if not issues:
         return _passed(18, descriptor)
@@ -1232,7 +1237,10 @@ def check_24_sinks(recipe: Recipe, plugin: Plugin) -> CheckResult:
         field_universe.add("partition")
     field_universe.update(recipe.Output.record_schema.keys())
     for gen in recipe.Generation:
-        field_universe.update(gen.output_schema.keys())
+        if isinstance(gen.output_schema, dict):
+            field_universe.update(gen.output_schema.keys())
+        # The "matches_input" shorthand resolves to Output.record_schema
+        # at runtime; all those keys are already in the universe above.
     for feat in recipe.Featurizations:
         field_universe.add(feat.output_field)
 
@@ -1288,7 +1296,10 @@ def _known_field_universe(recipe: Recipe) -> set[str]:
         universe.add("partition")
     universe.update(recipe.Output.record_schema.keys())
     for gen in recipe.Generation:
-        universe.update(gen.output_schema.keys())
+        if isinstance(gen.output_schema, dict):
+            universe.update(gen.output_schema.keys())
+        # The "matches_input" shorthand resolves to Output.record_schema
+        # (already in the universe above) at materialize time.
         tag_fields = gen.params.get("tag_fields")
         if isinstance(tag_fields, list):
             universe.update(str(t) for t in tag_fields)

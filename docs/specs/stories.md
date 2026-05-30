@@ -742,23 +742,33 @@ Per [`phase-i-dependency-gaps-v0.16.0.md` § G15](phase-i-dependency-gaps-v0.16.
 
 ---
 
-### Story I.x.2: G12 — Generation schema reshape [Planned]
+### Story I.x.2: G12 — Generation schema reshape [Done]
 
-**Disposition: schema reshape (canonical-bytes-perturbing).** Part of Bundle 4 (v0.19.0 release). Sub-numbered story 2 of 3.
+**Disposition: schema reshape (canonical-bytes-perturbing for recipes with Generation blocks).** Part of Bundle 4 (v0.19.0 release). Sub-numbered story 2 of 3.
 
-Per [`dependency-gaps-v0.16.0.md` § G12](dependency-gaps-v0.16.0.md): `GenerationOp` reshapes — `op:` lifts to top level, `applies_at: list[str]` renames to `splits: list[str]`, `output_schema` accepts `dict[str, FieldSpec] | Literal["matches_input"]` (shorthand expands to input record schema + declared tag fields), `seed` accepts `int | SeedDerivationSpec` (from FR-I-5, Story I.n).
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G12](phase-i-dependency-gaps-v0.16.0.md): `GenerationOp` reshapes — `op:` lifts to top level, `applies_at: list[str]` renames to `splits: list[str]`, `output_schema` accepts `dict[str, FieldSpec] | Literal["matches_input"]` (shorthand expands to `Output.record_schema` + declared tag fields), `seed` accepts `int | SeedDerivationSpec` (from FR-I-5, Story I.n — landed earlier, no change here).
 
 **Tasks:**
 
-- [ ] Reshape `GenerationOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py).
-- [ ] Implement `generation_reshape_v1_to_v2` migration: `params.op` → top-level `op:`; `applies_at` → `splits`; preserve other fields; emit a default `output_schema` carryover (cannot inflate to `"matches_input"` without runtime context — leave concrete dicts as-is).
-- [ ] Register the migration in `migrations[(1, 2)]` alongside Filters reshape from I.x.1.
-- [ ] Implement runtime expansion of `output_schema: "matches_input"` in [`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py): copy input record shape + add declared `tag_fields` from the op's params.
-- [ ] Unit tests: v1-shape Generation block migrates to v2 cleanly; `output_schema: matches_input` expands to the correct dict at materialize time; explicit `output_schema: {…}` still works.
-- [ ] Migration round-trip test extends the v1→v2 fixture from I.x.1 to include Generation blocks.
-- [ ] DOC: rewrite [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md) with the new shape; worked `imagecorruptions_apply` example with `output_schema: matches_input`.
-- [ ] Cross-repo coordination: update `dependency-spec.md` Generation section for the v2 shape.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G12](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.19.0"; workarounds row.
+- [x] Reshaped `GenerationOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py): added top-level `op: str`; renamed `applies_at` → `splits` (default still `["train"]`); widened `output_schema` to `dict[str, FieldSpec] | Literal["matches_input"]`.
+- [x] Implemented `generation_reshape_v1_to_v2` in [`recipe/migrations.py`](../../src/datarefinery/recipe/migrations.py): lifts `op` to top level (from `name` per the canonical v1 convention, or from `params["op"]` per the documented workaround pattern); renames `applies_at` → `splits` (rejects ambiguous co-occurrence); lifts `output_schema_matches_input: true` → `output_schema: "matches_input"`. Idempotent on already-v2 input.
+- [x] Registered alongside `filters_reshape_v1_to_v2` in `_V1_TO_V2_FUNCS`; the loader's existing chain composition picks both up under `migrations[(1, 2)]`.
+- [x] Implemented runtime expansion of `output_schema: "matches_input"` via new `_resolve_output_schema` helper in [`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py): copies `Output.record_schema` and inflates declared `tag_fields` (list or dict-rename form) from the op's params; missing tag-field `FieldSpec` in `Output.record_schema` raises an actionable `MaterializeError`.
+- [x] Validator updates: `check_14` short-circuits the per-field comparison when `output_schema == "matches_input"` (resolved value is structurally consistent by construction). `check_15` reads `gen.splits` (renamed from `applies_at`). `check_18` now passes `gen.op` (was `gen.name`) into the plugin-OperationSpec cross-check. `check_24` (Sinks) and `_known_field_universe` narrow `gen.output_schema` to dict before iterating keys.
+- [x] Generation-stage renames: `apply_generation` reads `op.splits` (was `op.applies_at`); `_invoke_one` looks up the plugin op via `op.op` (was `op.name`); resolved output schema is computed once per op (not per split) and threaded through. Module docstring updated to describe the v2 shape and the `_resolve_output_schema` expansion.
+- [x] Unit tests in [`tests/unit/test_migrations.py`](../../tests/unit/test_migrations.py) (+8 cases): canonical v1 lift (`op = name`); workaround lift from `params["op"]`; `applies_at` → `splits` rename; `output_schema_matches_input: true` lift to literal; explicit dict pass-through; seed + `replace_input_records` preservation; no-Generation no-op; idempotence on v2 input. Migration round-trip end-to-end (`test_v1_generation_recipe_round_trips_to_v2_canonical_bytes`): a v1 Generation recipe loads + canonicalizes byte-identically to the equivalent directly-authored v2 recipe.
+- [x] Test fixtures swept (`tests/unit/test_generation_stage.py`, `tests/plugins/image_classification/test_generation_imagecorruptions.py`, `tests/integration/{test_imagecorruptions_apply,test_per_record_seed_persistence,test_export_verb,test_failure_modes}.py`, `tests/cli/test_export_cmd.py`, `tests/unit/{test_validator,test_seeds}.py`): added explicit `op:` and renamed `applies_at:` → `splits:` in every v2-shape direct `Recipe.model_validate` / `GenerationOp(...)` fixture. Test functions exercising the dispatch field renamed `test_*applies_at*` → `test_*splits*` to match the v2 vocabulary; the previous `_fail_generation` fixture in `test_failure_modes.py` (which used a post-hoc `d["Generation"][0]["name"] = ...` hack to set the op-name) cleaned up to set `op` directly. Generation tests that pass `op.output_schema` to lower-level helpers narrow via `cast("Mapping[str, FieldSpec]", op.output_schema)` since the model now returns a union.
+- [x] DOC: rewrote [`recipe-authoring.md` § Generation](../guides/recipe-authoring.md) with the v2 flat shape, full `GenerationOp` field list (including `op` + `splits` + `replace_input_records`), a Schema-v2-reshape callout, and a new "`output_schema: matches_input` shorthand" subsection with a worked `imagecorruptions_apply` example. Reshaped the `replace_input_records` example to v2 shape too. The existing `tag_fields` subsection didn't need changes.
+- [x] Updated [`tech-spec.md`](tech-spec.md): `GenerationOp` row in the per-section model table rewritten with the v2 field list, the `"matches_input"` runtime-expansion note, and a pointer to `recipe.migrations.generation_reshape_v1_to_v2`. The `recipe.migrations` subsection's `(1, 2)` chain description now spells out the three sub-reshapes (G15 / G12 / G16a — last still pending).
+- [x] **Cross-repo coordination.** Extended the "Schema v1 → v2" subsection in [`dependency-spec.md` § Cache-identity contract](modelfoundry/dependency-spec.md) with the GenerationOp entry: names old/new shapes (`name`-doubles-as-op → top-level `op`; `applies_at` → `splits`; `dict-only` → `dict | "matches_input"`); notes that the workaround pattern of `op:` inside `params` is also migrated; flags that consumers binding directly against `GenerationOp` should accept `"matches_input"` as a possible value.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G12](phase-i-dependency-gaps-v0.16.0.md): status block at top; priority-summary row → "Closed in v0.19.0 (Story I.x.2)"; workarounds row updated to note auto-migration.
+- [x] **Canonical-hash pin unchanged.** The pin fixture has no Generation block and is unaffected by this reshape; pin still equals `146b2059…` from Story I.x.1. Recipes with Generation blocks see byte changes (defaulted `replace_input_records: false` was already there; the `op` field shape change is the active perturbation), but those are not in the pin fixture's surface.
+- [x] CI parity: `pyve test` 1235 passed (+8 net from this story: 8 new migration tests, ~10 GenerationOp fixture updates across 9 existing test files). `pyve testenv run mypy src tests` clean across 198 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
+
+**Out of Scope:**
+
+- `recipes/*.yaml` fixtures — none currently exist that declare Generation blocks; new YAMLs should author the v2 shape directly.
+- Tightening `check_18` (or a new check) to reject recipes whose Generation `op` is "duplicate_minority_class" but whose `name` differs — today the recipe-author identifier and the op-kind are decoupled at the model layer, which is the intended v2 freedom. Consumers can still grep the manifest by op kind via `op:`.
 
 ---
 
