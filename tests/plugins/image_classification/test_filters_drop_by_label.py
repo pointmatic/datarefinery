@@ -32,33 +32,27 @@ def _records(per_class: int = 20, classes: int = 4) -> list[Record]:
 def _train_tag_op(name: str = "train", seed: int = 42) -> FilterOp:
     return FilterOp(
         name=name,
-        predicate={
-            "op": "sample_per_class",
-            "n_per_class": 5,
-            "seed": seed,
-            "label": "train_pool",
-        },
+        op="sample_per_class",
+        params={"n_per_class": 5, "label": "train_pool"},
+        seed=seed,
     )
 
 
 def _holdout_tag_op(name: str = "holdout", seed: int = 42) -> FilterOp:
     return FilterOp(
         name=name,
-        predicate={
-            "op": "sample_per_class",
+        op="sample_per_class",
+        params={
             "n_per_class": 5,
-            "seed": seed,
             "label": "holdout_pool",
             "exclude_already_labeled": ["train_pool"],
         },
+        seed=seed,
     )
 
 
 def _drop_op(name: str, labels: list[str]) -> FilterOp:
-    return FilterOp(
-        name=name,
-        predicate={"op": "drop_by_label", "labels": labels},
-    )
+    return FilterOp(name=name, op="drop_by_label", params={"labels": labels})
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +203,6 @@ def test_empty_labels_rejected() -> None:
 
 
 def test_empty_labels_at_op_invocation_raises() -> None:
-    op = FilterOp(name="bad", predicate={"op": "drop_by_label", "labels": []})
+    op = FilterOp(name="bad", op="drop_by_label", params={"labels": []})
     with pytest.raises(ValidationError):
         apply_pre_split_filters(_records(), [op], plugin=IMAGE_PLUGIN, label_field="label")

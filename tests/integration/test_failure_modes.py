@@ -137,7 +137,8 @@ def _fail_pre_split_filter(d: dict[str, Any]) -> dict[str, Any]:
     d["Filters"] = [
         {
             "name": "boom_filter",
-            "predicate": {"op": "filter_by_label", "labels": ["c0"]},
+            "op": "filter_by_label",
+            "params": {"labels": ["c0"]},
             "stages": ["pre_split"],
         }
     ]
@@ -148,7 +149,8 @@ def _fail_post_split_filter(d: dict[str, Any]) -> dict[str, Any]:
     d["Filters"] = [
         {
             "name": "boom_filter",
-            "predicate": {"op": "filter_by_label", "labels": ["c0"]},
+            "op": "filter_by_label",
+            "params": {"labels": ["c0"]},
             "stages": ["post_split"],
             "splits": ["train"],
         }

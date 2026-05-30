@@ -92,8 +92,10 @@ def test_missing_required_section_raises(missing: str) -> None:
         Recipe.model_validate(bad)
 
 
-@pytest.mark.parametrize("missing", ["schema_version", "plugin"])
+@pytest.mark.parametrize("missing", ["plugin"])
 def test_missing_required_top_level_field_raises(missing: str) -> None:
+    """Note: ``schema_version`` has a default (latest) since Story I.x.1;
+    the loader still requires it in YAML via the schema-version gate."""
     bad = _minimal_recipe_dict()
     del bad[missing]
     with pytest.raises(ValidationError):

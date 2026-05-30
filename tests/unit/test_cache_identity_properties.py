@@ -202,7 +202,7 @@ def _change_input_path(d: dict[str, Any], path: str) -> dict[str, Any]:
 
 def _add_filter(d: dict[str, Any], name: str) -> dict[str, Any]:
     out = copy.deepcopy(d)
-    out.setdefault("Filters", []).append({"name": name, "predicate": {"kind": "dedup"}})
+    out.setdefault("Filters", []).append({"name": name, "op": "dedup", "params": {}})
     return out
 
 

@@ -81,7 +81,14 @@ Splits:
 # are deliberately invalidating the cache and updating this in the same
 # commit — see project-essentials.md "Cache identity is the
 # reproducibility contract — invalidations are ceremonious."
-_PINNED_DIGEST = "88f2ed7a1266eb9fb736c37c2de16d21765807f6850db50d4804a122051cca7b"
+#
+# v0.19.0 (Phase I bundle 4) bump: the fixture is authored as
+# schema_version 1; the loader migrates it to schema_version 2 (G15 /
+# Story I.x.1, with G12 / I.x.2 and G16a / I.x.3 piggybacking on the
+# same registry). The reshaped recipe has different canonical bytes
+# from the v1 pin, so the digest below was updated as part of the
+# bundle's deliberate cache-invalidation event.
+_PINNED_DIGEST = "146b2059e3a010d22c7ea0229a112a944cd4754277bdeb3ac3f57d3792ff5dcc"
 
 _FAILURE_MESSAGE = """
 Canonical hash drift detected.

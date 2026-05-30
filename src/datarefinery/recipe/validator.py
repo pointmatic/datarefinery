@@ -357,14 +357,16 @@ def check_09_stratification_keys_exist(recipe: Recipe, plugin: Plugin) -> CheckR
 
 def check_10_class_imbalance_strategy_in_one_place(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Heuristic v1 check: a `class_balance` strategy on `Splits` and a
-    Filter whose predicate names `class_balance` collide and must be
-    resolved to one site per imbalance concern.
+    Filter whose op is `class_balance` (or whose params name it) collide
+    and must be resolved to one site per imbalance concern.
     """
     del plugin
     descriptor = "class_imbalance_strategy_in_one_place"
     class_balance = recipe.Splits.class_balance
     splits_handles = class_balance is not None
-    filter_handles = any("class_balance" in op.predicate for op in recipe.Filters)
+    filter_handles = any(
+        op.op == "class_balance" or "class_balance" in op.params for op in recipe.Filters
+    )
     if splits_handles and filter_handles:
         return CheckResult(
             check_id=10,
@@ -373,7 +375,7 @@ def check_10_class_imbalance_strategy_in_one_place(recipe: Recipe, plugin: Plugi
             location=None,
             message=(
                 "class-imbalance strategy declared in both 'Splits.class_balance' "
-                "and a Filters predicate; consolidate to one site"
+                "and a Filters op/params; consolidate to one site"
             ),
         )
     # G10 (Story I.s): the dict shape is a forward-declared MF-binding hint
@@ -875,15 +877,14 @@ def _sample_filter_labels(recipe: Recipe) -> set[str]:
     """Tag labels emitted by non-destructive sample_per_class* filters.
 
     A `sample_per_class` / `sample_per_class_fractional` filter with a
-    `label` in its predicate tags the chosen records (in
-    `sample_per_class_tags`) rather than dropping the rest. `Splits.applies_to`
-    may target such a label (G1 / Story I.t).
+    `label` param tags the chosen records (in `sample_per_class_tags`)
+    rather than dropping the rest. `Splits.applies_to` may target such
+    a label (G1 / Story I.t).
     """
     labels: set[str] = set()
     for op in recipe.Filters:
-        predicate = op.predicate
-        if predicate.get("op") in _SAMPLE_TAG_OPS:
-            label = predicate.get("label")
+        if op.op in _SAMPLE_TAG_OPS:
+            label = op.params.get("label")
             if isinstance(label, str):
                 labels.add(label)
     return labels
@@ -1044,7 +1045,7 @@ def check_21_unlabeled_consistency(recipe: Recipe, plugin: Plugin) -> CheckResul
 
     label_field = recipe.Labels.field
     for filt in recipe.Filters:
-        if filt.predicate.get("op") == "filter_by_label":
+        if filt.op == "filter_by_label":
             bad = [s for s in filt.splits if s in unlabeled_splits]
             if bad:
                 issues.append(

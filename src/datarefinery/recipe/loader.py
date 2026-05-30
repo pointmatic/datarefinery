@@ -4,10 +4,12 @@
 
 The schema-version gate runs before model validation so users see a
 "this DataRefinery version doesn't speak that schema" message before any
-field-shape diagnostics. The `migrations` registry is empty for v1 and
-reserved for post-production cache-invalidating schema-version bumps
-(see `project-essentials.md` "Cache identity is the reproducibility
-contract — invalidations are ceremonious").
+field-shape diagnostics. v1 recipes are auto-migrated to the v2 shape
+via the chain registered in :mod:`datarefinery.recipe.migrations`
+(Phase I bundle 4 — Stories I.x.1/I.x.2/I.x.3); the model itself only
+accepts the latest shape. See ``project-essentials.md`` "Cache
+identity is the reproducibility contract — invalidations are
+ceremonious" for the bump ceremony.
 """
 
 from __future__ import annotations
@@ -21,13 +23,19 @@ import yaml
 from pydantic import ValidationError
 
 from datarefinery.core.errors import RecipeError
+from datarefinery.recipe.migrations import v1_to_v2
 from datarefinery.recipe.models import Recipe
 
-SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1})
+LATEST_SCHEMA_VERSION: int = 2
+SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1, 2})
 
-# Reserved for post-production migrations from older schema versions.
-# Keyed by (from_version, to_version); each callable mutates a recipe dict.
-migrations: dict[tuple[int, int], Callable[[dict[str, Any]], dict[str, Any]]] = {}
+# Each migration key (from_version, to_version) maps to a callable that
+# rewrites a recipe dict in place of any v<from> shape with the
+# equivalent v<to> shape. The chain is registered in
+# :mod:`datarefinery.recipe.migrations`.
+migrations: dict[tuple[int, int], Callable[[dict[str, Any]], dict[str, Any]]] = {
+    (1, 2): v1_to_v2,
+}
 
 KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
     {
@@ -99,10 +107,32 @@ def load(path: Path) -> Recipe:
             stacklevel=2,
         )
 
+    data = _migrate_to_latest(data, schema_version)
+
     try:
         return Recipe.model_validate(data)
     except ValidationError as exc:
         raise RecipeError(f"recipe at {path} failed validation: {exc}") from exc
+
+
+def _migrate_to_latest(data: dict[str, Any], from_version: int) -> dict[str, Any]:
+    """Apply each registered migration step until ``data`` is at the
+    latest supported schema_version. The chain is intentionally simple
+    (one-hop today, single composed callable per pair); a multi-hop
+    chain becomes useful when schema_version 3 lands."""
+    current = from_version
+    while current != LATEST_SCHEMA_VERSION:
+        step = migrations.get((current, current + 1))
+        if step is None:
+            # Should never trigger today (only valid versions reach here),
+            # but guards future gaps in the chain.
+            raise RecipeError(
+                f"no migration registered from schema_version={current} to "
+                f"schema_version={current + 1}"
+            )
+        data = step(data)
+        current += 1
+    return data
 
 
 def _yaml_error_location(exc: yaml.YAMLError) -> tuple[int, int]:

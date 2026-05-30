@@ -43,16 +43,12 @@ def _filter_op(
     label: str | None = None,
     exclude_already_labeled: list[str] | None = None,
 ) -> FilterOp:
-    predicate: dict[str, Any] = {
-        "op": "sample_per_class",
-        "n_per_class": n_per_class,
-        "seed": seed,
-    }
+    params: dict[str, Any] = {"n_per_class": n_per_class}
     if label is not None:
-        predicate["label"] = label
+        params["label"] = label
     if exclude_already_labeled is not None:
-        predicate["exclude_already_labeled"] = exclude_already_labeled
-    return FilterOp(name=name, predicate=predicate)
+        params["exclude_already_labeled"] = exclude_already_labeled
+    return FilterOp(name=name, op="sample_per_class", params=params, seed=seed)
 
 
 # ---------------------------------------------------------------------------
@@ -229,10 +225,7 @@ def test_n_per_class_must_be_positive() -> None:
 
 
 def test_missing_seed_raises_plugin_error() -> None:
-    op = FilterOp(
-        name="s",
-        predicate={"op": "sample_per_class", "n_per_class": 5},
-    )
+    op = FilterOp(name="s", op="sample_per_class", params={"n_per_class": 5})
     with pytest.raises(PluginError, match="seed"):
         apply_pre_split_filters(
             _records(per_class=10, classes=2), [op], plugin=IMAGE_PLUGIN, label_field="label"

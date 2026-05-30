@@ -15,7 +15,7 @@ Every snippet in this guide slots into the reference recipe below. It is a compl
 
 ```yaml
 # reference-recipe.yaml
-schema_version: 1
+schema_version: 2
 plugin: image_classification
 seed: 0
 
@@ -104,7 +104,7 @@ The two materializations produce two different instances; the variant overlay ch
 
 | Field | Required | Purpose |
 |-------|----------|---------|
-| `schema_version` | yes | Recipe schema version; load-time refusal of unknown values (FR-1). |
+| `schema_version` | yes | Recipe schema version. Supported values: `1` (auto-migrated to v2 at load time) and `2` (current). New recipes should write `2`. The loader rejects unknown values (FR-1). |
 | `plugin` | yes | Plugin name that supplies the operations referenced in this recipe. |
 | `seed` | no (default `0`) | Recipe-level seed. Combined with the canonical recipe hash and the raw-input hash to form the cache identity. |
 | `Input` | yes | Raw data sources (FR see-below). |
@@ -387,26 +387,97 @@ OutputExpectations:
 
 ### `Filters` (optional)
 
-Remove records by predicate. Each filter declares the **stages** it runs at (`pre_split`, `post_split`) and the **splits** it applies to (when `post_split`):
+Remove or tag records by op. Each filter declares the **stages** it runs at (`pre_split`, `post_split`) and the **splits** it applies to (when `post_split`):
 
 ```yaml
 Filters:
   - name: drop_other
-    predicate:
-      op: filter_by_label
-      labels: [other]
-      action: exclude
+    op: filter_by_label
+    params: { labels: [other], action: exclude }
     stages: [pre_split]
   - name: subsample_train
-    predicate:
-      op: random_sample
-      fraction: 0.5
-      seed: 13
+    op: random_sample
+    params: { fraction: 0.5 }
+    seed: 13
     stages: [post_split]
     splits: [train]
 ```
 
-The `predicate.op` field names a plugin operation in the `Filters` section; the rest of `predicate` becomes operation parameters. Sampling filters **must declare a seed** — the validator rejects them otherwise. Filters are also the place to handle class imbalance by *removing* records — see [Filters vs Splits for class imbalance](#filters-vs-splits-for-class-imbalance).
+A `FilterOp` carries:
+
+- `name` — unique identifier; also the op-name in derived seeds (see [Seeds and determinism](#seeds-and-determinism)).
+- `op` — the plugin operation in the `Filters` section (image plugin: `filter_by_label`, `random_sample`, `sample_per_class`, `sample_per_class_fractional`, `drop_by_label`; tabular stub: `drop_nulls`).
+- `params` — the operation's parameters (no `op` or `seed` here in v2).
+- `stages` — `[pre_split]` (default) or `[post_split]` or both. Pre-split filters apply to the raw record stream before splitting; post-split filters apply to the named `splits`.
+- `splits` — required for `post_split`; the splits the filter targets.
+- `seed` — top-level seed source for stochastic filters: either an integer or the master-derivation form `{ from: master }` (see [Seeds and determinism](#seeds-and-determinism)). Sampling filters **must** declare a seed — the runtime rejects them otherwise.
+
+> **Schema v2 reshape (Story I.x.1 / G15).** In schema_version 1, `FilterOp` carried a single `predicate` dict that nested `op`, the params, and the seed all together. v2 lifts `op` and `seed` to top-level fields and renames the remaining keys to `params`, matching every other section. Recipes authored as `schema_version: 1` are migrated automatically by the loader — see [Top-level keys](#top-level-keys) for the migration ceremony.
+
+**Image-classification Filters.**
+
+`filter_by_label` (no fit, no seed) — keep or drop records whose label is in `labels`. `action: include` keeps matches; `action: exclude` drops them (default: `include`). Requires `Labels.field` to be set.
+
+```yaml
+Filters:
+  - name: keep_two_classes
+    op: filter_by_label
+    params: { labels: [cat, dog], action: include }
+    stages: [pre_split]
+```
+
+`random_sample` (seeded) — keep a fraction (`fraction`) or a fixed count (`n`) of records; exactly one is required. The seed is on `FilterOp`, not on `params`.
+
+```yaml
+Filters:
+  - name: subsample
+    op: random_sample
+    params: { fraction: 0.1 }
+    seed: 42
+    stages: [pre_split]
+```
+
+`sample_per_class` (FR-FILTER-1, seeded) — balanced subsample: keep `n_per_class` records of each label, capped by availability. Optionally **tag** the surviving records via `label: <tag>` (does not drop the rest — the tag rides on the `sample_per_class_tags` field), and **exclude** records already carrying any of `exclude_already_labeled` from the candidate pool to compose disjoint-pool flows.
+
+```yaml
+Filters:
+  - name: pick_train
+    op: sample_per_class
+    params: { n_per_class: 200, label: train_pool }
+    seed: 1
+    stages: [pre_split]
+  - name: pick_holdout
+    op: sample_per_class
+    params: { n_per_class: 50, label: holdout, exclude_already_labeled: [train_pool] }
+    seed: 1
+    stages: [pre_split]
+```
+
+`sample_per_class_fractional` (FR-FILTER-2, seeded) — like `sample_per_class` but the per-class target is `floor(n_per_class_base * fractions[label])`. Each fraction must be in `[0.0, 1.0]`; missing labels default to `1.0`. Inherits the `label` / `exclude_already_labeled` tagging semantics.
+
+```yaml
+Filters:
+  - name: fractional_pool
+    op: sample_per_class_fractional
+    params:
+      n_per_class_base: 100
+      fractions: { cat: 0.5, dog: 1.0 }
+      label: pool
+    seed: 7
+    stages: [pre_split]
+```
+
+`drop_by_label` (FR-FILTER-3, no seed) — destructive complement to the tag ops: drop every record carrying any of the named tags in `sample_per_class_tags`. Use after a tagging filter to peel off a disjoint subset.
+
+```yaml
+Filters:
+  - name: remove_pool
+    op: drop_by_label
+    params: { labels: [holdout] }
+    stages: [pre_split]
+```
+
+Filters are also the place to handle class imbalance by *removing* records — see [Filters vs Splits for class imbalance](#filters-vs-splits-for-class-imbalance).
 
 ### `Generation` (optional)
 
@@ -523,15 +594,17 @@ Omitting `Splits` entirely (or writing `Splits: {}`) under declared partitions y
 ```yaml
 Filters:
   - name: pick_train_pool
-    predicate: { op: sample_per_class, n_per_class: 200, label: train_pool, seed: 1 }
+    op: sample_per_class
+    params: { n_per_class: 200, label: train_pool }
+    seed: 1
     stages: [pre_split]
   - name: pick_test
-    predicate:
-      op: sample_per_class
+    op: sample_per_class
+    params:
       n_per_class: 100
       label: test                       # tag name becomes the pass-through split name
       exclude_already_labeled: [train_pool]
-      seed: 1
+    seed: 1
     stages: [pre_split]
 Splits:
   ratios: { train: 0.85, val: 0.15 }
@@ -1042,15 +1115,13 @@ Every seeded op in a recipe — Filters that sample, Splits, Generation, Augment
 
    Filters:
      - name: subsample
-       predicate:
-         op: random_sample
-         fraction: 0.5
-         seed: { from: master }     # derived from the master seed
+       op: random_sample
+       params: { fraction: 0.5 }
+       seed: { from: master }     # derived from the master seed
      - name: train_pool
-       predicate:
-         op: sample_per_class
-         n_per_class: 200
-         seed: { from: master }
+       op: sample_per_class
+       params: { n_per_class: 200 }
+       seed: { from: master }
 
    Splits:
      ratios: { train: 0.85, val: 0.15 }
@@ -1078,10 +1149,9 @@ Class imbalance shows up in almost every classification dataset. The v1 recipe s
   ```yaml
   Filters:
     - name: cap_majority
-      predicate:
-        op: random_sample
-        fraction: 0.3
-        seed: 13
+      op: random_sample
+      params: { fraction: 0.3 }
+      seed: 13
       stages: [pre_split]
   ```
 

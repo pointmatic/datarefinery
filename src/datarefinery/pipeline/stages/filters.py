@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """FR-8 Filters stage: pre-split and post-split record filtering.
 
-Each ``FilterOp`` declares a ``predicate`` dict whose ``op`` key names a
-plugin operation in the ``Filters`` section. The remaining predicate keys
-are operation parameters. The stage looks up the operation via
-``plugin.operation_factory("Filters", op_name)`` and calls it with the
-record list, parameters, and the recipe's label-field name as context.
+Each ``FilterOp`` declares a top-level ``op`` (the plugin operation name)
+and a ``params`` dict (G15 / Story I.x.1). The stage looks up the
+operation via ``plugin.operation_factory("Filters", op_name)`` and calls
+it with the record list, parameters, and the recipe's label-field name
+as context.
 
 Operation signature (Filters section):
 
@@ -16,6 +16,12 @@ Operation signature (Filters section):
 Pre-split filters apply to the raw record stream before splitting; the
 default ``stages=["pre_split"]`` is honored (FR-8 #2). Post-split filters
 apply to one or more named splits as declared by ``FilterOp.splits``.
+
+Seed handling: ``FilterOp.seed`` is the canonical source — an ``int``
+literal or a ``SeedDerivationSpec``. The resolved seed is injected into
+the ``params`` dict before invoking the plugin callable so existing
+filter implementations (e.g. ``random_sample``) can read it from there
+without signature changes.
 
 Edge cases:
 
@@ -32,10 +38,9 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from datarefinery.core.errors import MaterializeError
 from datarefinery.plugins.base import Plugin
 from datarefinery.recipe.models import FilterOp
-from datarefinery.recipe.seeds import derive_seed
+from datarefinery.recipe.seeds import resolve_seed
 
 Record = Mapping[str, Any]
 FilterCallable = Callable[..., list[Record]]
@@ -129,16 +134,11 @@ def _invoke_one(
     label_field: str | None,
     master_seed: int,
 ) -> list[Record]:
-    params = dict(op.predicate)
-    op_name = params.pop("op", None)
-    if not isinstance(op_name, str):
-        raise MaterializeError(
-            f"Filters[{op.name!r}].predicate missing 'op' string (got {type(op_name).__name__})"
-        )
-    raw_seed = params.get("seed")
-    if isinstance(raw_seed, dict) and raw_seed.get("from") == "master":
-        params["seed"] = derive_seed(master_seed, op.name)
-    callable_: FilterCallable = plugin.operation_factory("Filters", op_name)
+    params = dict(op.params)
+    resolved = resolve_seed(op.seed, master_seed=master_seed, op_name=op.name)
+    if resolved is not None:
+        params["seed"] = resolved
+    callable_: FilterCallable = plugin.operation_factory("Filters", op.op)
     return callable_(records, params, label_field=label_field)
 
 

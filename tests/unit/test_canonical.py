@@ -185,7 +185,7 @@ def test_value_change_produces_different_canonical_bytes(tmp_path: Path) -> None
 
 def test_added_section_produces_different_canonical_bytes(tmp_path: Path) -> None:
     base = _canonical(tmp_path, "base", _BASELINE_YAML)
-    extra = _BASELINE_YAML + "Filters:\n  - name: dedup\n    predicate: {kind: dedup}\n"
+    extra = _BASELINE_YAML + "Filters:\n  - name: dedup\n    op: dedup\n    params: {}\n"
     different = _canonical(tmp_path, "extra", extra)
     assert base != different
 
@@ -193,7 +193,9 @@ def test_added_section_produces_different_canonical_bytes(tmp_path: Path) -> Non
 def test_canonical_bytes_are_valid_utf8_json(tmp_path: Path) -> None:
     canonical = _canonical(tmp_path, "base", _BASELINE_YAML)
     payload = json.loads(canonical.decode("utf-8"))
-    assert payload["schema_version"] == 1
+    # Authored as v1; loader migrates the recipe to the latest schema_version
+    # before canonical-bytes computation (Story I.x.1).
+    assert payload["schema_version"] == 2
     # Compact form: no whitespace separators.
     text = canonical.decode("utf-8")
     assert ", " not in text

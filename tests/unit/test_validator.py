@@ -234,7 +234,8 @@ def test_check_03_fails_when_section_unsupported_by_plugin() -> None:
     bad["Filters"] = [
         {
             "name": "f",
-            "predicate": {},
+            "op": "noop_filter",
+            "params": {},
             "stages": ["pre_split"],
             "splits": [],
         }
@@ -261,7 +262,8 @@ def test_check_04_fails_on_post_split_filter_with_empty_splits() -> None:
     bad["Filters"] = [
         {
             "name": "f",
-            "predicate": {},
+            "op": "noop_filter",
+            "params": {},
             "stages": ["post_split"],
             "splits": [],
         }
@@ -277,7 +279,8 @@ def test_check_04_passes_for_pre_split_filter_with_empty_splits() -> None:
     ok["Filters"] = [
         {
             "name": "f",
-            "predicate": {},
+            "op": "noop_filter",
+            "params": {},
             "stages": ["pre_split"],
             "splits": [],
         }
@@ -527,7 +530,8 @@ def test_check_10_fails_when_class_balance_in_both_splits_and_filter() -> None:
     bad["Filters"] = [
         {
             "name": "balance_filter",
-            "predicate": {"class_balance": {"field": "label"}},
+            "op": "noop_filter",
+            "params": {"class_balance": {"field": "label"}},
             "stages": ["pre_split"],
             "splits": [],
         }
@@ -550,7 +554,8 @@ def test_check_10_passes_when_only_filter_handles_imbalance() -> None:
     ok["Filters"] = [
         {
             "name": "balance_filter",
-            "predicate": {"class_balance": {"field": "label"}},
+            "op": "noop_filter",
+            "params": {"class_balance": {"field": "label"}},
             "stages": ["pre_split"],
             "splits": [],
         }
@@ -711,7 +716,8 @@ def test_multi_violation_recipe_spans_checks_1_through_13() -> None:
     bad["Filters"] = [
         {
             "name": "bal",
-            "predicate": {"class_balance": {}},
+            "op": "noop_filter",
+            "params": {"class_balance": {}},
             "stages": ["pre_split"],
             "splits": [],
         }
@@ -823,7 +829,8 @@ def test_check_15_fails_for_filter_referencing_undefined_split() -> None:
     bad["Filters"] = [
         {
             "name": "f",
-            "predicate": {},
+            "op": "noop_filter",
+            "params": {},
             "stages": ["post_split"],
             "splits": ["nope"],
         }
@@ -1089,7 +1096,8 @@ def test_multi_violation_recipe_spans_every_check_1_through_18() -> None:
     bad["Filters"] = [
         {
             "name": "bal",
-            "predicate": {"class_balance": {}},
+            "op": "noop_filter",
+            "params": {"class_balance": {}},
             "stages": ["pre_split"],
             "splits": [],
         }
@@ -1350,23 +1358,20 @@ def _ic_tagged_pool_dict() -> dict[str, Any]:
     payload["Filters"] = [
         {
             "name": "train_pool_filter",
-            "predicate": {
-                "op": "sample_per_class",
-                "n_per_class": 2,
-                "label": "train_pool",
-                "seed": 1,
-            },
+            "op": "sample_per_class",
+            "params": {"n_per_class": 2, "label": "train_pool"},
+            "seed": 1,
             "stages": ["pre_split"],
         },
         {
             "name": "test_pool_filter",
-            "predicate": {
-                "op": "sample_per_class",
+            "op": "sample_per_class",
+            "params": {
                 "n_per_class": 1,
                 "label": "test",
                 "exclude_already_labeled": ["train_pool"],
-                "seed": 1,
             },
+            "seed": 1,
             "stages": ["pre_split"],
         },
     ]
@@ -1388,13 +1393,13 @@ def test_check_20_accepts_tag_from_fractional_filter() -> None:
     payload["Filters"] = [
         {
             "name": "pool",
-            "predicate": {
-                "op": "sample_per_class_fractional",
+            "op": "sample_per_class_fractional",
+            "params": {
                 "n_per_class_base": 4,
                 "fractions": {"a": 0.5},
                 "label": "keep_pool",
-                "seed": 1,
             },
+            "seed": 1,
             "stages": ["pre_split"],
         }
     ]
@@ -1492,7 +1497,8 @@ def test_check_21_fails_on_filter_by_label_targeting_unlabeled_split() -> None:
     payload["Filters"] = [
         {
             "name": "drop_other",
-            "predicate": {"op": "filter_by_label", "labels": ["cat"]},
+            "op": "filter_by_label",
+            "params": {"labels": ["cat"]},
             "stages": ["post_split"],
             "splits": ["test"],
         }
@@ -1550,7 +1556,8 @@ def test_check_21_propagates_unlabeled_to_sub_splits() -> None:
     payload["Filters"] = [
         {
             "name": "f",
-            "predicate": {"op": "filter_by_label", "labels": ["cat"]},
+            "op": "filter_by_label",
+            "params": {"labels": ["cat"]},
             "stages": ["post_split"],
             "splits": ["sub_a"],
         }

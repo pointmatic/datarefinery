@@ -184,6 +184,12 @@ The canonical bytes are produced by `pydantic_model.model_dump(mode="json")` fol
 
 Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SCHEMA_VERSIONS`) is the deliberate invalidation lever. Non-bumped DataRefinery releases preserve cache identity. Releases that DO invalidate carry a prominent CHANGELOG callout (see v0.15.0 for the H.p–H.r.2 example: adding `AugmentationOp.materialization` and `expansion` defaults perturbed canonical bytes for any recipe with `Augmentations`).
 
+**Schema v1 → v2 (Phase I bundle 4, v0.19.0).** Three reshape stories (I.x.1 / G15 Filters, I.x.2 / G12 Generation, I.x.3 / G16a assertion naming) ship together as a `schema_version` bump. v1 recipes are auto-migrated by the loader (`recipe.migrations.v1_to_v2`); the cached `recipe.json` always reflects the v2 canonical shape. ModelFoundry consumers that bind against recipe-model fields directly need to track the v2 names — most notably:
+
+- **`FilterOp`** (Story I.x.1 / G15): v1 nested `predicate: {op, ...rest, seed?}`; v2 lifts to top-level `{op, params, seed?}` (matches every other section). The migration is one-way; ModelFoundry should bind against the v2 shape and rely on the loader to migrate v1 recipes on read.
+
+I.x.2 and I.x.3 add their own deprecation-horizon entries here when they land.
+
 ## Schema-version coordination policy
 
 ModelFoundry SHOULD track DataRefinery's current `SUPPORTED_SCHEMA_VERSIONS` set (importable as `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS`). When consuming a recipe whose `schema_version` is **outside** ModelFoundry's known support range:

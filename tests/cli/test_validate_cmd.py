@@ -54,7 +54,7 @@ def test_recipe_with_failures_exits_one(tmp_path: Path) -> None:
     payload = _clean_recipe_dict()
     # Violate check 4: filter declares an empty stages list.
     payload["Filters"] = [
-        {"name": "f", "predicate": {"kind": "label_in", "labels": []}, "stages": []},
+        {"name": "f", "op": "label_in", "params": {"labels": []}, "stages": []},
     ]
     # Violate check 6: transformation declares fit_source pointing at a
     # non-train split.

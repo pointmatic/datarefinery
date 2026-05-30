@@ -51,7 +51,7 @@ None of these require a `schema_version` bump.
 | G12 | `Generation` schema shape divergence: top-level `op:`, `splits:` vs `applies_at:`, `output_schema: matches_input` shorthand | **Blocking for Recipe B (`cifar10c_eval.yaml`)** | Schema |
 | G13 | `tag_fields` rename mapping for `imagecorruptions_apply` (`list[str]` vs `dict[str, str]`) | **Closed in v0.18.0** (Story I.u) | Schema (param shape) |
 | G14 | `SampleData.selector` lacks `kind` and `splits` | **Schema in v0.18.0** (Story I.r); runtime pending (plan_phase) | Schema |
-| G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Blocking (recipe doesn't parse)** | Schema (cross-section consistency) |
+| G15 | `Filters` schema requires nested `predicate:`; spec authors expect flat `op:` / `params:` | **Closed in v0.19.0 (Story I.x.1)** | Schema (cross-section consistency) |
 | G16 | Assertion `kind` vocabulary missing: `value_in_set`, `shape_equals`, `per_class_count_equals`, plus `*_equals` / `*_count` renames | **Blocking (every assertion in both recipes fails validate or materialize)** | Contracts evaluator |
 | G17 | `class_distribution_histogram` lacks `group_by` param | **Closed in v0.18.0** (Story I.p) | Plugin op param schema |
 | G18 | `Generation` stage extends each target split rather than replacing source records | **Closed in v0.18.0** (Story I.q) | Pipeline runner |
@@ -1260,6 +1260,8 @@ the splits-selector example.
 
 ## G15 — `Filters` schema requires nested `predicate:`; consumers expect flat `op:` / `params:`
 
+> **Status (2026-05-30):** Closed in v0.19.0 (Story I.x.1). `FilterOp` reshaped to top-level `op` + `params` + `seed`. Loader auto-migrates v1 recipes via `recipe.migrations.filters_reshape_v1_to_v2`, registered under `migrations[(1, 2)]` alongside the I.x.2 / I.x.3 entries that follow in the same bundle. `SUPPORTED_SCHEMA_VERSIONS` now spans `{1, 2}`; pin digest updated accordingly. Recipes authored as `schema_version: 1` keep parsing.
+
 **Severity:** Blocking (recipe doesn't parse).
 
 **Category:** Schema (cross-section consistency).
@@ -1821,7 +1823,7 @@ corresponding deviation removed:
 | G12 | Rewrite Recipe B's `Generation` block in the new shape: top-level `op:`, `splits:` (not `applies_at:`), `output_schema: matches_input`, and `seed_derive_from: master`. |
 | G13 | **Closed in v0.18.0 (Story I.u).** Switch `Recipe B Generation.params.tag_fields` to the dict-rename form: `{ corruption_type: corruption, severity: severity, original_path: source_path }` (keys are the authored output-field names; values are the canonical tag names). |
 | G14 | **Schema in v0.18.0 (Story I.r); runtime pending.** The `SampleData` section now *accepts* `selector: { kind: per_class, n: 1, splits: [train] }` (validated, cache-participating), but the selector is not yet honored at materialize time — restoring it is forward-looking until the carved-out runtime story (plan_phase) lands. |
-| G15 | Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. |
+| G15 | **Closed in v0.19.0 (Story I.x.1).** Rewrite every filter from the nested `predicate:` shape to flat `op:` / `params:` shape. v1 recipes are auto-migrated; consumers binding directly against the recipe model should track the v2 shape. |
 | G16 | **G16b missing kinds closed in v0.18.0 (Story I.o)** (`value_in_set`, `shape_equals`, `per_class_count_equals`, per-split family). **G16a naming renames still open** (Bundle 4, Story I.x.3, `schema_version` bump). Rewrite every assertion in both recipes to use the new naming + the new kinds. |
 | G17 | **Closed in v0.18.0 (Story I.p).** Restore the `corruption_class_distribution` viz in Recipe B with `params: { group_by: corruption }`. |
 | G18 | **Closed in v0.18.0 (Story I.q).** Add `replace_input_records: true` to Recipe B's `imagecorruptions_apply` Generation op; drop the 1,000 dead-weight untagged originals from the test split. Update Recipe B's `OutputExpectations.record_count` from 15,000 (1,700 + 300 + 13,000) to 14,000 (1,700 + 300 + 12,000). Remove the "downstream consumers filter by presence of `corruption` field" note from the recipe header — every test record will carry the tag fields by construction. |

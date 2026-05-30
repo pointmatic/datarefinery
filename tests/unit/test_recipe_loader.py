@@ -47,7 +47,8 @@ def _write(tmp_path: Path, payload: object) -> Path:
 def test_load_minimal_recipe_succeeds(tmp_path: Path) -> None:
     path = _write(tmp_path, _minimal_recipe_dict())
     recipe = load(path)
-    assert recipe.schema_version == 1
+    # Authored as v1; loader migrates to the latest schema_version on load.
+    assert recipe.schema_version == 2
     assert recipe.plugin == "image_classification"
 
 
@@ -67,7 +68,7 @@ def test_unrecognized_schema_version_raises_with_supported_list(tmp_path: Path) 
         load(path)
     msg = str(info.value)
     assert "unsupported schema_version=99" in msg
-    assert "supported versions: [1]" in msg
+    assert "supported versions: [1, 2]" in msg
     assert "FR-1" in msg
 
 
@@ -114,7 +115,10 @@ def test_unknown_top_level_key_emits_warning_and_then_fails_validation(
 
 def test_supported_schema_versions_constant() -> None:
     assert 1 in SUPPORTED_SCHEMA_VERSIONS
+    assert 2 in SUPPORTED_SCHEMA_VERSIONS
 
 
-def test_migrations_registry_starts_empty() -> None:
-    assert migrations == {}
+def test_migrations_registry_has_v1_to_v2() -> None:
+    """G15 / Story I.x.1: the v1->v2 migration chain is the entry point
+    for the schema_version 2 reshape bundle."""
+    assert (1, 2) in migrations

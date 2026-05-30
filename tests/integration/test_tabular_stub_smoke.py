@@ -52,7 +52,8 @@ def _tabular_recipe_dict() -> dict[str, Any]:
         "Filters": [
             {
                 "name": "drop_missing",
-                "predicate": {"op": "drop_nulls", "fields": ["age", "income"]},
+                "op": "drop_nulls",
+                "params": {"fields": ["age", "income"]},
                 "stages": ["pre_split"],
             },
         ],

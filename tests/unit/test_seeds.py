@@ -153,7 +153,8 @@ def test_filter_op_accepts_seed_derivation_spec_at_top_level() -> None:
     op = FilterOp.model_validate(
         {
             "name": "f1",
-            "predicate": {"op": "filter_by_label", "labels": ["a"]},
+            "op": "filter_by_label",
+            "params": {"labels": ["a"]},
             "seed": {"from": "master"},
             "splits": ["train"],
         }

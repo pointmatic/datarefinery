@@ -40,18 +40,14 @@ def _filter_op(
     label: str | None = None,
     exclude_already_labeled: list[str] | None = None,
 ) -> FilterOp:
-    predicate: dict[str, Any] = {
-        "op": "sample_per_class_fractional",
-        "n_per_class_base": n_per_class_base,
-        "seed": seed,
-    }
+    params: dict[str, Any] = {"n_per_class_base": n_per_class_base}
     if fractions is not None:
-        predicate["fractions"] = fractions
+        params["fractions"] = fractions
     if label is not None:
-        predicate["label"] = label
+        params["label"] = label
     if exclude_already_labeled is not None:
-        predicate["exclude_already_labeled"] = exclude_already_labeled
-    return FilterOp(name=name, predicate=predicate)
+        params["exclude_already_labeled"] = exclude_already_labeled
+    return FilterOp(name=name, op="sample_per_class_fractional", params=params, seed=seed)
 
 
 def _counts(records: list[Record]) -> dict[str, int]:
@@ -193,12 +189,9 @@ def test_label_tag_non_destructive_full_pass_through() -> None:
 def test_disjoint_pool_chained_with_sample_per_class() -> None:
     train_op = FilterOp(
         name="train",
-        predicate={
-            "op": "sample_per_class",
-            "n_per_class": 5,
-            "seed": 42,
-            "label": "train_pool",
-        },
+        op="sample_per_class",
+        params={"n_per_class": 5, "label": "train_pool"},
+        seed=42,
     )
     holdout_op = _filter_op(
         "holdout",
@@ -250,7 +243,8 @@ def test_negative_fraction_rejected() -> None:
 def test_missing_seed_raises_plugin_error() -> None:
     op = FilterOp(
         name="s",
-        predicate={"op": "sample_per_class_fractional", "n_per_class_base": 5},
+        op="sample_per_class_fractional",
+        params={"n_per_class_base": 5},
     )
     with pytest.raises(PluginError, match="seed"):
         apply_pre_split_filters(

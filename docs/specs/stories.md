@@ -712,24 +712,33 @@ Twelve work stories (I.k–I.v) plus the I.r.0 design spike ship as one minor bu
 
 ---
 
-### Story I.x.1: G15 — Filters reshape + loader migration framework [Planned]
+### Story I.x.1: G15 — Filters reshape + loader migration framework [Done]
 
 **Disposition: schema reshape (canonical-bytes-perturbing).** Part of Bundle 4 (v0.19.0 release, schema_version 1 → 2). Sub-numbered story 1 of 3 in the schema-v2 cluster.
 
-Per [`dependency-gaps-v0.16.0.md` § G15](dependency-gaps-v0.16.0.md): `FilterOp` reshapes from `{name, predicate: {op, …rest}, stages, splits, seed}` to `{name, op, params, stages, splits, seed}` — matching every other section's top-level `op:` + `params:` shape. This story also stands up the v1→v2 migration framework in [`recipe/loader.py`](../../src/datarefinery/recipe/loader.py) that I.x.2 and I.x.3 will extend.
+Per [`phase-i-dependency-gaps-v0.16.0.md` § G15](phase-i-dependency-gaps-v0.16.0.md): `FilterOp` reshapes from `{name, predicate: {op, …rest}, stages, splits, seed}` to `{name, op, params, stages, splits, seed}` — matching every other section's top-level `op:` + `params:` shape. This story also stands up the v1→v2 migration framework in [`recipe/migrations.py`](../../src/datarefinery/recipe/migrations.py) that I.x.2 and I.x.3 will extend.
 
 **Tasks:**
 
-- [ ] Reshape `FilterOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py): replace `predicate: dict[str, Any]` with `op: str` + `params: dict[str, Any] = {}`.
-- [ ] Update `SUPPORTED_SCHEMA_VERSIONS` in [`recipe/loader.py`](../../src/datarefinery/recipe/loader.py): `{1}` → `{1, 2}`. Set default emit version to 2 for new authoring.
-- [ ] Add the v1→v2 migration registry: `migrations[(1, 2)] = compose(filters_reshape_v1_to_v2, …)`. I.x.2 and I.x.3 register more entries against `(1, 2)` later.
-- [ ] Implement `filters_reshape_v1_to_v2(recipe_dict) -> recipe_dict`: walks every `Filters[i].predicate`, lifts `op` to top level and renames the rest of the dict to `params`.
-- [ ] Update validator checks 21 and the predicate-shape inspections at [validator.py:928](../../src/datarefinery/recipe/validator.py) and similar sites: port `predicate.get("op") == "filter_by_label"` → `op == "filter_by_label"`.
-- [ ] DOC: rewrite [`recipe-authoring.md` § Filters](../guides/recipe-authoring.md) with the new flat shape. Backfill `sample_per_class`, `sample_per_class_fractional`, `drop_by_label` (DOC drift — shipped in v0.10.0–v0.12.0, currently undocumented).
-- [ ] Update [`tech-spec.md`](tech-spec.md) schema-version section to enumerate `{1, 2}` and the migration.
-- [ ] **Cross-repo coordination required.** Update [`dependency-spec.md`](modelfoundry/dependency-spec.md) with the recipe-model v2 reshape: name both old and new field names; deprecation horizon for v1 callers.
-- [ ] Migration round-trip test: a v1-shape Filters block migrates to v2 and produces canonical bytes byte-identical to a directly-authored v2 recipe.
-- [ ] Update [`dependency-gaps-v0.16.0.md` § G15](dependency-gaps-v0.16.0.md): status block; priority summary → "Closed in v0.19.0"; workarounds row.
+- [x] Reshaped `FilterOp` in [`recipe/models.py`](../../src/datarefinery/recipe/models.py): replaced `predicate: dict[str, Any]` with top-level `op: str` + `params: dict[str, Any] = {}`. Top-level `seed` (added in Story I.n) is now the single seed source (v1 callers that nested `seed` inside `predicate` are migrated below).
+- [x] Updated `SUPPORTED_SCHEMA_VERSIONS` in [`recipe/loader.py`](../../src/datarefinery/recipe/loader.py): `{1}` → `{1, 2}`; added `LATEST_SCHEMA_VERSION = 2`. `Recipe.schema_version` now defaults to `2` for programmatic authoring.
+- [x] Stood up the migration framework in a new [`recipe/migrations.py`](../../src/datarefinery/recipe/migrations.py): `compose`, `v1_to_v2` (registered chain), `register_v1_to_v2` (extension hook for I.x.2 / I.x.3). Loader's `_migrate_to_latest` walks the registry until the recipe is at `LATEST_SCHEMA_VERSION`; the chain's final step bumps the recipe's `schema_version` field so canonical bytes carry the migrated-to version.
+- [x] Implemented `filters_reshape_v1_to_v2(recipe_dict) -> recipe_dict`: walks every `Filters[i].predicate`, lifts `op` AND `seed` (the v1 stage runtime stored the master-derived seed inside `predicate` per Story I.n) to top-level fields, renames the rest to `params`. Rejects malformed v1 input (missing `op`; mixed v2 `op` + v1 `predicate`). Idempotent on already-v2 input so the chain stays robust under partial application.
+- [x] Updated validator predicate-shape inspections: `check_10` (`"class_balance" in op.params`), `_sample_filter_labels` (G1/Story I.t helper — `op.op in _SAMPLE_TAG_OPS; label = op.params.get("label")`), `check_21` (`if filt.op == "filter_by_label":`). Error messages updated to reference op/params rather than predicate.
+- [x] Updated [`pipeline/stages/filters.py`](../../src/datarefinery/pipeline/stages/filters.py): `_invoke_one` now uses `op.op`, `op.params`, and the standard `resolve_seed(op.seed, ...)` helper (replacing the v1 raw-dict seed-shape detection). The filter callable still receives the resolved seed inside its params dict, so plugin filter implementations are unchanged.
+- [x] DOC: rewrote [`recipe-authoring.md` § Filters](../guides/recipe-authoring.md) with the v2 flat shape, a v2-reshape callout block, and worked YAML examples for every image-classification filter — `filter_by_label`, `random_sample`, `sample_per_class`, `sample_per_class_fractional`, `drop_by_label` (closing the DOC drift shipped in v0.10.0–v0.12.0). Updated the reference recipe to `schema_version: 2`; updated the `schema_version` row in the top-level keys table; updated the disjoint-pool example in § Splits and the class-imbalance examples in § "Filters vs Splits for class imbalance" to v2 shape.
+- [x] Updated [`tech-spec.md`](tech-spec.md): `recipe.loader` section now documents `SUPPORTED_SCHEMA_VERSIONS = {1, 2}` and `LATEST_SCHEMA_VERSION = 2`; new `recipe.migrations` subsection enumerates the (1,2) chain and the three sub-story registration points. `FilterOp` row in the per-section model table rewritten with the v2 field list and a pointer to `recipe.migrations.filters_reshape_v1_to_v2`.
+- [x] **Cross-repo coordination.** Added a "Schema v1 → v2 (Phase I bundle 4, v0.19.0)" subsection to [`dependency-spec.md` § Cache-identity contract](modelfoundry/dependency-spec.md): names old and new `FilterOp` shapes, points at the loader's auto-migration, and leaves a deprecation-horizon paragraph for I.x.2/I.x.3 to extend.
+- [x] Migration round-trip test in [`tests/unit/test_migrations.py`](../../tests/unit/test_migrations.py) (`test_v1_recipe_round_trips_to_v2_canonical_bytes`): a v1 recipe with two Filters (one with a literal seed in predicate, one with the master-derivation form) migrates to canonical bytes byte-identical to a directly-authored v2 recipe. The file also pins: `filters_reshape_v1_to_v2` semantics (8 unit tests covering lift/rename, seed lift in both forms, malformed-input rejection, idempotence, no-Filters no-op); loader-registry presence; schema-version gate's new supported list.
+- [x] **Canonical-hash pin updated.** The bundle-4 schema bump is the first deliberate cache invalidation in the cluster; updated `_PINNED_DIGEST` in [`tests/unit/test_canonical_hash_pin.py`](../../tests/unit/test_canonical_hash_pin.py) (v0 → `146b2059…`). The fixture stays at `schema_version: 1` so the test continues to exercise the loader's migration path; the pinned digest reflects what the migrated v2 recipe produces. Documented in the pin's preface comment.
+- [x] Updated [`phase-i-dependency-gaps-v0.16.0.md` § G15](phase-i-dependency-gaps-v0.16.0.md): status block at the top; priority-summary row → "Closed in v0.19.0 (Story I.x.1)"; workarounds row updated to note auto-migration.
+- [x] CI parity: `pyve test` 1226 passed (+11 from this story: 12 migration tests, ~14 FilterOp call-site updates across 8 existing test files, 1 new model-validation test, −5 removed tests for the materialize-time `predicate.op` check that's now enforced at the model layer). `pyve testenv run mypy src tests` clean across 198 source files; `pyve testenv run ruff check src/ tests/` clean; `pyve testenv run ruff format --check src/ tests/` clean.
+
+**Out of Scope:**
+
+- Recipe `schema_version` field migration on existing YAML files in `recipes/` — none currently exist; new YAMLs should author `schema_version: 2`.
+- Tightening validator check 18 to cover Filters' `op`/`params` against the plugin's `OperationSpec` — the new shape would naturally fit this check, but adding it would catch missing required params for several existing-recipe filters at validate time (today they fail at runtime via the plugin's filter callable). A follow-up story can decide whether to shift-left.
+- Updating any `recipes/*.yaml` fixture to v2 shape directly. The auto-migration covers v1 fixtures; the deliberate v2 author migration is bundled with the v0.19.0 release ceremony (I.y).
 
 ---
 

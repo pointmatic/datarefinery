@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Pydantic v2 models for `Recipe` and every section.
 
-Plugin-specific operation parameters (`params`, `predicate`, `assertion`)
-are intentionally typed as opaque mappings here; the recipe validator
+Plugin-specific operation parameters (`params`, `assertion`) are
+intentionally typed as opaque mappings here; the recipe validator
 (FR-2 check 18) cross-checks them against the declaring plugin's
 `OperationSpec` in Story B.e.
 """
@@ -156,8 +156,19 @@ class Expectation(_Frozen):
 
 
 class FilterOp(_Frozen):
+    """G15 / Story I.x.1: flat-shape ``FilterOp`` mirroring every other
+    section. ``op`` names the plugin operation; ``params`` carries its
+    parameters; ``seed`` is the top-level seed source for stochastic
+    filters (consistent with ``GenerationOp``/``AugmentationOp``).
+
+    The v1 ``predicate: {op, ...rest, seed?}`` shape is migrated to v2
+    by :func:`datarefinery.recipe.migrations.filters_reshape_v1_to_v2`
+    inside the loader; the model itself only accepts v2 shape.
+    """
+
     name: str
-    predicate: dict[str, Any]
+    op: str
+    params: dict[str, Any] = Field(default_factory=dict)
     stages: list[Literal["pre_split", "post_split"]] = Field(default_factory=_default_filter_stages)
     splits: list[str] = Field(default_factory=list)
     seed: int | SeedDerivationSpec | None = None
@@ -428,7 +439,7 @@ class SinkOp(_Frozen):
 
 
 class Recipe(_Frozen):
-    schema_version: int
+    schema_version: int = 2
     plugin: str
     seed: int = 0
     Input: InputSection

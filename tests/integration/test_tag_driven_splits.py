@@ -28,23 +28,20 @@ def _filters() -> list[FilterOp]:
     return [
         FilterOp(
             name="train_pool_filter",
-            predicate={
-                "op": "sample_per_class",
-                "n_per_class": 2,
-                "label": "train_pool",
-                "seed": 1,
-            },
+            op="sample_per_class",
+            params={"n_per_class": 2, "label": "train_pool"},
+            seed=1,
             stages=["pre_split"],
         ),
         FilterOp(
             name="test_pool_filter",
-            predicate={
-                "op": "sample_per_class",
+            op="sample_per_class",
+            params={
                 "n_per_class": 1,
                 "label": "test",
                 "exclude_already_labeled": ["train_pool"],
-                "seed": 1,
             },
+            seed=1,
             stages=["pre_split"],
         ),
     ]
