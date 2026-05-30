@@ -791,6 +791,43 @@ Visualizations:
 | `corruption_severity_grid` | `n_images` (required), `corruption_types` (required), `severities` (required) | Grid of corruption × severity examples (FR-VIZ-2). |
 | `severity_ladder` | `n_examples` (required), `corruption_type` (required) | One corruption type laddered across severities (FR-VIZ-3). |
 
+#### Stage-aware dispatch (G7)
+
+Each visualization op declares which **stage snapshot** of the split records it renders against. `VisualizationOp.stage` is a closed vocabulary:
+
+| `stage` | Snapshot rendered against |
+|---------|---------------------------|
+| `post_InputContracts` | Records after the input loader runs and contracts pass; **pre-Splits** flat stream, wrapped as `{"_records": [...]}`. |
+| `post_Filters` | Splits after both pre-split and post-split filters have run. |
+| `post_Splits` | Splits immediately after the splitter, before post-split filters. |
+| `post_Generation` | Splits after Generation. Validator rejects when `Generation` is empty. |
+| `post_Transformations` | Splits after Transformations. Validator rejects when `Transformations` is empty. |
+| `post_Augmentations` | Splits after Augmentations. Validator rejects when `Augmentations` is empty. |
+| `post_Featurizations` | Splits after Featurizations. Validator rejects when `Featurizations` is empty. |
+| `post_pipeline` | The final snapshot (the existing default, what the scaffolder emits). |
+
+The pipeline runner snapshots `split_map` at the END of each named stage (references, not deep copies — the runner constructs fresh per-stage `split_map` lists so the snapshots are stable). At report-render time each op dispatches against its declared snapshot. **Validator check 11** rejects a viz whose stage's recipe section is empty (e.g. `stage: post_Generation` with no `Generation:` ops), since the snapshot would be identical to a prior stage and the author's intent is unclear. `post_InputContracts`, `post_Filters`, `post_Splits`, and `post_pipeline` are always valid targets.
+
+**The pre-vs-post-normalize pattern.** Two `augmented_sample_grid` ops, one at `post_Filters` (uint8 records, recognizable images) and one at `post_Transformations` (the model-facing normalized representation), produce two distinct PNGs in `report/visualizations/`:
+
+```yaml
+Visualizations:
+  - name: pre_norm_augmented_grid
+    op: augmented_sample_grid
+    params: { n_base: 4, n_variants: 4 }
+    stage: post_Filters             # uint8 records, "what the data looks like"
+    mode: reporting
+  - name: post_norm_augmented_grid
+    op: augmented_sample_grid
+    params: { n_base: 4, n_variants: 4 }
+    stage: post_Transformations     # normalized records, "what the model sees"
+    mode: reporting
+```
+
+This is also the G5 close-out: a recipe with `normalize` Transformation can declare `augmented_sample_grid` at `stage: post_Filters` and render against uint8 inputs, side-stepping the float-image `TypeError` that plagued the post-pipeline-only runtime.
+
+**Re-render limitation.** `datarefinery report` (and the `re_render_report` library API) only have the final dataset on disk, so they expose only the `post_pipeline` snapshot. Viz ops declared at intermediate stages cannot be re-rendered; they require re-materialization. The re-render path raises `MaterializeError` with the list of available snapshots when a viz's declared stage isn't present.
+
 **`group_by` (G17).** `class_distribution_histogram` accepts an optional `group_by: <field>` param to bucket on a field other than the label — e.g. a Generation-introduced tag like `corruption` or `severity`:
 
 ```yaml

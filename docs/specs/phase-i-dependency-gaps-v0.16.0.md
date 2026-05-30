@@ -41,9 +41,9 @@ None of these require a `schema_version` bump.
 | G2 | `cast` Transformation: name + `scale` param + runtime factory missing | **Closed in v0.18.0** (Story I.k) | Plugin op registration |
 | G3 | `categorical_encode` Featurization missing from plugin | **Closed in v0.18.0** (Story I.l) | Plugin op registration |
 | G4 | `label_from_path` collides with `image_flat` + `label_from` loader | **Closed in v0.16.2** (Story I.c) | Validator semantics |
-| G5 | `augmented_sample_grid` viz raises on post-normalize float images | **Subsumed by G7** (not a defect; surfaces missing stage-aware viz dispatch) | Plugin runtime interaction |
+| G5 | `augmented_sample_grid` viz raises on post-normalize float images | **Closed in v0.18.0** (Story I.v, via G7 stage-aware dispatch) | Plugin runtime interaction |
 | G6 | `OutputExpectations` only supports flat-record assertion kinds | **Closed in v0.18.0** (Story I.o) | Contracts evaluator |
-| G7 | All reporting visualizations run at `post_pipeline` only | Friction (pre/post-normalize merged) | Pipeline runner |
+| G7 | All reporting visualizations run at `post_pipeline` only | **Closed in v0.18.0** (Story I.v) | Pipeline runner |
 | G8 | `tensor`-typed fields can't satisfy `dtype` / `range` assertions | **Closed in v0.16.1** (Story I.b) | Contracts evaluator |
 | G9 | `flatten` Featurization missing from plugin | **Closed in v0.18.0** (Story I.m) | Plugin op registration |
 | G10 | `Splits.class_balance` is metadata-only; dict shape + runtime resampling unsupported | **Closed in v0.18.0** (Story I.s; dict shape + `manifest.class_balance`, MF-side resampling) | Schema + pipeline runner |
@@ -444,6 +444,8 @@ Two options, not mutually exclusive:
 
 ## G5 — `augmented_sample_grid` viz raises on post-normalize float images
 
+**Status (Story I.v, v0.18.0):** **Closed via G7 stage-aware dispatch.** With the closed `VizStage` vocabulary in place, `augmented_sample_grid` at `stage: post_Filters` renders against the uint8 split snapshot — bypassing the post-normalize float records entirely. The PIL `TypeError` is structurally unreachable on the canonical placement. The `_tile` clip-cast at [`augmented_sample_grid.py:144-145`](../../src/datarefinery/plugins/image_classification/visualizations/augmented_sample_grid.py#L144-L145) is **retained as defense-in-depth and documented**, not removed: an author can still legitimately point the viz at a later stage (e.g. `post_Featurizations` after a cast) where uint8-ness is not guaranteed, and a not-quite-faithful clipped tile beats a hard crash. The G5 close-out is pinned by `test_g5_close_out_augmented_sample_grid_runs_at_post_filters` + `test_g5_close_out_same_viz_at_post_transformations_still_fails` in [`test_visualizations_augmented_sample_grid.py`](../../tests/plugins/image_classification/test_visualizations_augmented_sample_grid.py) (one shows the fix; the other shows that *stage selection* is what makes the fix work).
+
 **Status (Story I.a investigation, May 2026):** **Reclassified — not a defect.**
 G5 is the surface symptom of G7 (no stage-aware visualization dispatch). The
 proper fix is G7; G5 has no independent fix path.
@@ -585,6 +587,8 @@ assertions" subsection.
 ---
 
 ## G7 — All reporting visualizations run at `post_pipeline` only
+
+**Status (Story I.v, v0.18.0):** **Closed.** `VisualizationOp.stage` is now a closed `VizStage` Literal ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)) — `{post_InputContracts, post_Filters, post_Splits, post_Generation, post_Transformations, post_Augmentations, post_Featurizations, post_pipeline}` — mirroring the `SinkStage` grammar but dropping the `post_<Stage>` entries that don't change records. The pipeline runner ([`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py)) snapshots `split_map` at the END of each named stage into a `viz_snapshots` dict; `apply_reporting_visualizations` ([`pipeline/stages/visualizations.py`](../../src/datarefinery/pipeline/stages/visualizations.py)) now dispatches each viz op against `viz_snapshots[op.stage]` rather than the post-pipeline split_map. The function keeps backward compatibility by accepting either a snapshots dict or a flat splits dict (auto-wrapped as the `post_pipeline` snapshot — needed for `re_render_report`, which only has the final dataset on disk). Validator **check 11** (renamed `visualization_well_formed`, descriptor extended; no new check number) rejects a viz whose declared stage's recipe section is empty. The bundled scaffolder default remains `stage: post_pipeline`. Closes G5 below as a side effect: `augmented_sample_grid` at `stage: post_Filters` renders against the uint8 snapshot. Documented in `recipe-authoring.md § Visualizations → Stage-aware dispatch (G7)`.
 
 **Severity:** Friction (Recipe A collapses pre/post-normalize sample_grid
 to one op).
@@ -1807,9 +1811,9 @@ corresponding deviation removed:
 | G2 | **Closed in v0.18.0 (Story I.k).** Add `cast` Transformation (canonical name; not `cast_dtype`) before `normalize` with `params: { dtype: float32, scale: 0.00392156862745098 }`. Change `Output.record_schema.image.dtype` to `float32`. |
 | G3 | **Closed in v0.18.0 (Story I.l).** Add `categorical_encode` Featurization deriving `label_id`. Add `label_id: { dtype: int32 }` to `Output.record_schema`. |
 | G4 | **Closed in v0.16.2 (Story I.c).** Validator check 23 catches the collision at validate time. No recipe edit needed; Recipe A's existing structure (label from loader, no `label_from_path` Featurization) is still correct. The check now ensures any future author who reaches for the conflicting pattern is told before materialize runs. |
-| G5 | (No G5-only recipe edit; G5 is subsumed by G7. When G7 lands, restoring the `augmented_sample_grid` viz with `stage: pre_transformations` is the unblocked path.) |
+| G5 | **Closed in v0.18.0 (Story I.v, via G7).** Restore the `augmented_sample_grid` viz with `stage: post_Filters` — the closed `VizStage` vocab uses `post_<Stage>` rather than `pre_<NextStage>`; the post-Filters snapshot is the uint8 source the viz expects. |
 | G6 | **Closed in v0.18.0 (Story I.o).** Restore per-split + per-class OutputExpectations (paired with G15 for the missing assertion kinds). |
-| G7 | Split `sample_grid` into `pre_normalize` + `post_normalize` versions with appropriate `stage:` values. |
+| G7 | **Closed in v0.18.0 (Story I.v).** Split `sample_grid` into `pre_normalize` + `post_normalize` versions with `stage: post_Filters` and `stage: post_Transformations` respectively. |
 | G8 | **Closed in v0.16.1 (Story I.b).** `dtype: uint8` and `range: {min, max}` on tensor fields now work. (`tensor_range` / `tensor_shape` as separate kinds remain G16.) |
 | G9 | **Closed in v0.18.0 (Story I.m).** Restore the `flatten` Featurization in the `mlp_flat` variant. |
 | G10 | **Closed in v0.18.0 (Story I.s).** Restore the `imbalanced_oversample` / `imbalanced_classweight` variants using the dict form `class_balance: { strategy: <name>, applies_to: [train] }`. The strategy rides through to `manifest.class_balance`; ModelFoundry resamples/weights at training time (DR does not). |

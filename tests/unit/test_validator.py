@@ -621,12 +621,42 @@ def test_check_11_passes_for_valid_visualization_mode() -> None:
         {
             "name": "hist",
             "op": "histogram",
-            "stage": "post_split",
+            "stage": "post_pipeline",
             "mode": "reporting",
         }
     ]
     report = validate(_build(ok), _Plugin())
     assert not _failures_for(report, 11)
+
+
+# --- G7 (Story I.v): check 11 extended — viz stage's pipeline section non-empty ---
+
+
+def test_check_11_fails_when_viz_targets_empty_generation_section() -> None:
+    bad = _base_dict()
+    # _base_dict has no Generation ops; viz targeting post_Generation is bypassed.
+    bad["Visualizations"] = [
+        {"name": "v", "op": "histogram", "stage": "post_Generation", "mode": "reporting"}
+    ]
+    failures = _failures_for(validate(_build(bad), _Plugin()), 11)
+    assert failures and "post_Generation" in failures[0].message
+
+
+def test_check_11_passes_when_viz_targets_populated_transformations() -> None:
+    # _base_dict declares a normalize Transformation → post_Transformations is meaningful.
+    ok = _base_dict()
+    ok["Visualizations"] = [
+        {"name": "v", "op": "histogram", "stage": "post_Transformations", "mode": "reporting"}
+    ]
+    assert not _failures_for(validate(_build(ok), _Plugin()), 11)
+
+
+def test_check_11_passes_for_post_pipeline_regardless_of_sections() -> None:
+    ok = _base_dict()
+    ok["Visualizations"] = [
+        {"name": "v", "op": "histogram", "stage": "post_pipeline", "mode": "reporting"}
+    ]
+    assert not _failures_for(validate(_build(ok), _Plugin()), 11)
 
 
 def test_check_12_fails_when_variant_targets_unknown_section() -> None:
@@ -1031,7 +1061,7 @@ def test_multi_violation_recipe_spans_every_check_1_through_18() -> None:
         ),
     )
     bad["Visualizations"] = [
-        {"name": "v", "op": "histogram", "stage": "post_split", "mode": "reporting"}
+        {"name": "v", "op": "histogram", "stage": "post_pipeline", "mode": "reporting"}
     ]
     bad["Transformations"] = [
         {
@@ -1733,7 +1763,7 @@ def test_check_25_passes_when_group_by_names_known_field() -> None:
         {
             "name": "hist",
             "op": "histogram",
-            "stage": "post_split",
+            "stage": "post_pipeline",
             "mode": "reporting",
             "params": {"group_by": "label"},
         }
@@ -1745,7 +1775,7 @@ def test_check_25_passes_when_group_by_names_known_field() -> None:
 def test_check_25_passes_when_group_by_absent() -> None:
     ok = _base_dict()
     ok["Visualizations"] = [
-        {"name": "hist", "op": "histogram", "stage": "post_split", "mode": "reporting"}
+        {"name": "hist", "op": "histogram", "stage": "post_pipeline", "mode": "reporting"}
     ]
     report = validate(_build(ok), _Plugin())
     assert not _failures_for(report, 25)
@@ -1757,7 +1787,7 @@ def test_check_25_fails_when_group_by_unknown_field() -> None:
         {
             "name": "hist",
             "op": "histogram",
-            "stage": "post_split",
+            "stage": "post_pipeline",
             "mode": "reporting",
             "params": {"group_by": "nonexistent_field"},
         }
@@ -1788,7 +1818,7 @@ def test_check_25_passes_when_group_by_is_generation_tag_field() -> None:
         {
             "name": "hist",
             "op": "histogram",
-            "stage": "post_split",
+            "stage": "post_pipeline",
             "mode": "reporting",
             "params": {"group_by": "corruption"},
         }

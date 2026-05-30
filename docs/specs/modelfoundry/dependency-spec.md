@@ -174,7 +174,7 @@ The `report/` directory holds the human-readable summary:
   `op_name (\`op_kind\`, materialization=lazy)` or
   `op_name (\`op_kind\`, materialization=aggressive, expansion=N)`.
 - **`report/drift.json`** — drift-relevant subsection of the report, emitted as structured JSON. **Pre-production its schema is unstable**; ModelFoundry consumers should treat it as informational until v1.0. See FR-15 in `features.md` for the current shape.
-- **`report/visualizations/<viz_name>.png`** — persisted reporting-mode visualization images (FR-13).
+- **`report/visualizations/<viz_name>.png`** — persisted reporting-mode visualization images (FR-13). Stage-aware dispatch (Story I.v / G7) is **internal** to the materialize-time pipeline: a viz op's `stage:` declaration selects which per-stage record snapshot the renderer reads, but the on-disk surface is unchanged — every reporting-mode viz still produces one PNG (named `<viz_name>.png` or `<viz_name>_<extra>.png` for multi-output ops) in this directory, and `report.md` does not gain per-stage subsections in v1. ModelFoundry consumers binding against the report surface see the same flat layout regardless of how many pipeline stages a recipe spans. Per-stage report subsections are tracked in [`stories.md § Future`](../stories.md).
 
 ## Cache-identity contract
 

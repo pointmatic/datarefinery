@@ -142,6 +142,13 @@ def _tile(record: Record, *, thumb: int) -> np.ndarray:
     elif arr.ndim == 3 and arr.shape[-1] == 1:
         arr = np.repeat(arr, 3, axis=-1)
     if arr.dtype != np.uint8:
+        # Defense-in-depth. The canonical placement for this viz is
+        # `stage: post_Filters` (G7 / Story I.v) where records are uint8 by
+        # construction. An author may legitimately point it at a later
+        # stage (e.g. `post_Featurizations` after a cast) where this clip
+        # is the only thing standing between the recipe and a
+        # PIL `TypeError`. Clipping produces a not-quite-faithful tile but
+        # keeps the report rendering rather than crashing.
         arr = np.clip(arr, 0, 255).astype(np.uint8)
     return np.asarray(
         Image.fromarray(arr).resize((thumb, thumb), resample=Image.Resampling.BILINEAR)

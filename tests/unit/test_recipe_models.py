@@ -119,9 +119,39 @@ def test_visualization_mode_must_be_exploration_or_reporting() -> None:
         {
             "name": "hist",
             "op": "histogram",
-            "stage": "post_split",
+            "stage": "post_pipeline",
             "mode": "neither",
         }
+    ]
+    with pytest.raises(ValidationError):
+        Recipe.model_validate(bad)
+
+
+# --- G7 (Story I.v): VisualizationOp.stage closed vocabulary ---
+
+
+def test_visualization_stage_accepts_each_canonical_value() -> None:
+    for stage in (
+        "post_InputContracts",
+        "post_Filters",
+        "post_Splits",
+        "post_Generation",
+        "post_Transformations",
+        "post_Augmentations",
+        "post_Featurizations",
+        "post_pipeline",
+    ):
+        payload = _minimal_recipe_dict()
+        payload["Visualizations"] = [
+            {"name": "v", "op": "histogram", "stage": stage, "mode": "reporting"}
+        ]
+        Recipe.model_validate(payload)  # must not raise
+
+
+def test_visualization_stage_rejects_unknown_value() -> None:
+    bad = _minimal_recipe_dict()
+    bad["Visualizations"] = [
+        {"name": "v", "op": "histogram", "stage": "bogus_stage", "mode": "reporting"}
     ]
     with pytest.raises(ValidationError):
         Recipe.model_validate(bad)

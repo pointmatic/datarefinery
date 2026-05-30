@@ -366,7 +366,7 @@ class VisualizationOp(_Frozen):
     name: str
     op: str
     params: dict[str, Any] = Field(default_factory=dict)
-    stage: str
+    stage: VizStage
     mode: Literal["exploration", "reporting"]
 
 
@@ -386,6 +386,25 @@ SinkStage = Literal[
     "post_Augmentations",
     "post_OutputExpectations",
     "post_Visualizations",
+]
+
+
+# Closed vocabulary for `VisualizationOp.stage` (G7 / Story I.v). Each value
+# names a snapshot of split records at the END of the named runner stage that
+# a reporting-mode visualization can render against. Mirrors `SinkStage`'s
+# grammar (`post_<Stage>`), but drops stages where viz dispatch would be
+# functionally redundant (`post_OutputExpectations` / `post_Visualizations`
+# don't change records) and adds the `post_pipeline` alias — the existing
+# scaffolder default, equivalent to the final snapshot.
+VizStage = Literal[
+    "post_InputContracts",
+    "post_Filters",
+    "post_Splits",
+    "post_Generation",
+    "post_Transformations",
+    "post_Augmentations",
+    "post_Featurizations",
+    "post_pipeline",
 ]
 
 

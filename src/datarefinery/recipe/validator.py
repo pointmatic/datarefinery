@@ -414,17 +414,33 @@ def _class_balance_dict_error(value: dict[str, object], defined_splits: set[str]
     return None
 
 
-def check_11_visualization_mode_declared(recipe: Recipe, plugin: Plugin) -> CheckResult:
-    """Tautological for valid recipes (the model already constrains
-    `mode` to `Literal["exploration", "reporting"]`), but kept as a
-    documented FR-2 check so the report is exhaustive.
+def check_11_visualization_well_formed(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Mode is well-formed AND the declared stage's pipeline section is non-empty.
+
+    Mode is already constrained at the model level (`Literal["exploration",
+    "reporting"]`); kept as a documented FR-2 check so the report is exhaustive.
+
+    G7 (Story I.v): viz `stage` is now a closed `VizStage` vocabulary. Stages
+    whose corresponding recipe section is empty are bypassed — the snapshot
+    would be identical to a prior stage, so the author's intent is unclear.
+    Reject such recipes at validate time. Stages that always exist
+    (`post_InputContracts`, `post_Filters`, `post_Splits`, `post_pipeline`)
+    pass regardless of section content.
     """
     del plugin
-    descriptor = "visualization_mode_declared"
+    descriptor = "visualization_well_formed"
     issues: list[str] = []
     for op in recipe.Visualizations:
         if op.mode not in ("exploration", "reporting"):
             issues.append(f"Visualizations[{op.name!r}].mode={op.mode!r}")
+        section_attr = _VIZ_STAGE_REQUIRES_SECTION.get(op.stage)
+        if section_attr is not None and not getattr(recipe, section_attr):
+            issues.append(
+                f"Visualizations[{op.name!r}].stage={op.stage!r} but the "
+                f"{section_attr!r} section is empty; the snapshot would be "
+                f"identical to a prior stage. Declare at least one {section_attr} "
+                f"op or pick a different stage."
+            )
     if not issues:
         return _passed(11, descriptor)
     return CheckResult(
@@ -434,6 +450,19 @@ def check_11_visualization_mode_declared(recipe: Recipe, plugin: Plugin) -> Chec
         location=None,
         message="; ".join(issues),
     )
+
+
+#: Viz stages whose snapshot only differs from a prior stage's snapshot when
+#: the corresponding recipe section has at least one op. Stages absent from
+#: this map (`post_InputContracts`, `post_Filters`, `post_Splits`,
+#: `post_pipeline`) are always valid viz targets regardless of section
+#: content. Story I.v / G7.
+_VIZ_STAGE_REQUIRES_SECTION: dict[str, str] = {
+    "post_Generation": "Generation",
+    "post_Transformations": "Transformations",
+    "post_Augmentations": "Augmentations",
+    "post_Featurizations": "Featurizations",
+}
 
 
 def check_12_variants_reference_declared_sections(recipe: Recipe, plugin: Plugin) -> CheckResult:
@@ -1338,7 +1367,7 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         "class_imbalance_strategy_in_one_place",
         check_10_class_imbalance_strategy_in_one_place,
     ),
-    (11, "visualization_mode_declared", check_11_visualization_mode_declared),
+    (11, "visualization_well_formed", check_11_visualization_well_formed),
     (
         12,
         "variants_reference_declared_sections",

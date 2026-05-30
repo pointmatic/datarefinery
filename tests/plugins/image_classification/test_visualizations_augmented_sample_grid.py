@@ -431,3 +431,90 @@ def test_stage_render_is_deterministic(tmp_path: Path) -> None:
         recipe=recipe,
     )
     assert a.rendered[0].png_bytes == b.rendered[0].png_bytes
+
+
+# ---------------------------------------------------------------------------
+# G5 close-out via G7 stage-aware dispatch (Story I.v)
+#
+# G5 surface: augmented_sample_grid raised TypeError on post-normalize float
+# records. The fix is structural: declare the viz at stage: post_Filters and
+# the runtime dispatches against the pre-normalize uint8 snapshot. These
+# tests pin both halves — the post_Filters snapshot renders successfully,
+# and (per the G5 investigation in Story I.a) targeting the normalized
+# snapshot still fails, so stage selection is what makes the fix work.
+# ---------------------------------------------------------------------------
+
+
+def _normalized_record(rid: str, value: int) -> dict[str, Any]:
+    """Same record shape as `_base_record`, but with a float image (z-scored)."""
+    return {
+        "record_id": rid,
+        "label": "x",
+        "image": (np.full((4, 4, 3), value, dtype=np.uint8).astype(np.float64) - 128.0) / 64.0,
+    }
+
+
+def test_g5_close_out_augmented_sample_grid_runs_at_post_filters(tmp_path: Path) -> None:
+    """augmented_sample_grid renders against the uint8 post_Filters snapshot."""
+    uint8_records: list[Mapping[str, Any]] = [_base_record(f"r{i}", 10 + i) for i in range(3)]
+    float_records: list[Mapping[str, Any]] = [_normalized_record(f"r{i}", 10 + i) for i in range(3)]
+    recipe = _recipe(
+        augmentations=[
+            AugmentationOp(name="flip", op="horizontal_flip", params={"p": 0.5}, splits=["train"])
+        ]
+    )
+    op = VisualizationOp(
+        name="aug_grid",
+        op="augmented_sample_grid",
+        params={"n_base": 2, "n_variants": 2},
+        stage="post_Filters",
+        mode="reporting",
+    )
+    snapshots = {
+        "post_Filters": {"train": uint8_records},
+        "post_Transformations": {"train": float_records},
+        "post_pipeline": {"train": float_records},
+    }
+    result = apply_reporting_visualizations(
+        snapshots,
+        [op],
+        plugin=IMAGE_PLUGIN,
+        output_dir=tmp_path,
+        label_field="label",
+        recipe=recipe,
+    )
+    assert {p.name for p in result.written_paths} == {"aug_grid_flip.png"}
+    for path in result.written_paths:
+        assert _is_png(path.read_bytes())
+
+
+def test_g5_close_out_same_viz_at_post_transformations_still_fails(tmp_path: Path) -> None:
+    """Proves stage selection is what makes the close-out work: the float
+    snapshot still crashes the viz; the fix is choosing post_Filters."""
+    uint8_records: list[Mapping[str, Any]] = [_base_record(f"r{i}", 10 + i) for i in range(3)]
+    float_records: list[Mapping[str, Any]] = [_normalized_record(f"r{i}", 10 + i) for i in range(3)]
+    recipe = _recipe(
+        augmentations=[
+            AugmentationOp(name="flip", op="horizontal_flip", params={"p": 0.5}, splits=["train"])
+        ]
+    )
+    op = VisualizationOp(
+        name="aug_grid",
+        op="augmented_sample_grid",
+        params={"n_base": 2, "n_variants": 2},
+        stage="post_Transformations",
+        mode="reporting",
+    )
+    snapshots = {
+        "post_Filters": {"train": uint8_records},
+        "post_Transformations": {"train": float_records},
+    }
+    with pytest.raises(Exception):  # noqa: B017 - underlying op raises TypeError-ish failures
+        apply_reporting_visualizations(
+            snapshots,
+            [op],
+            plugin=IMAGE_PLUGIN,
+            output_dir=tmp_path,
+            label_field="label",
+            recipe=recipe,
+        )

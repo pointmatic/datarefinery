@@ -188,6 +188,13 @@ class PipelineRunner:
         records: list[Record] = list(raw_records)
         sink_results: list[SinkResult] = []
         reached_sink_stages: set[str] = set()
+        # G7 / Story I.v: per-stage snapshots of the split-map for stage-aware
+        # visualization dispatch. Each entry is a shallow copy of `split_map`
+        # at the END of the named runner stage (or the flat record stream
+        # wrapped under `_records` for `post_InputContracts`, which is
+        # pre-Splits). `post_pipeline` is the final snapshot, populated just
+        # before `apply_reporting_visualizations` runs.
+        viz_snapshots: dict[str, Mapping[str, list[Record]]] = {}
 
         def _emit(stage: str) -> None:
             nonlocal current_stage
@@ -217,6 +224,7 @@ class PipelineRunner:
             ic.raise_for_status()
             warnings.extend(_wrap(current_stage, (w.message for w in ic.warnings)))
             _run_sinks("post_InputContracts", {"_records": records})
+            viz_snapshots["post_InputContracts"] = {"_records": list(records)}
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir,
@@ -270,6 +278,7 @@ class PipelineRunner:
                     )
                 )
             _run_sinks("post_Splits", split_map)
+            viz_snapshots["post_Splits"] = dict(split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir,
@@ -294,6 +303,7 @@ class PipelineRunner:
                 split_map[split_name] = fr.records
                 warnings.extend(_wrap(current_stage, fr.warnings))
             _run_sinks("post_Filters", split_map)
+            viz_snapshots["post_Filters"] = dict(split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir,
@@ -318,6 +328,7 @@ class PipelineRunner:
             split_map = dict(gen_result.splits)
             warnings.extend(_wrap(current_stage, gen_result.warnings))
             _run_sinks("post_Generation", split_map)
+            viz_snapshots["post_Generation"] = dict(split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir,
@@ -343,6 +354,7 @@ class PipelineRunner:
             split_map = dict(tx_result.splits)
             fitted_op_ids = list(tx_result.fitted_op_ids)
             _run_sinks("post_Transformations", split_map)
+            viz_snapshots["post_Transformations"] = dict(split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir,
@@ -367,6 +379,7 @@ class PipelineRunner:
             split_map = dict(feat_result.splits)
             fitted_op_ids.extend(feat_result.fitted_op_ids)
             _run_sinks("post_Featurizations", split_map)
+            viz_snapshots["post_Featurizations"] = dict(split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir,
@@ -407,6 +420,7 @@ class PipelineRunner:
             # `augmentations` field via the runner's report writer
             # (Story C.n) - here we just defensively re-validate.
             _run_sinks("post_Augmentations", split_map)
+            viz_snapshots["post_Augmentations"] = dict(split_map)
             if stop_after == current_stage:
                 return self._partial_finish(
                     temp_dir,
@@ -443,8 +457,9 @@ class PipelineRunner:
 
             _emit("Visualizations")
             viz_dir = report_dir(temp_dir) / "visualizations"
+            viz_snapshots["post_pipeline"] = dict(split_map)
             apply_reporting_visualizations(
-                split_map,
+                viz_snapshots,
                 self.recipe.Visualizations,
                 plugin=self.plugin,
                 output_dir=viz_dir,

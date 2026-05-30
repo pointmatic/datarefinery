@@ -33,7 +33,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from datarefinery.core.errors import MaterializeError
 from datarefinery.plugins.base import Plugin
@@ -95,7 +95,7 @@ class VisualizationsResult:
 
 
 def apply_reporting_visualizations(
-    splits: Mapping[str, list[Record]],
+    stage_snapshots: Mapping[str, Mapping[str, list[Record]] | list[Record]],
     viz_ops: list[VisualizationOp],
     *,
     plugin: Plugin,
@@ -105,12 +105,25 @@ def apply_reporting_visualizations(
 ) -> VisualizationsResult:
     """Render and persist every reporting-mode visualization.
 
-    The output directory is created if needed. ``exploration``-mode ops
-    are skipped. Names are unique within a recipe (validator check 4
-    family enforces uniqueness elsewhere); the stage uses ``op.name`` as
-    the file stem, so a name collision would overwrite within a single
-    materialization - validators upstream prevent that case.
+    Each ``VisualizationOp.stage`` selects which per-stage snapshot of the
+    split records it renders against. The caller may pass either:
+
+    - a snapshots map ``{stage_name: {split_name: list[Record]}}`` — the
+      materialize-time form, populated by the runner at every viz-relevant
+      stage point (G7 / Story I.v); or
+    - a flat ``{split_name: list[Record]}`` — backward-compat form, treated
+      as the lone ``post_pipeline`` snapshot. Used by `re_render_report` and
+      by older tests that pre-date stage-aware dispatch.
+
+    Reporting-mode ops whose ``stage`` has no available snapshot raise
+    :class:`MaterializeError` with the list of stages that *are* present.
+    ``exploration``-mode ops are skipped.
+
+    The output directory is created if needed. Names are unique within a
+    recipe (validator check 4 family enforces uniqueness elsewhere); the
+    stage uses ``op.name`` as the file stem.
     """
+    snapshots = _normalize_stage_snapshots(stage_snapshots)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     rendered: list[RenderedVisualization] = []
@@ -118,9 +131,17 @@ def apply_reporting_visualizations(
     for op in viz_ops:
         if op.mode != "reporting":
             continue
+        snapshot = snapshots.get(op.stage)
+        if snapshot is None:
+            raise MaterializeError(
+                f"Visualizations[{op.name!r}] stage={op.stage!r} has no snapshot "
+                f"available; present snapshots: {sorted(snapshots.keys())!r}. "
+                f"At re-render time only `post_pipeline` is available; intermediate-"
+                f"stage visualizations require re-materialization."
+            )
         try:
             handle: VisualizationOpHandle = plugin.operation_factory("Visualizations", op.op)
-            result_obj = handle.render(splits, op.params, label_field=label_field, recipe=recipe)
+            result_obj = handle.render(snapshot, op.params, label_field=label_field, recipe=recipe)
         except Exception as exc:
             raise MaterializeError(
                 f"Visualizations[{op.name!r}] (op={op.op!r}, "
@@ -149,6 +170,24 @@ def apply_reporting_visualizations(
         )
 
     return VisualizationsResult(rendered=tuple(rendered), output_dir=output_dir)
+
+
+def _normalize_stage_snapshots(
+    arg: Mapping[str, Mapping[str, list[Record]] | list[Record]],
+) -> Mapping[str, Mapping[str, list[Record]]]:
+    """Detect flat-splits vs. stage-snapshots input and normalize to the latter.
+
+    A flat splits dict (`{split_name: list[Record]}`) is wrapped as the lone
+    `post_pipeline` snapshot. A snapshots dict (`{stage: {split: list[Record]}}`)
+    is returned unchanged. An empty mapping yields an empty snapshots dict.
+    """
+    if not arg:
+        return {}
+    sample = next(iter(arg.values()))
+    if isinstance(sample, list):
+        flat = cast("Mapping[str, list[Record]]", arg)
+        return {"post_pipeline": flat}
+    return cast("Mapping[str, Mapping[str, list[Record]]]", arg)
 
 
 def _normalize_render_output(
