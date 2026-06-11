@@ -51,6 +51,25 @@ class SinkManifestEntry(BaseModel):
     path_template_resolved_root: str
 
 
+class SampleManifestEntry(BaseModel):
+    """Summary of the SampleData runtime emission (Story J.a, FR-J-1).
+
+    Present only when the recipe declares a ``SampleData:`` section; the
+    runtime persists a ``sample/`` sidecar alongside ``dataset/`` and
+    records the selector echo + per-split record counts here so downstream
+    consumers can discover the sidecar without parsing the recipe.
+
+    ``selector`` echoes the resolved ``SampleSelector`` as a JSON-shaped
+    dict (kind, n/fraction, splits, seed); ``record_counts`` maps each
+    sampled split name to the count of records the sample emitted.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    selector: dict[str, Any]
+    record_counts: dict[str, int]
+
+
 class Manifest(BaseModel):
     """Per-instance summary written to ``<instance>/manifest.json``."""
 
@@ -82,6 +101,10 @@ class Manifest(BaseModel):
     # under a `--stage` partial run. Maps sink name -> declared stage.
     # Empty on full materializes. Story I.f.1.
     sinks_skipped: dict[str, str] = Field(default_factory=dict)
+    # SampleData runtime emission summary (Story J.a, FR-J-1). Present only
+    # when the recipe declares a ``SampleData:`` section; otherwise None.
+    # Cross-repo contract: ``docs/specs/modelfoundry/vendor-dependency-spec.md``.
+    sample: SampleManifestEntry | None = None
 
 
 def write_manifest(path: Path, manifest: Manifest) -> None:

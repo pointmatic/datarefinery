@@ -343,7 +343,15 @@ SampleData:
 
 `SampleData` is a recipe-level declaration; the validator (check 16) checks the selector is well-formed (exactly one of `n`/`fraction`; `per_class` has a label source; `splits` entries are defined). The selector is part of the recipe surface and **participates in cache identity**.
 
-> **Runtime status (v0.18.0).** The SampleData selector is **not yet honored at materialize time** — declaring it shapes cache identity and is validated, but it does not currently produce a sampled subset. The runtime (and the decision of whether the sample replaces the instance or is emitted as a sidecar artifact, and where in the pipeline it runs) is tracked as a separate, to-be-planned story. Authoring a `SampleData` block today is forward-looking, not a working subset.
+**Runtime (v0.20.0, FR-J-1).** The selector is honored *post-pipeline*: after the final stage, DataRefinery subsets the prepared per-split records and writes a **sidecar** under `<instance>/sample/` alongside the full `dataset/`. The full materialized dataset is **unchanged** — `sample/` is a quick-look companion for fast iteration, notebooks, and smoke tests; consumers wanting the full training set keep reading `dataset/`. Layout mirrors `dataset/` exactly: per-split `<split>.jsonl` plus per-record sidecar PNGs under `<split>/images/` for aggressive variants.
+
+- `kind: uniform` — `n` (or `floor(fraction × len(split))`) records per selected split.
+- `kind: per_class` — `n` (or `floor(fraction × len(class_bucket))`) records *per class label* per selected split. Runtime refusal (with split name + missing-field count) when records in a selected split lack the `Labels.field`.
+- `splits:` honoring — when set, only the listed splits are sampled; when unset, every split present in the materialized output is sampled.
+
+Determinism: selection uses per-record-seed ranking (`pipeline.workers.per_record_seed(seed, record)`) and is invariant to input ordering, worker count, and process scheduling — the same contract `sample_per_class` uses. Same recipe + seed + inputs ⇒ byte-identical `sample/*.jsonl` across runs.
+
+A `manifest.sample` entry echoes the resolved selector and the per-split sampled record counts; the cross-repo contract for downstream consumers is pinned in [`docs/specs/modelfoundry/vendor-dependency-spec.md`](../specs/modelfoundry/vendor-dependency-spec.md).
 
 ### `InputContracts`
 

@@ -589,6 +589,16 @@ def check_15_split_references_defined(recipe: Recipe, plugin: Plugin) -> CheckRe
 
 
 def check_16_sample_data_strict_subset(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """FR-2 #16: `SampleData` selector is structurally a strict subset.
+
+    Validate-time enforcement is the selector-coherence checks below
+    (`n` xor `fraction`; bounds; `kind: per_class` requires a label
+    source; `splits:` references a defined split). The runtime contract
+    that "the sample is a subset of the **prepared dataset**" is
+    delivered by :func:`datarefinery.pipeline.stages.sample_data.apply_sample_data`
+    (FR-J-1, Story J.a), which executes post-pipeline and produces
+    ``<= len(split)`` records per selected split.
+    """
     del plugin
     descriptor = "sample_data_strict_subset"
     if recipe.SampleData is None:

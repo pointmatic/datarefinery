@@ -11,6 +11,7 @@ Layout (per tech-spec):
             ├── manifest.json
             ├── dataset/
             ├── fitted_statistics/
+            ├── sample/                     # FR-J-1; only when recipe declares SampleData:
             └── report/
                 ├── report.md
                 ├── drift.json
@@ -35,6 +36,7 @@ RECIPE_FILE = "recipe.json"
 DATASET_SUBDIR = "dataset"
 FITTED_STATS_SUBDIR = "fitted_statistics"
 REPORT_SUBDIR = "report"
+SAMPLE_SUBDIR = "sample"
 
 
 def instances_root(cache_root: Path) -> Path:
@@ -70,6 +72,15 @@ def fitted_stats_dir(instance: Path) -> Path:
 
 def report_dir(instance: Path) -> Path:
     return instance / REPORT_SUBDIR
+
+
+def sample_dir(instance: Path) -> Path:
+    """Sidecar subset directory for FR-J-1 SampleData runtime (Story J.a).
+
+    Only populated when the recipe declares a ``SampleData:`` section;
+    same per-split JSONL + sidecar PNG layout as ``dataset/``.
+    """
+    return instance / SAMPLE_SUBDIR
 
 
 def make_run_id() -> str:

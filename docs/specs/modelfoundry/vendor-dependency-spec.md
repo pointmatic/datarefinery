@@ -74,6 +74,8 @@ dataset/
         └── <record_id>.png   # FR-11 aggressive-mode variants only (Story H.r.2)
 ```
 
+When the recipe declares a `SampleData:` section, a sibling `sample/` directory is emitted under the same instance root (FR-J-1, Story J.a, v0.20.0); see § `sample/` on-disk layout below.
+
 ### JSONL records
 
 Each JSONL line is a single record dict, serialized with sorted keys for byte-stability. Non-JSON-native fields (numpy arrays, bytes, custom objects) are dropped at serialization.
@@ -132,6 +134,7 @@ The `manifest.json` at the instance root is the authoritative metadata document.
 | `class_balance`        | `str | dict | null`        | Forward-declared class-imbalance hint copied verbatim from `Splits.class_balance` (Story I.s / G10). `null` when unset. **DataRefinery does not resample or emit weights** — ModelFoundry honors this at training time. See `manifest.class_balance` shape below. |
 | `sinks`                | `dict[str, SinkManifestEntry]` | Per-sink summary of disk-output artifacts captured at materialize time (Story I.d). Empty dict when the recipe declares no `Sinks` section. |
 | `sinks_skipped`        | `dict[str, str]`           | Sinks declared on the recipe whose host stage was not reached under a partial `--stage` run (Story I.f.1). Maps sink name → declared stage. Empty on full materializes. |
+| `sample`               | `SampleManifestEntry | null` | SampleData runtime emission summary (Story J.a / FR-J-1, v0.20.0). Present only when the recipe declares a `SampleData:` section; `null` otherwise. See `manifest.sample` shape below. |
 
 ### `manifest.sinks` shape
 
@@ -165,6 +168,32 @@ Added in DataRefinery v0.18.0 (Story I.s / G10). The field mirrors the recipe's 
 - `emit_inverse_frequency_weights` — weight the loss per record by inverse class frequency.
 
 Unknown strategy names SHOULD be treated as a configuration error by ModelFoundry (refuse rather than silently ignore), since the author declared an imbalance intent the consumer cannot honor.
+
+### `manifest.sample` shape
+
+Added in DataRefinery v0.20.0 (Story J.a / FR-J-1). Present only when the recipe declares a `SampleData:` section; `null` otherwise.
+
+| Field             | Type              | Meaning |
+|-------------------|-------------------|---------|
+| `selector`        | `dict[str, Any]`  | Resolved `SampleSelector` echo: `kind` (`"uniform"` \| `"per_class"`), `n` (int or null), `fraction` (float or null), `splits` (`list[str]` or null), `seed` (int / derivation-spec dict / null). |
+| `record_counts`   | `dict[str, int]`  | Per-split count of records emitted under `<instance>/sample/<split>.jsonl`. Keys are exactly the splits the selector targeted (after `selector.splits` honoring); not present in `record_counts` ⇒ not sampled. |
+
+**Division of responsibility.** The sidecar `sample/` directory is a quick-look companion (fast iteration, notebooks, smoke tests) — it is **not** a replacement for `dataset/`. ModelFoundry's training path SHOULD continue to read `dataset/<split>.jsonl`; consumers wanting to surface a small representative slice to a user (e.g. notebook previews) MAY read `sample/<split>.jsonl` instead, honoring `manifest.sample.record_counts` to set expectations on size.
+
+### `sample/` on-disk layout
+
+Added in DataRefinery v0.20.0 (Story J.a / FR-J-1). Layout mirrors `dataset/` exactly:
+
+```text
+sample/
+├── train.jsonl                    # subset of dataset/train.jsonl per SampleSelector
+├── val.jsonl                      # only present when selector targets val
+└── <split>/
+    └── images/
+        └── <record_id>.png        # sidecar PNGs for aggressive-mode variants (FR-11)
+```
+
+Each JSONL line is a record dict with the same shape as the `dataset/` equivalent (same record_id, label, path / image_path resolution rules). The sample is a **strict subset of the materialized prepared dataset**: every `sample/<split>.jsonl` record_id appears in `dataset/<split>.jsonl`.
 
 ## Report subsections
 

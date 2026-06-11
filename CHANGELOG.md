@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - in progress (Phase J phase-bundle)
+
+Phase J: ModelFoundry + NbFoundry consumer-integration phase. Stories
+phase-bundle a single end-of-phase release; per-story version bumps
+are deferred to the bundle's release ceremony.
+
+### Added
+
+- **FR-J-1: SampleData runtime (Story J.a).** The `SampleData:` recipe
+  section is now honored at materialize time via the **P-postpipeline +
+  M-sidecar** placement chosen by the Story I.r.0 spike: after the final
+  pipeline stage, DataRefinery subsets the prepared per-split records and
+  writes a sidecar under `<instance>/sample/` alongside the full
+  (unchanged) `dataset/`. Two `SampleSelector.kind` paths land:
+  - `uniform` — `n` (or `floor(fraction × len(split))`) records per
+    selected split.
+  - `per_class` — `n` (or `floor(fraction × len(class_bucket))`) records
+    *per class label* per selected split; runtime refusal naming the
+    split + missing-field count when records lack `Labels.field`.
+  - `splits:` honoring — only listed splits are sampled (default: all).
+
+  Determinism: per-record-seed ranking via
+  `pipeline.workers.per_record_seed(seed, record)` makes selection
+  invariant to input ordering, worker count, and process scheduling
+  (same contract as `sample_per_class`). Same recipe + seed + inputs
+  ⇒ byte-identical `sample/*.jsonl` across runs.
+
+- **`manifest.sample`.** New `SampleManifestEntry | None` field on the
+  manifest echoing the resolved selector and per-split sampled record
+  counts; `None` when the recipe declares no `SampleData:` section.
+  Cross-repo contract for downstream consumers is pinned in
+  [`docs/specs/modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md).
+
+- **`cache.layout.sample_dir`.** New layout helper for the sidecar
+  directory.
+
+### Changed
+
+- **FR-2 check 16** (`sample_data_strict_subset`) wording flips from
+  "subset of the declared **input**" to "subset of the **prepared
+  dataset**" — the P-postpipeline placement makes the subset reference
+  the final materialized records, not the raw input. Selector-coherence
+  enforcement is unchanged.
+
+### Materialization-bytes notes
+
+- Recipes that declare a `SampleData:` section now produce a sibling
+  `sample/` directory inside the instance. **The full `dataset/` is
+  unchanged.** `manifest.sample` becomes a non-null `SampleManifestEntry`
+  on the same recipes. Recipes without `SampleData:` are byte-identical
+  to v0.19.0 outputs (apart from `created_at` / `elapsed_seconds`).
+- No `schema_version` bump: canonical recipe bytes are unchanged; this
+  is a materialization-behavior change. Pre-prod re-materialize event
+  for recipes declaring `SampleData:` only.
+
+### Cross-repo coordination
+
+- [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md):
+  added `manifest.sample` row + `manifest.sample` shape subsection +
+  `sample/` on-disk-layout block. Additive.
+
 ## [0.19.0] - 2026-05-30
 
 Phase I Bundle 4. Closes Story I.y and Phase I overall. **Recipe

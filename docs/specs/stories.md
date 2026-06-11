@@ -26,6 +26,141 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
+## Phase J: ModelFoundry + NbFoundry Integration
+
+Phase J wires DataRefinery into its two downstream consumers — **ModelFoundry** (deep contract consumer of the recipe model, manifest, dataset on-disk layout, and report) and **NbFoundry** (notebook-side consumer using DataRefinery as a library + CLI inside Marimo cells). DataRefinery is a **vendor** to both consumers.
+
+Phase J is a **catch-all** by design: it seeds the known gaps below and expects most additional stories to accrete reactively as real integration work surfaces friction. Stories phase-bundle a single end-of-phase release (target v0.20.0); no per-story version bumps.
+
+Full plan: [`phase-j-modelfoundry-nbfoundry-integration-plan.md`](phase-j-modelfoundry-nbfoundry-integration-plan.md). Authoring context: [`phase-j-context-prompt.md`](phase-j-context-prompt.md).
+
+---
+
+### Story J.a: SampleData runtime — P-postpipeline + M-sidecar [Done]
+
+**Disposition: feature addition.** Part of Phase J phase-bundle release (target v0.20.0). Closes FR-J-1.
+
+Carries forward the [Story I.r.0 spike](.archive/stories-v0.16.2.md) recommendation: subset the materialized dataset per-split *after* the pipeline runs, emit a `sample/` sidecar alongside the full `dataset/`. `SampleSelector.kind` and `splits` are already in the model (Story I.r); this story implements the runtime that honors them.
+
+First task is a 15-minute re-confirm that P-postpipeline + M-sidecar is still the right call against current evidence — if the spike's framing has aged out, open a small re-spike (Story J.a.1) before continuing.
+
+**Tasks:**
+
+- [x] Re-confirm P-postpipeline + M-sidecar against current consumer-spec evidence. If unchanged, proceed; if it has aged out, open J.a.1 spike. Confirmed unchanged: MF binds against `dataset/<split>.jsonl` (vendor-dependency-spec.md), NbF has no `SampleData` reference yet, Phase J plan independently restates the same shape; `per_class` placement constraint (needs final labels) still rules out P-input.
+- [x] Add new pipeline stage [`src/datarefinery/pipeline/stages/sample_data.py`](../../src/datarefinery/pipeline/stages/sample_data.py), sequenced after splits. Inputs: per-split record iterables + resolved `SampleDataSection`. Outputs: per-split sampled record iterables + a `SampleResult`.
+- [x] Implement `kind: uniform` — random subset of `n` (or `fraction`) records per selected split, seeded reproducibly via `pipeline.workers.per_record_seed`-style derivation. Per-record-seed ranking ⇒ invariant to input ordering / worker count / scheduling.
+- [x] Implement `kind: per_class` — stratified subset of `n` records per class label per selected split; reads `Labels.field` on the final per-record dict. Reject (at runtime) recipes whose final records lack the label field — error names the split and missing-field count.
+- [x] Implement `splits` honoring — sample only the listed splits; default to all defined splits when unset.
+- [x] Emit `sample/<split>.jsonl` (and per-record PNG sidecars under `sample/<split>/images/` where the source records carry sidecar images) inside the atomic temp-then-promote unit alongside `dataset/`, `fitted_statistics/`, `report/`. New layout helper [`cache.layout.sample_dir`](../../src/datarefinery/cache/layout.py).
+- [x] Add `class SampleManifestEntry` and `Manifest.sample: SampleManifestEntry | None = None` in [`src/datarefinery/pipeline/manifest.py`](../../src/datarefinery/pipeline/manifest.py): `{ "selector": <echo>, "record_counts": { "<split>": <int>, … } }`. Full-manifest site emits when recipe declares `SampleData:`; partial-manifest site leaves the field at its default `None` (a partial run that stops mid-pipeline cannot reach the post-pipeline stage).
+- [x] Update validator **check 16** wording: "subset of the declared input" → "subset of the prepared dataset" (placement decision flips the spec wording). Docstring on `check_16_sample_data_strict_subset` now names the post-pipeline runtime ([`recipe/validator.py`](../../src/datarefinery/recipe/validator.py)). Selector-coherence enforcement unchanged.
+- [x] Unit tests in [`tests/unit/test_sample_data_stage.py`](../../tests/unit/test_sample_data_stage.py): `uniform` + `per_class` runtime; `splits` honoring; reproducibility (same seed → identical, different seed → different, input-order invariance); manifest round-trip (with and without `sample`); missing-label-field runtime refusal; seed-precedence resolver. 19 tests, all pass.
+- [x] Integration test in [`tests/integration/test_sample_data.py`](../../tests/integration/test_sample_data.py): end-to-end fixture recipe with `SampleData:` declared — `dataset/` unchanged, `sample/train.jsonl` contains the expected per-class counts, `manifest.sample` is well-formed, no-SampleData recipes leave `sample` as `None` and skip the `sample/` directory, sample JSONL is byte-identical across runs.
+- [x] DOC: updated [`docs/guides/recipe-authoring.md` § SampleData](../guides/recipe-authoring.md) — replaced the "Runtime status (v0.18.0): not yet honored" callout with the v0.20.0 behavioral spec (uniform/per_class semantics, splits honoring, determinism, manifest entry, cross-repo pointer).
+- [x] DOC: updated [`docs/specs/features.md`](features.md) FR-2 check #16 wording to "subset of the prepared dataset" + named the FR-J-1 runtime.
+- [x] DOC: updated [`docs/specs/tech-spec.md`](tech-spec.md) § instance directory tree — added `sample/` block with per-split JSONL + sidecar PNG layout.
+- [x] **Cross-repo coordination.** Updated [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md): added `manifest.sample` row + `manifest.sample` shape subsection + `sample/` on-disk-layout block + division-of-responsibility note (`dataset/` stays authoritative for training; `sample/` is quick-look). Additive — no `schema_version` bump (canonical recipe bytes unchanged; this is a materialization-behavior change, pre-prod re-materialize event for any recipe declaring `SampleData:`).
+- [x] CHANGELOG entry under the in-progress v0.20.0 section flagging the materialization-bytes change for recipes with `SampleData:` and the FR-2 check 16 wording flip.
+- [x] CI parity: `pyve test` (1269 unit + 67 integration), `pyve testenv run mypy src tests` (202 files clean), `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/` — all green.
+
+**Out of Scope:**
+
+- M-replace artifact semantics (the sample replaces the materialized instance). Considered and rejected in the I.r.0 spike.
+- Cross-split sampling (e.g., `n` records across all splits combined). Stays per-split.
+- `stats_from_instance.variant: <name>` selector — separate Future story.
+
+---
+
+### Story J.b: NbFoundry vendor-dependency-spec stand-up [Planned]
+
+**Disposition: documentation + cross-repo contract.** Part of Phase J phase-bundle release. Closes FR-J-2.
+
+NbFoundry has no equivalent of [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md), yet it binds against DataRefinery's library entry points, CLI surface, and notebook-display output formats. Stand up [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) as a separate doc (per phase-plan decision: separate docs are easier to manage than a unified consumer-contract doc).
+
+**Best executed after Story J.d** (NbFoundry integration spike) so spike findings feed the contract-doc authoring rather than the other way around.
+
+**Tasks:**
+
+- [ ] Create [`docs/specs/nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) mirroring the structure of the MF doc.
+- [ ] Document the **library entry points** NbFoundry consumers may import — `DataRefinery`, `DataRefinery.from_recipe`, `.materialize()`, instance result accessors. Pin signatures and return types.
+- [ ] Document the **CLI commands** NbFoundry consumers may invoke from notebook cells — verb names, flag names, exit codes, error-message contracts (specifically the messages NbF parses).
+- [ ] Document the **notebook-output ergonomics** — `--log-target`, progress-bar suppression flags, stdout/stderr expectations, `rich`-rendering behavior inside Marimo cells.
+- [ ] Document **schema-version coordination** (mirror MF doc § Schema-version coordination policy) and **forward-compatibility expectations** (unknown ops, unknown manifest keys).
+- [ ] Document **failure modes NbFoundry SHOULD detect** — schema-version mismatch, missing manifest fields, plugin missing.
+- [ ] Document the **versioning and adoption** policy (pre-prod / post-prod stability promises; same shape as MF doc).
+- [ ] Cross-reference from [`docs/specs/concept.md`](concept.md), [`docs/specs/features.md`](features.md), and [`docs/specs/project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" — extend the "three surfaces" entry to name both consumer-spec docs.
+
+**Out of Scope:**
+
+- Implementing any new library API or CLI verb for NbFoundry's benefit. If the spike surfaces concrete gaps, those become separate Phase J stories.
+- NbFoundry-side adoption work. Owned by the NbFoundry repo.
+
+---
+
+### Story J.c: Integration spike — ModelFoundry [Planned]
+
+**Disposition: integration spike** (throwaway; deliverable is a documented friction list, not production code). Part of Phase J phase-bundle release. Closes FR-J-3.
+
+Take a fresh v0.19.0 DataRefinery materialized instance, consume it from a minimal ModelFoundry harness, exercise the documented contract surfaces, capture friction. The friction list feeds the next cluster of Phase J stories (contract-doc fixes, ergonomic library/CLI fixes, small additive manifest fields).
+
+**Tasks:**
+
+- [ ] Time-box (target: one working session). Pick a representative recipe (existing fixture or scaffolded `init` output).
+- [ ] Materialize a fresh instance with v0.19.0 DataRefinery.
+- [ ] From a minimal MF harness (real or mocked), exercise: recipe-model reads against schema_v2 names; `manifest.json` reads of every field MF binds against per [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md); dataset `<split>.jsonl` reads + sidecar PNG resolution for an aggressive-mode variant; `report.md` + `drift.json` reads.
+- [ ] Capture a **friction list** in `docs/specs/phase-j-mf-integration-friction.md`: each item names what was expected, what happened, and what fix (or contract-doc clarification) it implies. Categorize: contract-doc errors, missing fields, ergonomic snags, schema_v2 surprises.
+- [ ] Present the friction list at the approval gate; the developer decides which items become follow-up Phase J stories and which are no-ops.
+
+**Out of Scope:**
+
+- Production ModelFoundry adapter code. The spike is investigation, not implementation.
+- Fixing the friction items in-band. Each one becomes a separate Phase J story (or is dropped at the gate).
+
+---
+
+### Story J.d: Integration spike — NbFoundry [Planned]
+
+**Disposition: integration spike** (throwaway; deliverable is a documented friction list, not production code). Part of Phase J phase-bundle release. Closes FR-J-4.
+
+Write a Marimo notebook that uses DataRefinery via library calls AND CLI subprocess invocations. Exercise common patterns (load → validate → materialize → inspect a materialized instance). The friction list feeds Story J.b's contract-doc authoring.
+
+**Execute before J.b** so the contract doc reflects real ergonomics rather than aspirational ones.
+
+**Tasks:**
+
+- [ ] Time-box (target: one working session). Scaffold a minimal Marimo notebook in a scratch directory.
+- [ ] Exercise the **library path**: `from datarefinery import DataRefinery`, `.from_recipe`, `.materialize()`, instance result accessors. Note what gets imported, what works, what's missing.
+- [ ] Exercise the **CLI path**: invoke `datarefinery validate`, `materialize`, `status` as subprocesses from notebook cells. Note exit codes, stdout/stderr behavior, whether `rich` tables render usefully inside Marimo, whether progress bars need suppression.
+- [ ] Capture a **friction list** in `docs/specs/phase-j-nbf-integration-friction.md`: same shape as J.c — what was expected, what happened, what fix it implies. Pay particular attention to log-target redirection, progress-bar noise, and error-message machine-readability.
+- [ ] Present the friction list at the approval gate; the developer decides which items inform J.b's contract doc and which become separate Phase J stories.
+
+**Out of Scope:**
+
+- Production NbFoundry integration code. The spike is investigation, not implementation.
+- Authoring [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) — that is Story J.b, which executes after this spike.
+
+---
+
+### Story J.e: schema_version 2 consumer-side adoption check [Planned]
+
+**Disposition: cross-repo verification.** Part of Phase J phase-bundle release. Closes FR-J-5.
+
+v0.19.0 ships `schema_version 2` with a loader-side v1→v2 migration. Verify both consumers handle v1 recipes (migrated by the loader) and v2 recipes (native shape) cleanly. May collapse into J.c / J.d if those spikes organically exercise both versions.
+
+**Tasks:**
+
+- [ ] Confirm `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS == {1, 2}` and the v1→v2 migration produces a v2-shape recipe (`recipe.json` reflects v2 canonical bytes).
+- [ ] During J.c, feed both a v1 fixture recipe and a v2 fixture recipe through the MF harness — confirm both work end-to-end.
+- [ ] During J.d, do the same in the Marimo notebook — confirm both versions materialize and the resulting instance is readable.
+- [ ] Document any consumer-side surprises (e.g., MF binds against a v1 field name internally) as additions to the J.c / J.d friction lists; coordinate fixes via the relevant `vendor-dependency-spec.md`.
+
+**Out of Scope:**
+
+- Adding new schema versions. v2 is the current shape; v3 is a future ceremony.
+- Schema_v2 changes to the recipe model itself. The phase-bundle is verification, not further reshape.
+
+---
+
 
 
 ## Future

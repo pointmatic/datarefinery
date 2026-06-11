@@ -45,6 +45,7 @@ from datarefinery.cache.layout import (
     manifest_path,
     recipe_path,
     report_dir,
+    sample_dir,
 )
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import MaterializeError
@@ -56,6 +57,7 @@ from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import (
     Manifest,
     ManifestWarning,
+    SampleManifestEntry,
     SinkManifestEntry,
     write_manifest,
 )
@@ -70,6 +72,11 @@ from datarefinery.pipeline.stages.filters import (
     apply_pre_split_filters,
 )
 from datarefinery.pipeline.stages.generation import apply_generation
+from datarefinery.pipeline.stages.sample_data import (
+    SampleResult,
+    apply_sample_data,
+    resolve_sample_seed,
+)
 from datarefinery.pipeline.stages.splits import apply_splits, resolve_seed
 from datarefinery.pipeline.stages.transformations import apply_transformations
 from datarefinery.pipeline.stages.visualizations import (
@@ -482,6 +489,22 @@ class PipelineRunner:
             current_stage = "Dataset"
             _write_dataset(dataset_dir(temp_dir), split_map)
 
+            # FR-J-1 SampleData runtime (Story J.a). P-postpipeline +
+            # M-sidecar: sample the final split_map *after* the full
+            # dataset has been persisted, write the sidecar under
+            # ``<instance>/sample/`` inside the same atomic temp-then-
+            # promote unit. dataset/ is unchanged by sampling.
+            sample_result: SampleResult | None = None
+            if self.recipe.SampleData is not None:
+                current_stage = "SampleData"
+                sample_result = apply_sample_data(
+                    split_map,
+                    self.recipe.SampleData,
+                    seed=resolve_sample_seed(self.recipe.SampleData, self.seed),
+                    label_field=label_field,
+                )
+                _write_dataset(sample_dir(temp_dir), dict(sample_result.samples))
+
             current_stage = "Recipe"
             recipe_path(temp_dir).write_text(
                 self.recipe.model_dump_json(indent=2), encoding="utf-8"
@@ -512,6 +535,16 @@ class PipelineRunner:
                     )
                     for r in sink_results
                 },
+                sample=(
+                    SampleManifestEntry(
+                        selector=sample_result.selector_echo,
+                        record_counts={
+                            name: len(records) for name, records in sample_result.samples.items()
+                        },
+                    )
+                    if sample_result is not None
+                    else None
+                ),
             )
             write_manifest(manifest_path(temp_dir), manifest)
 

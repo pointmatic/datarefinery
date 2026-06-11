@@ -749,6 +749,9 @@ Recipe semantics never read from CLI/env. The only field where CLI flag override
 │   │           │   ├── test.jsonl
 │   │           │   └── <split>/images/<record_id>.png    # FR-11 aggressive-mode variants only (Story H.r.2)
 │   │           ├── fitted_statistics/
+│   │           ├── sample/                        # FR-J-1 SampleData runtime (Story J.a)
+│   │           │   ├── <split>.jsonl              # subset of dataset/<split>.jsonl per SampleSelector
+│   │           │   └── <split>/images/<record_id>.png   # sidecar PNGs for aggressive variants
 │   │           ├── report/
 │   │           │   ├── report.md
 │   │           │   ├── drift.json
