@@ -71,24 +71,47 @@ First task is a 15-minute re-confirm that P-postpipeline + M-sidecar is still th
 
 ---
 
-### Story J.b: NbFoundry vendor-dependency-spec stand-up [Planned]
+### Story J.b: Integration spike — NbFoundry [Done]
+
+**Disposition: integration spike** (throwaway; deliverable is a documented friction list, not production code). Part of Phase J phase-bundle release. Closes FR-J-4.
+
+Write a Marimo notebook that uses DataRefinery via library calls AND CLI subprocess invocations. Exercise common patterns (load → validate → materialize → inspect a materialized instance). The friction list feeds Story J.c's contract-doc authoring.
+
+**Execute before J.c** so the contract doc reflects real ergonomics rather than aspirational ones.
+
+**Tasks:**
+
+- [x] Time-box (target: one working session). Scaffold a minimal Marimo notebook in a scratch directory. Scaffolded under `/tmp/dr-nbf-spike/` (synthetic 2-class × 6-image ImageFolder + `datarefinery init`-generated recipe + isolated `.cache/`); notebook authored at `/tmp/dr-nbf-spike/datarefinery_demo.py` (Marimo 0.23.9; six cells covering library + CLI subprocess paths). `marimo export script` confirms the notebook parses + serializes cleanly.
+- [x] Exercise the **library path**: `from datarefinery import DataRefinery`, `.from_recipe`, `.materialize()`, instance result accessors. Note what gets imported, what works, what's missing. Confirmed `DataRefinery`, `Instance`, `materialize`, `__version__` all reachable from the top-level package; `from_recipe → validate → materialize → status → inspect` round-trips cleanly; cache-hit signaling works via `dr.last_run.cache_hit`. Two friction items surfaced: F11 (top-level `materialize()` discards cache-hit signal), F12 (default cache_root is `data/` relative to cwd).
+- [x] Exercise the **CLI path**: invoke `datarefinery validate`, `materialize`, `status` as subprocesses from notebook cells. Note exit codes, stdout/stderr behavior, whether `rich` tables render usefully inside Marimo, whether progress bars need suppression. Confirmed `python -m datarefinery <verb>` invocations succeed end-to-end; exit codes match documented `_exit_codes.py` mapping; stdout is `rich`-formatted tables with optional ANSI color, no `--json` alternative. Six friction items surfaced: F1 (log-target no-op), F2 (no machine-readable output), F3 (hash-column truncation), F4 (`--quiet`/`--verbose` no-ops), F5 (console-script shim broken; `python -m` form recommended), F6 (duplicate-plugin error msg doesn't name distributions), F10 (subprocess progress-bar UX).
+- [x] Capture a **friction list** in [`docs/specs/phase-j-nbf-integration-friction.md`](phase-j-nbf-integration-friction.md): same shape as J.d — what was expected, what happened, what fix it implies. Pay particular attention to log-target redirection, progress-bar noise, and error-message machine-readability. Twelve items (F1–F12) captured with severity, category (CODE / CONTRACT / DOC / ENV), and triage suggestion. Three "needs eyeballs" items (V1–V3) flagged for live Marimo session.
+- [x] Present the friction list at the approval gate; the developer decides which items inform J.c's contract doc and which become separate Phase J stories. Triage matrix at the bottom of the friction doc recommends F1/F2/F4/F6 become new code stories in Phase J; F3/F10 defer (resolve when F2 lands); F5/F7/F8/F9/F11/F12 absorb into J.c's contract-doc authoring.
+
+**Out of Scope:**
+
+- Production NbFoundry integration code. The spike is investigation, not implementation.
+- Authoring [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) — that is Story J.c, which executes after this spike.
+
+---
+
+### Story J.c: NbFoundry vendor-dependency-spec stand-up [Done]
 
 **Disposition: documentation + cross-repo contract.** Part of Phase J phase-bundle release. Closes FR-J-2.
 
 NbFoundry has no equivalent of [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md), yet it binds against DataRefinery's library entry points, CLI surface, and notebook-display output formats. Stand up [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) as a separate doc (per phase-plan decision: separate docs are easier to manage than a unified consumer-contract doc).
 
-**Best executed after Story J.d** (NbFoundry integration spike) so spike findings feed the contract-doc authoring rather than the other way around.
+**Best executed after Story J.b** (NbFoundry integration spike) so spike findings feed the contract-doc authoring rather than the other way around.
 
 **Tasks:**
 
-- [ ] Create [`docs/specs/nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) mirroring the structure of the MF doc.
-- [ ] Document the **library entry points** NbFoundry consumers may import — `DataRefinery`, `DataRefinery.from_recipe`, `.materialize()`, instance result accessors. Pin signatures and return types.
-- [ ] Document the **CLI commands** NbFoundry consumers may invoke from notebook cells — verb names, flag names, exit codes, error-message contracts (specifically the messages NbF parses).
-- [ ] Document the **notebook-output ergonomics** — `--log-target`, progress-bar suppression flags, stdout/stderr expectations, `rich`-rendering behavior inside Marimo cells.
-- [ ] Document **schema-version coordination** (mirror MF doc § Schema-version coordination policy) and **forward-compatibility expectations** (unknown ops, unknown manifest keys).
-- [ ] Document **failure modes NbFoundry SHOULD detect** — schema-version mismatch, missing manifest fields, plugin missing.
-- [ ] Document the **versioning and adoption** policy (pre-prod / post-prod stability promises; same shape as MF doc).
-- [ ] Cross-reference from [`docs/specs/concept.md`](concept.md), [`docs/specs/features.md`](features.md), and [`docs/specs/project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" — extend the "three surfaces" entry to name both consumer-spec docs.
+- [x] Create [`docs/specs/nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) mirroring the structure of the MF doc — status block + Overview drawing the interaction-binding (NbF) vs. shape-binding (MF) split.
+- [x] Document the **library entry points** NbFoundry consumers may import — `DataRefinery`, `DataRefinery.from_recipe`, `.materialize()`, instance result accessors. Pin signatures and return types. Three subsections: `DataRefinery` class (full method signature block), `Instance` accessor, top-level `materialize()` convenience. F11 from the J.b friction list absorbed (cache-hit signaling: use `DataRefinery.from_recipe(...).materialize()` for cache-aware flows; top-level `materialize()` discards the signal).
+- [x] Document the **CLI commands** NbFoundry consumers may invoke from notebook cells — verb names, flag names, exit codes, error-message contracts (specifically the messages NbF parses). Sections: verb vocabulary table, exit-code contract table mirroring [`cli/_exit_codes.py`](../../src/datarefinery/cli/_exit_codes.py), global options table, error-message panel-title contract. F5 absorbed (recommend `[sys.executable, "-m", "datarefinery", ...]`); F8 absorbed (`--view` vocabulary forward-declared, recommend library `dr.inspect(view=...)`).
+- [x] Document the **notebook-output ergonomics** — `--log-target`, progress-bar suppression flags, stdout/stderr expectations, `rich`-rendering behavior inside Marimo cells. Subsections: stdout vs. stderr separation discipline, `rich` output composition with Marimo (ANSI/Unicode), progress UX (library `progress_callback` preferred over CLI subprocess), Marimo single-definition constraint (F9), default `cache_root` (F12). F1 absorbed (`--log-target` no-op flagged as forward-declared); F10 absorbed (progress-bar guidance).
+- [x] Document **schema-version coordination** (mirror MF doc § Schema-version coordination policy) and **forward-compatibility expectations** (unknown ops, unknown manifest keys). NbF's obligation is much lighter than MF's — NbF mostly drives the library/CLI rather than reading recipe internals; cross-references the MF spec for the recipe-side coordination.
+- [x] Document **failure modes NbFoundry SHOULD detect** — schema-version mismatch, missing manifest fields, plugin missing. Three subsections (library path, CLI path, common). F6 absorbed (duplicate-plugin error class today names the plugin but not the contributing distributions; flagged as Phase J follow-up).
+- [x] Document the **versioning and adoption** policy (pre-prod / post-prod stability promises; same shape as MF doc). Forward-declared items enumerated explicitly so adopters know what is pending: `--log-target`, `--quiet`/`--verbose`, `--json`, duplicate-distribution naming, CLI `--view` vocabulary.
+- [x] Cross-reference from [`docs/specs/concept.md`](concept.md), [`docs/specs/features.md`](features.md), and [`docs/specs/project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" — extend the "three surfaces" entry to name both consumer-spec docs. concept.md § Target Users now names NbF as an indirect beneficiary with a pointer to the new spec. features.md adds a § FR-3 cross-repo contract note and bumps four `modelfoundry/dependency-spec.md` references to the current `modelfoundry/vendor-dependency-spec.md` filename. project-essentials.md § cross-repo coordination expanded from "three surfaces" to **five surfaces** (three shape-binding + two interaction-binding), with two new refusal examples (don't rename `DataRefinery.materialize` to `run`; don't remap an existing exit code), and updated to reference both consumer-spec docs.
 
 **Out of Scope:**
 
@@ -97,7 +120,7 @@ NbFoundry has no equivalent of [`modelfoundry/vendor-dependency-spec.md`](modelf
 
 ---
 
-### Story J.c: Integration spike — ModelFoundry [Planned]
+### Story J.d: Integration spike — ModelFoundry [Planned]
 
 **Disposition: integration spike** (throwaway; deliverable is a documented friction list, not production code). Part of Phase J phase-bundle release. Closes FR-J-3.
 
@@ -118,41 +141,18 @@ Take a fresh v0.19.0 DataRefinery materialized instance, consume it from a minim
 
 ---
 
-### Story J.d: Integration spike — NbFoundry [Planned]
-
-**Disposition: integration spike** (throwaway; deliverable is a documented friction list, not production code). Part of Phase J phase-bundle release. Closes FR-J-4.
-
-Write a Marimo notebook that uses DataRefinery via library calls AND CLI subprocess invocations. Exercise common patterns (load → validate → materialize → inspect a materialized instance). The friction list feeds Story J.b's contract-doc authoring.
-
-**Execute before J.b** so the contract doc reflects real ergonomics rather than aspirational ones.
-
-**Tasks:**
-
-- [ ] Time-box (target: one working session). Scaffold a minimal Marimo notebook in a scratch directory.
-- [ ] Exercise the **library path**: `from datarefinery import DataRefinery`, `.from_recipe`, `.materialize()`, instance result accessors. Note what gets imported, what works, what's missing.
-- [ ] Exercise the **CLI path**: invoke `datarefinery validate`, `materialize`, `status` as subprocesses from notebook cells. Note exit codes, stdout/stderr behavior, whether `rich` tables render usefully inside Marimo, whether progress bars need suppression.
-- [ ] Capture a **friction list** in `docs/specs/phase-j-nbf-integration-friction.md`: same shape as J.c — what was expected, what happened, what fix it implies. Pay particular attention to log-target redirection, progress-bar noise, and error-message machine-readability.
-- [ ] Present the friction list at the approval gate; the developer decides which items inform J.b's contract doc and which become separate Phase J stories.
-
-**Out of Scope:**
-
-- Production NbFoundry integration code. The spike is investigation, not implementation.
-- Authoring [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) — that is Story J.b, which executes after this spike.
-
----
-
 ### Story J.e: schema_version 2 consumer-side adoption check [Planned]
 
 **Disposition: cross-repo verification.** Part of Phase J phase-bundle release. Closes FR-J-5.
 
-v0.19.0 ships `schema_version 2` with a loader-side v1→v2 migration. Verify both consumers handle v1 recipes (migrated by the loader) and v2 recipes (native shape) cleanly. May collapse into J.c / J.d if those spikes organically exercise both versions.
+v0.19.0 ships `schema_version 2` with a loader-side v1→v2 migration. Verify both consumers handle v1 recipes (migrated by the loader) and v2 recipes (native shape) cleanly. May collapse into J.d / J.b if those spikes organically exercise both versions.
 
 **Tasks:**
 
 - [ ] Confirm `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS == {1, 2}` and the v1→v2 migration produces a v2-shape recipe (`recipe.json` reflects v2 canonical bytes).
-- [ ] During J.c, feed both a v1 fixture recipe and a v2 fixture recipe through the MF harness — confirm both work end-to-end.
-- [ ] During J.d, do the same in the Marimo notebook — confirm both versions materialize and the resulting instance is readable.
-- [ ] Document any consumer-side surprises (e.g., MF binds against a v1 field name internally) as additions to the J.c / J.d friction lists; coordinate fixes via the relevant `vendor-dependency-spec.md`.
+- [ ] During J.d, feed both a v1 fixture recipe and a v2 fixture recipe through the MF harness — confirm both work end-to-end.
+- [ ] During J.b, do the same in the Marimo notebook — confirm both versions materialize and the resulting instance is readable.
+- [ ] Document any consumer-side surprises (e.g., MF binds against a v1 field name internally) as additions to the J.d / J.b friction lists; coordinate fixes via the relevant `vendor-dependency-spec.md`.
 
 **Out of Scope:**
 
