@@ -40,6 +40,23 @@ are deferred to the bundle's release ceremony.
   Cross-repo contract for downstream consumers is pinned in
   [`docs/specs/modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md).
 
+- **FR-J-2: `manifest.label_classes` (Story J.f).** New
+  `list[Any] | None` field on the manifest enumerating the canonical
+  class set used by all labeled records in the materialized instance —
+  distinct label values across every labeled split, sorted ascending
+  via Python `sorted(...)`. Unlabeled splits (FR-22) are excluded;
+  `None` when no labeled records exist. The field lives in the manifest
+  (not the recipe), so it does not perturb canonical recipe bytes or
+  cache identity — re-materializing the same recipe over the same
+  inputs produces an identical list. Closes the class-enumeration gap
+  surfaced during the [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md)
+  2026-06-11 ratification round 2: downstream consumers (ModelFoundry
+  today; other training tools tomorrow) bind against this list for
+  label→logit-index mapping, confusion-matrix axis ordering, and
+  per-class column naming instead of independently sort-by-convention-
+  ing JSONL records (which can silently disagree on ordering across
+  consumers when sparse classes live only in val/test).
+
 - **`cache.layout.sample_dir`.** New layout helper for the sidecar
   directory.
 
@@ -67,6 +84,13 @@ are deferred to the bundle's release ceremony.
 - [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md):
   added `manifest.sample` row + `manifest.sample` shape subsection +
   `sample/` on-disk-layout block. Additive.
+- [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md):
+  ratified `manifest.label_classes` row + `manifest.label_classes` shape
+  subsection (Story J.f). Removed the "forward-declared" / "Pre-J.f
+  consumer guidance" framing; the field is now live. The
+  pre-v0.20.0-instance adoption migration note (consumers continue to
+  scan-and-sort when reading older instances) replaces the prior
+  forward-declaration guidance.
 
 ## [0.19.0] - 2026-05-30
 

@@ -161,7 +161,7 @@ v0.19.0 ships `schema_version 2` with a loader-side v1→v2 migration. Verify bo
 
 ---
 
-### Story J.f: `manifest.label_classes` — canonical class-set enumeration [Planned]
+### Story J.f: `manifest.label_classes` — canonical class-set enumeration [Done]
 
 **Disposition: feature addition + cross-repo contract.** Part of Phase J phase-bundle release (target v0.20.0). Closes the class-enumeration gap surfaced during the [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) 2026-06-11 ratification round 2.
 
@@ -169,16 +169,16 @@ Today the manifest carries no canonical class set. Every consumer that needs lab
 
 **Tasks:**
 
-- [ ] Add `Manifest.label_classes: list[Any] | None = None` field in [`src/datarefinery/pipeline/manifest.py`](../../src/datarefinery/pipeline/manifest.py).
-- [ ] Compute at materialize time in [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py): scan all labeled records across all defined splits (skip unlabeled records per FR-22), take the distinct union, sort ascending using Python `sorted(...)` semantics. Empty when no labeled records exist → field is `None`.
-- [ ] Emit at both the full and partial manifest-build sites (mirror the `class_balance` and `sample` emission discipline).
-- [ ] Unit tests: balanced multi-class, sparse class (present only in test), single-class, fully-unlabeled (`None`), `str` and `int` label dtypes. Confirm the manifest-side computation matches a JSONL-derived scan over all splits.
-- [ ] Integration test: round-trip a fixture recipe and assert the manifest's `label_classes` matches the JSONL-derived set on a recipe with disjoint train/val/test class coverage.
-- [ ] Cache-identity guard: confirm the new field perturbs no canonical bytes (it lives in manifest, not recipe) — pinning fixture stays green.
-- [ ] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md): ratify the forward-declared `manifest.label_classes` shape subsection — remove the "forward-declared" / "pre-J.f" caveats; mark the field as live in the current release.
-- [ ] DOC: update [`docs/specs/tech-spec.md`](tech-spec.md) manifest section to enumerate the new field.
-- [ ] CHANGELOG entry under the in-progress v0.20.0 section: additive manifest field, no `schema_version` bump (no canonical-bytes perturbation), consumer-bind addition.
-- [ ] CI parity: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+- [x] Add `Manifest.label_classes: list[Any] | None = None` field in [`src/datarefinery/pipeline/manifest.py`](../../src/datarefinery/pipeline/manifest.py).
+- [x] Compute at materialize time in [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py): scan all labeled records across all defined splits (skip unlabeled records per FR-22), take the distinct union, sort ascending using Python `sorted(...)` semantics. Empty when no labeled records exist → field is `None`. Implemented as `_compute_label_classes(split_map, *, label_field, unlabeled_splits) -> list[Any] | None` module-level helper.
+- [x] Emit at both the full and partial manifest-build sites (mirror the `class_balance` and `sample` emission discipline). Full-run site at the end of `run()`; partial-run site at `_partial_finish()` so `--stage` partial runs still emit `label_classes` reflecting whatever labeled records were observed up to the stop point.
+- [x] Unit tests: balanced multi-class, sparse class (present only in test), single-class, fully-unlabeled (`None`), `str` and `int` label dtypes. Confirm the manifest-side computation matches a JSONL-derived scan over all splits. 12 tests in [`tests/unit/test_label_classes.py`](../../tests/unit/test_label_classes.py): balanced, sparse-only-in-test, singleton class, int dtype, str dtype, fully-unlabeled, mixed-with-missing-label, unlabeled-split skipping, empty split_map, all-splits-unlabeled, plus two manifest round-trip tests.
+- [x] Integration test: round-trip a fixture recipe and assert the manifest's `label_classes` matches the JSONL-derived set on a recipe with disjoint train/val/test class coverage. 2 tests in [`tests/integration/test_label_classes.py`](../../tests/integration/test_label_classes.py): disjoint A/B (train) + C (val) + D (test) coverage via `key_assignment`, with consumer-side JSONL-scan-and-sort verification matching the producer commitment byte-for-byte; plus a fully-unlabeled records pathological case.
+- [x] Cache-identity guard: confirm the new field perturbs no canonical bytes (it lives in manifest, not recipe) — pinning fixture stays green. Verified: `tests/unit/test_canonical_hash_pin.py::test_canonical_hash_is_pinned` passes with no change required.
+- [x] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md): ratify the forward-declared `manifest.label_classes` shape subsection — remove the "forward-declared" / "pre-J.f" caveats; mark the field as live in the current release. Field-row updated, shape subsection re-headered (`Shipped Phase J Story J.f, v0.20.0` replaces `Forward-declared`), pre-J.f consumer-guidance reframed as an **adoption-migration** note for pre-v0.20.0 instances (consumers still scan-and-sort when reading older instances; the algorithm matches the producer's exactly). The "set vs counts" division added as an explicit producer-commitment-scope bullet so future readers don't conflate the new field with per-class counts (consumer-derived).
+- [x] DOC: update [`docs/specs/tech-spec.md`](tech-spec.md) manifest section to enumerate the new field. Added `sinks_skipped`, `class_balance`, `sample`, and `label_classes` lines to the `class Manifest` block alongside the existing fields (the prior listing was stale).
+- [x] CHANGELOG entry under the in-progress v0.20.0 section: additive manifest field, no `schema_version` bump (no canonical-bytes perturbation), consumer-bind addition. New `Added` bullet under `[0.20.0] - in progress` enumerating the computation + scope (set, not counts) + adoption migration; new `Cross-repo coordination` bullet documenting the MF spec ratification of the `manifest.label_classes` row + shape subsection.
+- [x] CI parity: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/`. 1283 unit tests + 69 integration tests pass; mypy 204 files clean; ruff check + ruff format clean.
 
 **Out of Scope:**
 

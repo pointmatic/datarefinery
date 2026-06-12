@@ -545,6 +545,11 @@ class PipelineRunner:
                     if sample_result is not None
                     else None
                 ),
+                label_classes=_compute_label_classes(
+                    split_map,
+                    label_field=label_field,
+                    unlabeled_splits=unlabeled_split_names(self.recipe),
+                ),
             )
             write_manifest(manifest_path(temp_dir), manifest)
 
@@ -627,6 +632,11 @@ class PipelineRunner:
             class_balance=self.recipe.Splits.class_balance,
             sinks=sinks_map,
             sinks_skipped=sinks_skipped,
+            label_classes=_compute_label_classes(
+                split_map,
+                label_field=self.recipe.Labels.field,
+                unlabeled_splits=unlabeled_split_names(self.recipe),
+            ),
         )
         # Persist enough state to make the temp dir inspectable. We
         # write the recipe so `Instance.load` can reconstruct it; the
@@ -655,6 +665,39 @@ def _read_manifest(final_dir: Path) -> Manifest:
     from datarefinery.pipeline.manifest import read_manifest
 
     return read_manifest(manifest_path(final_dir))
+
+
+def _compute_label_classes(
+    split_map: Mapping[str, list[Record]],
+    *,
+    label_field: str,
+    unlabeled_splits: set[str],
+) -> list[Any] | None:
+    """Canonical class set across every labeled record (Story J.f, FR-J-2).
+
+    Scans every record in every split except those listed in
+    ``unlabeled_splits`` (FR-22), collects the distinct values of
+    ``label_field``, and returns them sorted ascending via Python
+    ``sorted`` semantics. Records missing the label field within an
+    otherwise-labeled split are silently skipped (matches the existing
+    OutputExpectations ``skip_missing_label_field`` discipline).
+
+    Returns ``None`` when no labeled record contributes a label —
+    distinguishing "fully unlabeled instance" from "instance with an
+    empty class set". Downstream MF consumers bind against this list
+    for label→logit-index mapping; the producer-side commitment is the
+    point.
+    """
+    seen: set[Any] = set()
+    for split_name, records in split_map.items():
+        if split_name in unlabeled_splits:
+            continue
+        for r in records:
+            if label_field in r:
+                seen.add(r[label_field])
+    if not seen:
+        return None
+    return sorted(seen)
 
 
 def _write_dataset(dataset_root: Path, splits: Mapping[str, list[Record]]) -> None:

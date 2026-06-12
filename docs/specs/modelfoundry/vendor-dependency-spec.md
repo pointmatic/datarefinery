@@ -185,7 +185,7 @@ The `manifest.json` at the instance root is the authoritative metadata document.
 | `sinks`                | `dict[str, SinkManifestEntry]` | Per-sink summary of disk-output artifacts captured at materialize time (Story I.d). Empty dict when the recipe declares no `Sinks` section. |
 | `sinks_skipped`        | `dict[str, str]`           | Sinks declared on the recipe whose host stage was not reached under a partial `--stage` run (Story I.f.1). Maps sink name → declared stage. Empty on full materializes. |
 | `sample`               | `SampleManifestEntry | null` | Forward-declared (Phase J Story J.a, target v0.20.0). Per-split sample-subset record counts + selector echo; `null` when no `SampleData:` is declared. See `manifest.sample` shape below. |
-| `label_classes`        | `list[<label-dtype>] | null` | Forward-declared (Phase J Story J.f, target v0.20.0). Canonical class set: distinct label values across all labeled records, sorted ascending. `null` when no labeled records exist (FR-22 fully-unlabeled case). See `manifest.label_classes` shape below. |
+| `label_classes`        | `list[<label-dtype>] | null` | Canonical class set: distinct label values across all labeled records, sorted ascending. `null` when no labeled records exist (FR-22 fully-unlabeled case). Shipped Phase J Story J.f, v0.20.0. See `manifest.label_classes` shape below. |
 
 ### `manifest.sinks` shape
 
@@ -220,7 +220,7 @@ Added in DataRefinery v0.18.0 (Story I.s / G10). The field mirrors the recipe's 
 
 Unknown strategy names SHOULD be treated as a configuration error by ModelFoundry (refuse rather than silently ignore), since the author declared an imbalance intent the consumer cannot honor.
 
-**Per-class counts.** DataRefinery does **not** pre-compute per-class counts in the manifest. To honor `emit_inverse_frequency_weights` (or any other strategy requiring class frequencies), consumers scan the labeled JSONL records themselves and tally. Once `manifest.label_classes` lands (Phase J Story J.f), the class set is canonical; the counts remain consumer-derived.
+**Per-class counts.** DataRefinery does **not** pre-compute per-class counts in the manifest. To honor `emit_inverse_frequency_weights` (or any other strategy requiring class frequencies), consumers scan the labeled JSONL records themselves and tally. The class **set** is canonical via `manifest.label_classes` (Phase J Story J.f, v0.20.0); the **counts** remain consumer-derived.
 
 ### `manifest.sample` shape
 
@@ -235,19 +235,16 @@ The sample subset is emitted under `<instance>/sample/<split>.jsonl` with the sa
 
 ### `manifest.label_classes` shape
 
-Forward-declared for DataRefinery Phase J Story J.f (target v0.20.0). The field enumerates the canonical class set used by all labeled records in the materialized instance — a single sorted list that consumers bind against for label→logit-index mapping, confusion-matrix axis ordering, and per-class column naming in predictions output.
+Shipped Phase J Story J.f, v0.20.0. The field enumerates the canonical class set used by all labeled records in the materialized instance — a single sorted list that consumers bind against for label→logit-index mapping, confusion-matrix axis ordering, and per-class column naming in predictions output.
 
 - **Computation.** At materialize time, DataRefinery scans every labeled record across every split, takes the distinct union of label values, and sorts ascending (Python `sorted(...)` semantics for the underlying label dtype). Unlabeled records (FR-22) are excluded; if no labeled records exist, the field is `null`.
 - **Type.** `list[<label-dtype>] | null`. Dtype matches the values observed in records — typically `str` (class name) but plugin-dependent.
 - **Stability and cache identity.** The field lives in the manifest, not the recipe, so it does not perturb canonical recipe bytes and does not affect cache identity. Re-materializing the same recipe over the same inputs produces an identical list.
+- **Producer commitment scope.** This is the **set**, not the **counts** — per-class frequencies remain consumer-derived from JSONL (see § `manifest.class_balance` shape § "Per-class counts").
 
 **Why this lives in the manifest, not in consumer code.** Without a producer-side canonical class list, every consumer scans JSONL and chooses a sort convention independently. Two consumers (or two binding flows in one consumer) can silently disagree on ordering, leading to prediction-column ↔ confusion-matrix-axis ↔ class-weight-vector misalignment that is operationally catastrophic and hard to debug. Centralizing the list in the manifest makes the ordering the producer's commitment.
 
-**Pre-J.f consumer guidance.** Until Story J.f lands, the manifest does NOT carry `label_classes`. Consumers must derive the set themselves with these caveats:
-
-1. Scanning `train.jsonl` alone is fragile — a class present only in `val`/`test` (or in an unlabeled-source variant) will be silently omitted, mismatching the data.
-2. The recommended workaround is to scan every labeled split (`train` + `val` + `test`, skipping unlabeled records) and sort ascending — matching the J.f producer-side computation exactly.
-3. Two consumers binding the same instance must agree on the same scan + sort convention out-of-band; DR does not yet enforce it.
+**Adoption migration.** Pre-v0.20.0 manifests do NOT carry `label_classes`. Consumers reading older instances SHOULD continue to derive the class set by scanning every labeled split (`train` + `val` + `test`, skipping unlabeled records) and sorting ascending — the same algorithm the producer now applies, so the derived set is byte-identical to what `manifest.label_classes` would have emitted. Scanning `train.jsonl` alone is fragile — a class present only in `val`/`test` (or in an unlabeled-source variant) will be silently omitted.
 
 ## Fitted statistics ModelFoundry binds against
 

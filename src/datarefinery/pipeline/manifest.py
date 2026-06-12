@@ -105,6 +105,13 @@ class Manifest(BaseModel):
     # when the recipe declares a ``SampleData:`` section; otherwise None.
     # Cross-repo contract: ``docs/specs/modelfoundry/vendor-dependency-spec.md``.
     sample: SampleManifestEntry | None = None
+    # Canonical class set used by all labeled records (Story J.f, FR-J-2).
+    # Distinct union of label values across every labeled split, sorted
+    # ascending. ``None`` when no labeled records exist (FR-22 fully-unlabeled
+    # case). Field lives in the manifest, not the recipe — does not perturb
+    # canonical recipe bytes or cache identity. Cross-repo contract:
+    # ``docs/specs/modelfoundry/vendor-dependency-spec.md`` § ``manifest.label_classes`` shape.
+    label_classes: list[Any] | None = None
 
 
 def write_manifest(path: Path, manifest: Manifest) -> None:
