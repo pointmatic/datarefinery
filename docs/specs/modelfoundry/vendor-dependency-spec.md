@@ -44,6 +44,20 @@
 > target v0.20.0) draws the apply-boundary explicitly and identifies
 > the lazy-mode geometry-transform gap (`path` points at source while
 > `Transformations` are not reflected in JSONL pixels).
+>
+> **J.g ratified 2026-06-12 (v0.20.0).** The lazy-mode geometry-transform
+> gap above is now **closed**, not forward-declared. The closed set of
+> pixel-altering Transformation ops (today: `resize`) is enforced by
+> validator **check 26**: a recipe with a pixel-altering Transformation
+> on any lazily-serialized split MUST declare a qualifying image sink
+> (`format: png_per_record`, `field: image`, a post-Transformations
+> stage) covering those splits, and DataRefinery rewrites each affected
+> record's JSONL `path` to that sink's per-record output (instance-
+> relative). The § "Consumer-applied transformations vs. baked
+> transformations" subsection below is updated accordingly. Additive —
+> no `schema_version` bump (canonical recipe bytes unchanged); the
+> on-disk `path` value changes for affected recipes → pre-prod
+> re-materialize event.
 
 ## Overview
 
@@ -316,30 +330,28 @@ The previous section drew the consumer-application boundary for normalization. T
 ### Baked (consumer reads transformed pixels)
 
 - **Aggressive-mode `Augmentations`.** The realized variant's pixels are written to `<split>/images/<record_id>.png` and the JSONL record carries `image_path:` pointing at the sidecar. Consumers MUST resolve variant pixels via `image_path`. This is the well-supported path-rewrite case in v1.
-- **`Sinks` declarations.** Sinks write their captured stage output under `<instance>/<path_template_resolved_root>/...` (see `manifest.sinks`). **Pre-J.g caveat:** the JSONL records' `path` field is NOT yet rewritten to the sink output; consumers wanting sink-captured pixels must consult `manifest.sinks` separately.
+- **`Sinks` declarations.** Sinks write their captured stage output under `<instance>/<path_template_resolved_root>/...` (see `manifest.sinks`). For the pixel-altering-Transformation case (below), DataRefinery additionally rewrites the JSONL `path` to point at the qualifying sink's per-record output, so a consumer reading `path` lands on the transformed pixels directly. For sinks declared for other reasons (e.g. capturing a non-`image` field, or an earlier-stage snapshot), `path` is unaffected and consumers locate sink output via `manifest.sinks`.
 
 ### Consumer-applied (consumer re-applies the transform from persisted stats)
 
 - **`normalize` / `mean_subtract`.** Fitted statistics are persisted; pixel bytes on disk remain uint8 PNG. Application is the consumer's job — see § "Normalization is applied by the consumer, not baked into image bytes" above. This is the intentional, stable case in v1.
 
-### Unresolved boundary — lazy-mode geometry / pixel-altering Transformations
+### Lazy-mode geometry / pixel-altering Transformations (resolved — Story J.g, v0.20.0)
 
-In DataRefinery v0.19.0 and earlier, the `path` field is set ONCE at input loading and is NEVER rewritten by Transformations or Sinks. A non-aggressive recipe declaring a pixel-altering Transformation op (e.g., `resize`) produces JSONL where:
+In DataRefinery v0.19.0 and earlier, the `path` field was set ONCE at input loading and NEVER rewritten by Transformations or Sinks. A non-aggressive recipe declaring a pixel-altering Transformation op (e.g., `resize`) produced JSONL where (1) the in-memory `image` numpy array WAS transformed, (2) the `image` field WAS dropped at serialization, and (3) `path` still pointed at the **untransformed source image** — so a consumer reading pixels from `path` silently decoded pre-transform geometry. Story J.g (v0.20.0) closes this gap.
 
-1. The in-memory `image` numpy array IS transformed during the pipeline.
-2. The `image` field IS dropped at serialization (see § JSONL records).
-3. The `path` field still points at the **untransformed source image**.
+**Closed pixel-altering-op set.** A Transformation op is *pixel-altering* when its `apply` changes the image array's bytes in a consumer-visible way that is NOT recoverable from persisted fitted statistics. Today the set is **`{resize}`** (geometry change). It is declared per-op on the plugin (`OperationSpec.pixel_altering`), so the set grows with the plugin, not by editing this doc. Explicitly NOT pixel-altering: `normalize` / `mean_subtract` (stat-based, consumer-applied — fitted stats persisted) and `cast` (parameter-deterministic numeric op, consumer-applied).
 
-A consumer reading pixels from `path` therefore decodes pre-transform geometry, silently diverging from the recipe's declared materialization. This is a real architectural gap, scoped as **Phase J Story J.g** (target v0.20.0). The recommended resolution shape:
+**Validator check 26.** A recipe with a pixel-altering Transformation applying to any lazily-serialized split MUST declare a qualifying image sink — `format: png_per_record`, `field: image`, `stage` in `{post_Transformations, post_Featurizations, post_Augmentations, post_OutputExpectations, post_Visualizations}` — covering those splits. Authoring the transform without such a sink is refused at validate time (the message names the offending op and the uncovered splits). Splits realized as aggressive variants are exempt (their pixels are already baked via `image_path`).
 
-- DR rewrites `path` to point at the transformed pixel form at materialize time. The mechanism: require a sink for lazy-mode recipes containing pixel-altering Transformations, and rewrite `path` to the sink's per-record output.
-- An interim validator check refuses lazy-mode recipes that contain any pixel-altering Transformation op without a corresponding sink, so the silent-divergence case cannot be authored in the first place.
+**Path-rewrite mechanism.** At dataset serialization, for each non-aggressive record in a covered split, DataRefinery rewrites `path` to the qualifying sink's per-record output, resolved from the sink's `path_template` and **relative to the instance directory** (e.g. `transformed/<split>/<record_id>.png`). The sink also writes the PNG, so the rewritten `path` resolves to a real file holding the transformed pixels. When multiple qualifying sinks cover a split, the first in recipe declaration order wins. This rewrite also applies to the `sample/` sidecar JSONL.
 
-**Pre-J.g consumer guidance.**
+**Consumer guidance (v0.20.0+).**
 
-- For recipes whose `Transformations:` contains only fit-on-train stats ops (`normalize`, `mean_subtract`), the contract holds: uint8 PNG on disk, consumer applies stats from `fitted_statistics/`.
-- For recipes whose `Transformations:` contains `resize` or any other pixel-altering op, consumers MUST either (a) require the recipe to use aggressive `Augmentations` with sidecar PNGs (variant pixels via `image_path`), (b) require a `Sinks` declaration and resolve sink-output paths via `manifest.sinks`, or (c) refuse to consume.
-- For the CIFAR-10 reference flow (no geometry transforms), the contract holds end-to-end without intervention. This is what makes the gap easy to overlook.
+- `path` is **instance-relative** for pixel-altering-Transformation recipes (resolve as `<instance>/<path>`); it remains the loader-stamped (possibly host-absolute) source path for recipes with no pixel-altering Transformations. Treat a `path` that is not absolute and does not exist on the source host as instance-relative. (Host-portability of the source-resolution `path` is covered in § "Source-resolution path".)
+- For recipes whose `Transformations:` contains only fit-on-train stats ops (`normalize`, `mean_subtract`) or `cast`, the prior contract holds unchanged: uint8 PNG on disk via source `path`, consumer applies stats from `fitted_statistics/`.
+- Aggressive `Augmentations` continue to expose realized variant pixels via `image_path`; that path is unchanged by Story J.g.
+- For the CIFAR-10 reference flow (no geometry transforms), behavior is unchanged end-to-end.
 
 ## Report subsections
 

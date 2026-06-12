@@ -61,6 +61,7 @@ from datarefinery.pipeline.manifest import (
     SinkManifestEntry,
     write_manifest,
 )
+from datarefinery.pipeline.path_rewrite import path_rewrite_plan
 from datarefinery.pipeline.sinks import SinkResult, execute_sinks
 from datarefinery.pipeline.stages.augmentations import (
     collect_augmentation_policies,
@@ -83,7 +84,7 @@ from datarefinery.pipeline.stages.visualizations import (
     apply_reporting_visualizations,
 )
 from datarefinery.plugins.base import Plugin
-from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.models import Recipe, SinkOp
 from datarefinery.recipe.validator import unlabeled_split_names
 from datarefinery.reporting.drift import (
     compute_drift_placeholder,
@@ -487,7 +488,12 @@ class PipelineRunner:
                 )
 
             current_stage = "Dataset"
-            _write_dataset(dataset_dir(temp_dir), split_map)
+            # Story J.g: lazy-mode `path` rewrite for pixel-altering
+            # Transformations. validate() (check 26) guarantees every
+            # affected split has a qualifying sink, so the plan covers
+            # every split that needs it.
+            rewrite_plan = path_rewrite_plan(self.recipe, self.plugin)
+            _write_dataset(dataset_dir(temp_dir), split_map, rewrite_plan=rewrite_plan)
 
             # FR-J-1 SampleData runtime (Story J.a). P-postpipeline +
             # M-sidecar: sample the final split_map *after* the full
@@ -503,7 +509,11 @@ class PipelineRunner:
                     seed=resolve_sample_seed(self.recipe.SampleData, self.seed),
                     label_field=label_field,
                 )
-                _write_dataset(sample_dir(temp_dir), dict(sample_result.samples))
+                _write_dataset(
+                    sample_dir(temp_dir),
+                    dict(sample_result.samples),
+                    rewrite_plan=rewrite_plan,
+                )
 
             current_stage = "Recipe"
             recipe_path(temp_dir).write_text(
@@ -700,7 +710,12 @@ def _compute_label_classes(
     return sorted(seen)
 
 
-def _write_dataset(dataset_root: Path, splits: Mapping[str, list[Record]]) -> None:
+def _write_dataset(
+    dataset_root: Path,
+    splits: Mapping[str, list[Record]],
+    *,
+    rewrite_plan: Mapping[str, SinkOp] | None = None,
+) -> None:
     """Write per-split JSON-lines summaries and aggressive-variant sidecar PNGs.
 
     Each line is one record with non-JSON-native fields (numpy arrays,
@@ -721,15 +736,28 @@ def _write_dataset(dataset_root: Path, splits: Mapping[str, list[Record]]) -> No
       materialized instance self-contained: a consumer reading the
       JSONL can resolve every variant's image bytes without referring
       back to the (now-augmented-away) source image.
+
+    ``rewrite_plan`` (Story J.g) maps a split name to the qualifying image
+    sink that persists its transformed pixels. For non-aggressive records
+    in such a split, the record's ``path`` is rewritten to the sink's
+    per-record output (instance-relative) so a consumer reading ``path``
+    sees the *prepared* pixels, not the diverged source. Splits absent
+    from the plan keep their source ``path`` unchanged.
     """
     from PIL import Image as _PIL_Image
 
+    plan = rewrite_plan or {}
     dataset_root.mkdir(parents=True, exist_ok=True)
     for split_name, records in splits.items():
         sidecar_dir = dataset_root / split_name / "images"
+        rewrite_sink = plan.get(split_name)
         prepared: list[dict[str, Any]] = []
         for r in records:
-            prepared.append(_prepare_record_for_persistence(r, split_name, sidecar_dir, _PIL_Image))
+            prepared.append(
+                _prepare_record_for_persistence(
+                    r, split_name, sidecar_dir, _PIL_Image, rewrite_sink
+                )
+            )
         path = dataset_root / f"{split_name}.jsonl"
         with path.open("w", encoding="utf-8") as fh:
             for r_prepared in prepared:
@@ -755,12 +783,26 @@ def _prepare_record_for_persistence(
     split_name: str,
     sidecar_dir: Path,
     pil_image_module: Any,
+    rewrite_sink: SinkOp | None = None,
 ) -> dict[str, Any]:
     """Return a JSONL-ready copy of ``record``; for aggressive variants,
     side-effect-write the PNG to ``sidecar_dir`` and replace ``image``
-    with ``image_path``."""
+    with ``image_path``.
+
+    For non-aggressive records, when ``rewrite_sink`` is provided (Story
+    J.g), the ``path`` field is rewritten to the sink's per-record output
+    (instance-relative, via the sink's ``path_template``) so consumers see
+    the transformed pixels rather than the diverged source.
+    """
     if not _is_aggressive_variant(record):
-        return dict(record)
+        out = dict(record)
+        if rewrite_sink is not None:
+            from datarefinery.pipeline.sinks.template import render_template
+
+            out["path"] = render_template(
+                rewrite_sink.path_template, record=record, split=split_name
+            )
+        return out
     img = record.get("image")
     if not isinstance(img, np.ndarray) or img.dtype != np.uint8:
         # No bytes to persist (or wrong dtype) — fall back to passthrough

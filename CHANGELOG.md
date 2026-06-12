@@ -60,6 +60,27 @@ are deferred to the bundle's release ceremony.
 - **`cache.layout.sample_dir`.** New layout helper for the sidecar
   directory.
 
+- **Story J.g: consumer-applied transformations boundary.** Closes the
+  silent `path`-vs-transformed-pixels divergence: a non-aggressive recipe
+  declaring a *pixel-altering* Transformation (today: `resize`) emitted
+  JSONL whose `path` pointed at pre-transform source pixels while the
+  transformed `image` was dropped at serialization. Now:
+  - **`OperationSpec.pixel_altering`** — new declarative flag classifying
+    Transformation ops as pixel-altering (changes image bytes in a way
+    NOT recoverable from persisted fitted statistics). `resize` is
+    flagged; `normalize` / `mean_subtract` / `cast` are not.
+  - **FR-2 check 26** (`pixel_altering_transform_requires_sink`) — refuses
+    a recipe with a pixel-altering Transformation on any lazily-serialized
+    split unless a qualifying image sink (`format: png_per_record`,
+    `field: image`, a post-Transformations stage) covers those splits.
+    The validator now runs **26** checks.
+  - **`path` rewrite** — when the qualifying sink is present, each
+    affected record's JSONL `path` is rewritten to the sink's per-record
+    output (instance-relative), so consumers reading `path` decode the
+    transformed pixels. Applies to the `sample/` sidecar JSONL too.
+    Splits realized as aggressive variants are exempt (pixels already
+    baked via `image_path`).
+
 ### Changed
 
 - **FR-2 check 16** (`sample_data_strict_subset`) wording flips from
@@ -78,6 +99,13 @@ are deferred to the bundle's release ceremony.
 - No `schema_version` bump: canonical recipe bytes are unchanged; this
   is a materialization-behavior change. Pre-prod re-materialize event
   for recipes declaring `SampleData:` only.
+- **Story J.g `path` rewrite.** Recipes with a pixel-altering
+  Transformation (today: `resize`) now emit instance-relative `path`
+  values (pointing at the qualifying sink's per-record PNG) for affected
+  splits, instead of the source-image path. No `schema_version` bump
+  (canonical recipe bytes unchanged); the on-disk `path` value changes
+  → pre-prod re-materialize event for any such recipe. Recipes without
+  pixel-altering Transformations are byte-identical to prior output.
 
 ### Cross-repo coordination
 
@@ -91,6 +119,13 @@ are deferred to the bundle's release ceremony.
   pre-v0.20.0-instance adoption migration note (consumers continue to
   scan-and-sort when reading older instances) replaces the prior
   forward-declaration guidance.
+- [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md):
+  ratified the § "Consumer-applied transformations vs. baked
+  transformations" boundary (Story J.g). The lazy-mode geometry-transform
+  gap is documented as **closed**: the closed pixel-altering-op set
+  (`{resize}`, plugin-declared), validator check 26, and the
+  instance-relative `path`-rewrite mechanism are now the stable contract.
+  Removed the "Pre-J.g caveat" / "Unresolved boundary" framing.
 
 ## [0.19.0] - 2026-05-30
 

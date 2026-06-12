@@ -148,8 +148,8 @@ def test_valid_recipe_passes_all_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 25
-    assert {r.check_id for r in report.results} == set(range(1, 26))
+    assert len(report.results) == 26
+    assert {r.check_id for r in report.results} == set(range(1, 27))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -1838,3 +1838,110 @@ def test_check_25_passes_when_group_by_is_generation_tag_field() -> None:
     ]
     report = validate(_build(ok), _Plugin())
     assert not _failures_for(report, 25)
+
+
+# ---------------------------------------------------------------------------
+# Check 26 — consumer-applied transformations boundary (Story J.g)
+# ---------------------------------------------------------------------------
+
+from datarefinery.plugins.image_classification import PLUGIN as _IMAGE_PLUGIN  # noqa: E402
+
+
+def _image_recipe(
+    *,
+    transformations: list[dict[str, Any]] | None = None,
+    augmentations: list[dict[str, Any]] | None = None,
+    sinks: list[dict[str, Any]] | None = None,
+) -> Recipe:
+    return Recipe.model_validate(
+        {
+            "schema_version": 2,
+            "plugin": "image_classification",
+            "Input": {
+                "sources": [{"name": "train", "type": "image_folder", "path": "/data/train"}]
+            },
+            "Output": {
+                "record_schema": {
+                    "image": {"dtype": "uint8", "shape": [4, 4, 3]},
+                    "label": {"dtype": "str"},
+                }
+            },
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": {"ratios": {"train": 0.6, "val": 0.2, "test": 0.2}, "seed": 11},
+            "Transformations": transformations or [],
+            "Augmentations": augmentations or [],
+            "Sinks": sinks or [],
+        }
+    )
+
+
+_RESIZE_ALL_SPLITS = {
+    "name": "r",
+    "op": "resize",
+    "params": {"size": 8},
+    "splits": ["train", "val", "test"],
+}
+_IMAGE_SINK_POST_TX = {
+    "name": "transformed",
+    "stage": "post_Transformations",
+    "field": "image",
+    "format": "png_per_record",
+    "path_template": "transformed/{split}/{record_id}.png",
+}
+
+
+def test_check_26_refuses_pixel_altering_transform_without_sink() -> None:
+    recipe = _image_recipe(transformations=[_RESIZE_ALL_SPLITS])
+    report = validate(recipe, _IMAGE_PLUGIN)
+    failures = _failures_for(report, 26)
+    assert len(failures) == 1
+    assert "resize" in failures[0].message
+    assert "Sinks" in failures[0].message
+    assert "val" in failures[0].message and "test" in failures[0].message
+
+
+def test_check_26_passes_with_qualifying_image_sink() -> None:
+    recipe = _image_recipe(transformations=[_RESIZE_ALL_SPLITS], sinks=[_IMAGE_SINK_POST_TX])
+    report = validate(recipe, _IMAGE_PLUGIN)
+    assert not _failures_for(report, 26)
+
+
+def test_check_26_passes_for_normalize_only() -> None:
+    recipe = _image_recipe(
+        transformations=[
+            {
+                "name": "n",
+                "op": "normalize",
+                "fit_source": "train",
+                "splits": ["train", "val", "test"],
+            }
+        ]
+    )
+    report = validate(recipe, _IMAGE_PLUGIN)
+    assert not _failures_for(report, 26)
+
+
+def test_check_26_refuses_on_partial_sink_coverage() -> None:
+    sink = {**_IMAGE_SINK_POST_TX, "splits": ["train"]}
+    recipe = _image_recipe(transformations=[_RESIZE_ALL_SPLITS], sinks=[sink])
+    report = validate(recipe, _IMAGE_PLUGIN)
+    failures = _failures_for(report, 26)
+    assert len(failures) == 1
+    assert "val" in failures[0].message and "test" in failures[0].message
+    assert "train" not in failures[0].message.split("splits", 1)[-1]
+
+
+def test_check_26_passes_when_resize_only_on_aggressive_train() -> None:
+    recipe = _image_recipe(
+        transformations=[{**_RESIZE_ALL_SPLITS, "splits": ["train"]}],
+        augmentations=[
+            {
+                "name": "flip",
+                "op": "horizontal_flip",
+                "splits": ["train"],
+                "materialization": "aggressive",
+            }
+        ],
+    )
+    report = validate(recipe, _IMAGE_PLUGIN)
+    assert not _failures_for(report, 26)

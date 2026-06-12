@@ -1004,7 +1004,28 @@ Sinks:
 
 **Manifest.** Each sink writes one entry to `manifest.sinks.<name>`: `stage`, `format`, `files_written`, `bytes_total`, `path_template_resolved_root` (the longest fixed prefix of the template). See the dependency contract for downstream consumers in [`modelfoundry/dependency-spec.md`](../specs/modelfoundry/dependency-spec.md).
 
-**Tip: where to put the sink.** For uint8 image exports, target the earliest stage at which the record carries the uint8 representation you want (typically `post_Filters` or `post_Generation`) — **before** any normalize-style Transformation rewrites `image` in place to float bytes. A sink at `post_Transformations` against a normalized `image` field will fail at materialize time with an actionable dtype error.
+**Sink as pixel source for pixel-altering Transformations (Story J.g).** A sink can also serve as the *authoritative pixel source* for the JSONL `path` field. For non-aggressive ("lazy") records, the writer drops the in-memory `image` array and leaves `path` pointing at the **source** file — so a recipe with a pixel-altering Transformation (today: `resize`) would otherwise emit records whose `path` references pre-transform geometry. To prevent that silent divergence:
+
+- **Validator check 26** refuses a recipe that declares a pixel-altering Transformation on any lazily-serialized split unless a *qualifying image sink* covers those splits. A qualifying sink is `format: png_per_record`, `field: image`, at a post-transform stage (`post_Transformations` or later).
+- When such a sink is present, DataRefinery **rewrites each affected record's `path`** to the sink's per-record output (instance-relative, e.g. `transformed/{split}/{record_id}.png`). The sink writes the transformed PNG; the rewritten `path` resolves to it. Consumers reading `path` now land on the transformed pixels.
+
+```yaml
+Transformations:
+  - name: shrink
+    op: resize
+    params: { size: 16 }
+    splits: [train, val, test]
+Sinks:
+  - name: transformed
+    stage: post_Transformations    # captures the resized uint8 image
+    field: image
+    format: png_per_record
+    path_template: "transformed/{split}/{record_id}.png"
+```
+
+`normalize` / `mean_subtract` (consumer-applies from persisted fitted statistics) and `cast` are **not** pixel-altering, so they don't require this sink. Splits realized as aggressive `Augmentations` variants are exempt — their pixels are already baked into sidecar PNGs via `image_path`. See [`modelfoundry/vendor-dependency-spec.md`](../specs/modelfoundry/vendor-dependency-spec.md) § "Consumer-applied transformations vs. baked transformations" for the consumer contract.
+
+**Tip: where to put the sink.** For uint8 image exports, target the earliest stage at which the record carries the uint8 representation you want (typically `post_Filters` or `post_Generation`) — **before** any normalize-style Transformation rewrites `image` in place to float bytes. A sink at `post_Transformations` against a normalized `image` field will fail at materialize time with an actionable dtype error. (The Story J.g path-rewrite case above is the exception that *wants* `post_Transformations` — but only for geometry ops like `resize` that keep `image` uint8.)
 
 **Re-running sinks after the fact: `datarefinery export` (Story I.f).** A recipe author who added a sink to an already-materialized recipe can produce the sink output without re-running the full pipeline:
 

@@ -206,6 +206,8 @@ def _supported_operations() -> dict[str, OperationSpec]:
                 "method": ParameterSpec(type="str", required=False, default="bilinear"),
             },
             applicable_sections=frozenset({"Transformations"}),
+            # Geometry change; not recoverable from persisted stats. Story J.g.
+            pixel_altering=True,
         ),
         "normalize": OperationSpec(
             parameters={

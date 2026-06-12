@@ -39,6 +39,15 @@ class OperationSpec(BaseModel):
     fit_on_train: bool = False
     applicable_splits: frozenset[str] = frozenset({"train", "val", "test"})
     applicable_sections: frozenset[str]
+    #: Story J.g: a Transformations op is *pixel-altering* when its
+    #: ``apply`` changes the image array's bytes in a consumer-visible way
+    #: that is NOT recoverable from persisted fitted statistics (e.g.
+    #: ``resize`` changes geometry). Stat-based / consumer-applied ops
+    #: (``normalize``, ``mean_subtract``) and parameter-deterministic
+    #: numeric ops (``cast``) are NOT pixel-altering — the consumer
+    #: reproduces them at load time from persisted stats or recipe params.
+    #: Drives validator check 26 and the lazy-mode ``path`` rewrite.
+    pixel_altering: bool = False
 
 
 @runtime_checkable

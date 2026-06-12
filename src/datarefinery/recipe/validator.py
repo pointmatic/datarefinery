@@ -1358,6 +1358,55 @@ def check_25_visualization_group_by_resolvable(recipe: Recipe, plugin: Plugin) -
     )
 
 
+def check_26_pixel_altering_transform_requires_sink(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Story J.g: a pixel-altering Transformation needs an image sink.
+
+    For non-aggressive ("lazy") records the dataset writer drops the
+    in-memory ``image`` field at JSONL serialization and leaves ``path``
+    pointing at the *source* file. A pixel-altering Transformation (e.g.
+    ``resize``) therefore produces JSONL whose ``path`` references
+    pre-transform geometry — a silent divergence.
+
+    This check refuses the combination unless the recipe declares a
+    qualifying sink — a ``png_per_record`` sink writing the ``image``
+    field at a post-transform stage — covering every lazy split the
+    transform touches. The runner rewrites those records' ``path`` to the
+    sink's per-record output (see
+    :mod:`datarefinery.pipeline.path_rewrite`). Splits realized as
+    aggressive variants carry transformed bytes via ``image_path`` and are
+    exempt. The ``pixel_altering`` classification lives on the plugin's
+    ``OperationSpec``, so non-image plugins (no pixel-altering ops) pass
+    trivially.
+    """
+    descriptor = "pixel_altering_transform_requires_sink"
+    from datarefinery.pipeline.path_rewrite import (
+        POST_TRANSFORM_SINK_STAGES,
+        pixel_altering_transformations,
+        uncovered_pixel_altering_splits,
+    )
+
+    uncovered = uncovered_pixel_altering_splits(recipe, plugin)
+    if not uncovered:
+        return _passed(26, descriptor)
+    offending = [
+        f"{op.name} (op={op.op!r})" for op in pixel_altering_transformations(recipe, plugin)
+    ]
+    return CheckResult(
+        check_id=26,
+        descriptor=descriptor,
+        status="fail",
+        location="Transformations",
+        message=(
+            f"pixel-altering Transformation(s) {offending!r} would leave the "
+            f"JSONL 'path' pointing at pre-transform source pixels on splits "
+            f"{sorted(uncovered)!r}. Declare a Sinks entry "
+            f"(format='png_per_record', field='image', stage in "
+            f"{sorted(POST_TRANSFORM_SINK_STAGES)!r}) covering those splits so "
+            f"DataRefinery can rewrite 'path' to the transformed per-record output."
+        ),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1443,6 +1492,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         25,
         "visualization_group_by_resolvable",
         check_25_visualization_group_by_resolvable,
+    ),
+    (
+        26,
+        "pixel_altering_transform_requires_sink",
+        check_26_pixel_altering_transform_requires_sink,
     ),
 )
 
