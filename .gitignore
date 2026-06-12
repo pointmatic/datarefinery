@@ -47,3 +47,6 @@ scratch/
 /docs/project-guide/developer/
 /docs/project-guide/templates/
 /docs/project-guide/**/*.bak.*
+
+# project
+do-not-commit*.md

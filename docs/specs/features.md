@@ -171,7 +171,7 @@ DataRefinery compiles a single YAML **recipe** — declaring data category, raw 
 
 ```
 data/instances/<recipe-hash>/<input-hash>/<seed>/
-├── recipe.yaml                  # the exact recipe used (post-normalization for the cache key, original preserved)
+├── recipe.json                  # canonical post-loader recipe (v2-shape, key-sorted, the bytes hashed for the cache key)
 ├── dataset/                     # the prepared dataset (parquet for tabular; plugin-defined layout for image/text)
 ├── fitted_statistics/           # statistics fitted on the training split (persisted, not pickled sidecars)
 ├── report/

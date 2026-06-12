@@ -161,7 +161,60 @@ v0.19.0 ships `schema_version 2` with a loader-side v1→v2 migration. Verify bo
 
 ---
 
+### Story J.f: `manifest.label_classes` — canonical class-set enumeration [Planned]
 
+**Disposition: feature addition + cross-repo contract.** Part of Phase J phase-bundle release (target v0.20.0). Closes the class-enumeration gap surfaced during the [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) 2026-06-11 ratification round 2.
+
+Today the manifest carries no canonical class set. Every consumer that needs label→logit-index mapping, confusion-matrix axes, or per-class column naming scans JSONL itself and picks a sort convention out-of-band. Two consumers (or two flows in one consumer) can silently disagree on ordering, producing misaligned predictions ↔ confusion matrix ↔ class-weight vectors. Centralize the list in the manifest so ordering becomes the producer's commitment.
+
+**Tasks:**
+
+- [ ] Add `Manifest.label_classes: list[Any] | None = None` field in [`src/datarefinery/pipeline/manifest.py`](../../src/datarefinery/pipeline/manifest.py).
+- [ ] Compute at materialize time in [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py): scan all labeled records across all defined splits (skip unlabeled records per FR-22), take the distinct union, sort ascending using Python `sorted(...)` semantics. Empty when no labeled records exist → field is `None`.
+- [ ] Emit at both the full and partial manifest-build sites (mirror the `class_balance` and `sample` emission discipline).
+- [ ] Unit tests: balanced multi-class, sparse class (present only in test), single-class, fully-unlabeled (`None`), `str` and `int` label dtypes. Confirm the manifest-side computation matches a JSONL-derived scan over all splits.
+- [ ] Integration test: round-trip a fixture recipe and assert the manifest's `label_classes` matches the JSONL-derived set on a recipe with disjoint train/val/test class coverage.
+- [ ] Cache-identity guard: confirm the new field perturbs no canonical bytes (it lives in manifest, not recipe) — pinning fixture stays green.
+- [ ] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md): ratify the forward-declared `manifest.label_classes` shape subsection — remove the "forward-declared" / "pre-J.f" caveats; mark the field as live in the current release.
+- [ ] DOC: update [`docs/specs/tech-spec.md`](tech-spec.md) manifest section to enumerate the new field.
+- [ ] CHANGELOG entry under the in-progress v0.20.0 section: additive manifest field, no `schema_version` bump (no canonical-bytes perturbation), consumer-bind addition.
+- [ ] CI parity: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+
+**Out of Scope:**
+
+- Per-class frequency / count emission in the manifest. Consumer-derived from JSONL is fine; the canonical class list is what matters for ordering. See `manifest.class_balance` shape § "Per-class counts" for the documented division.
+- Multi-label / multi-class-per-record extensions. v1 image_classification is single-label; multi-label is a Future feature.
+
+---
+
+### Story J.g: Consumer-applied transformations boundary — `path` rewrite + validator guard [Planned]
+
+**Disposition: feature addition + validator check + cross-repo contract.** Part of Phase J phase-bundle release (target v0.20.0). Closes the silent `path`-vs-transformed-pixels divergence surfaced during the [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) 2026-06-11 ratification round 2.
+
+In v0.19.0, `path` is set once at input loading and never rewritten by Transformations or Sinks. A non-aggressive recipe declaring `resize` (or any pixel-altering op) produces JSONL whose `path` points at source pixels while the in-memory transformed image is dropped at serialization — consumers reading `path` get pre-transform geometry, silently. The CIFAR-10 reference flow has no geometry transforms and avoids the gap, but it's load-bearing for generalization.
+
+**Approach.** Require a sink for lazy-mode recipes containing pixel-altering Transformations; DR rewrites each record's `path` field to point at the sink's per-record output. Interim validator check refuses the silent-divergence case so it cannot be authored in the first place.
+
+**Tasks:**
+
+- [ ] Identify the closed set of pixel-altering Transformation ops in the `image_classification` plugin (today: `resize`; plus any future ops). Document the criterion explicitly: an op is pixel-altering if its `apply` changes the image array's bytes in a consumer-visible way that is NOT recoverable from persisted fitted statistics. `normalize` / `mean_subtract` are NOT pixel-altering by this criterion — they are stat-based and consumer-applied.
+- [ ] Add validator **check N** (new number; integration suite count assertion updates): lazy-mode recipe + `Transformations` containing a pixel-altering op + no `Sinks` declaration → refuse with a message naming the offending op and the required sink declaration.
+- [ ] Implement path-rewrite mechanism: when a recipe declares a sink AND has pixel-altering Transformations, DR rewrites each record's `path` field at JSONL emission to point at the sink's per-record output (using the sink's resolved `path_template`).
+- [ ] Unit tests: pixel-altering + no sink → validator refusal; pixel-altering + sink → JSONL records carry rewritten `path` matching the sink's per-record output; non-pixel-altering (`normalize`-only) → `path` unchanged (regression guard).
+- [ ] Integration test: end-to-end recipe with `resize` + sink → consumer reads `path`, decodes the sidecar PNG, gets byte-identical pixels to the in-memory transformed array recorded by the determinism test.
+- [ ] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md): ratify the forward-declared § "Consumer-applied transformations vs. baked transformations" — remove the "Phase J Story J.g" forward-declaration; document the closed pixel-altering-op set and the path-rewrite mechanism as the stable contract.
+- [ ] DOC: update [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Sinks to describe the sink-as-pixel-source pattern.
+- [ ] CHANGELOG entry under the in-progress v0.20.0 section: cross-repo contract change. Additive (no `schema_version` bump needed); document the pre-J.g silent-divergence case as a fixed bug.
+- [ ] CI parity: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+
+**Out of Scope:**
+
+- Aggressive-mode behavior. Unchanged — already correct via `image_path`.
+- A separate path-rewrite mechanism that doesn't go through `Sinks`. Sinks are the existing "write transformed pixels to disk" surface; using them keeps one mechanism for the write half (sink → bytes) and one for the JSONL-binding half (path rewrite → consumer-visible source). Adding a parallel mechanism would multiply the surfaces where loose/tight coupling questions could re-surface, mirroring the precedent in [`project-essentials.md`](project-essentials.md) § "Sibling-instance dependencies are loose-coupled in v1".
+- Pixel-altering ops appearing in `Augmentations` (lazy mode). Lazy-mode augmentations are policy-only by design (consumer realizes); they're not in scope here.
+- A path-rewrite for `mean_subtract` / `normalize`. These are consumer-applied by design (see vendor-dependency-spec § "Normalization is applied by the consumer"); their bytes-on-disk semantics are unchanged.
+
+---
 
 ## Future
 

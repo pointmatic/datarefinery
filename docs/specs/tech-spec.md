@@ -742,7 +742,7 @@ Recipe semantics never read from CLI/env. The only field where CLI flag override
 │   ├── <recipe-hash16>/
 │   │   └── <input-hash16>/
 │   │       └── <seed>/
-│   │           ├── recipe.yaml
+│   │           ├── recipe.json                       # canonical post-loader form (the bytes hashed for the cache key)
 │   │           ├── dataset/
 │   │           │   ├── train.jsonl                  # one record per line
 │   │           │   ├── val.jsonl
