@@ -58,6 +58,22 @@
 > no `schema_version` bump (canonical recipe bytes unchanged); the
 > on-disk `path` value changes for affected recipes → pre-prod
 > re-materialize event.
+>
+> **Round 3 additions 2026-06-12 (Story J.k).** Absorbs four
+> documentation-only clarifications surfaced by the [J.d MF integration
+> spike](../phase-j-mf-integration-friction.md) (no code or shape
+> change): **F8** — the consumer-side runtime deps a downstream tool needs
+> beyond stdlib (`numpy` / `Pillow` / `pyarrow`), added to § Overview;
+> **F6** — every top-level recipe section persists in `recipe.json` as its
+> model default whether declared or not, added to § Recipe-side contract;
+> **F3** — the non-aggressive `path` field is host-bound, with the two
+> portability workarounds (`Sinks` rewrite / ship the source), added to
+> § Source-resolution path; **F5** — `recipe.schema_version` (`2`) and
+> `manifest.schema_version` (`1`) are independent counters, disambiguated
+> in § Schema-version coordination policy. Each absorption site carries an
+> inline "*(Fn, pinned in Round 3)*" provenance marker. *(F4 — the
+> disk-loader vs. library-records Featurization asymmetry — lands in the
+> NbF spec, which owns the library-records path.)*
 
 ## Overview
 
@@ -67,9 +83,13 @@ It enumerates exactly what DataRefinery emits — recipe-side fields, on-disk da
 
 Out of scope here: ModelFoundry's training-time APIs (those live in ModelFoundry's repo) and DataRefinery's internal implementation details (those live in `tech-spec.md` and `features.md`).
 
+**Consumer-side runtime dependencies.** Reading a materialized instance beyond pure stdlib requires `numpy` (image bytes and record arrays), `Pillow` (PNG decode for aggressive-variant sidecars and any image-bytes reads), and `pyarrow` (parquet decode for `fitted_statistics/`). A consumer that only reads `manifest.json` / `recipe.json` / `report/*.json` (no pixels, no fitted stats) needs none of these. *(F8, pinned in Round 3 — see header.)*
+
 ## Recipe-side contract
 
 A recipe is a YAML document validated by `Recipe.model_validate(...)` in `src/datarefinery/recipe/models.py`. The full schema is documented in `tech-spec.md` § Data Models; this section calls out the augmentation surface (Story H.p–H.r.2) that ModelFoundry consumes directly.
+
+**Every top-level recipe section persists in `recipe.json`, declared or not.** The persisted `recipe.json` is the canonical `model_dump(mode="json")` of the full `Recipe` model, so **all** top-level sections are present whether or not the author wrote them — an undeclared section materializes as its model default: `[]` for list sections (`InputContracts`, `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `OutputExpectations`, `Visualizations`, `Sinks`), `null` for optional object sections (`SampleData`), and the section's own default object where one exists. Consumers SHOULD treat an empty-list / `null` section as "not declared" rather than inferring a special meaning. This is the same mechanism that makes every field default part of the cache identity — see [`project-essentials.md`](../project-essentials.md) § "Cache identity is the reproducibility contract". *(F6, pinned in Round 3 — see header.)*
 
 ### `Augmentations` section
 
@@ -154,6 +174,13 @@ Each JSONL line is a single record dict, serialized with sorted keys for byte-st
 **Source-resolution path** (non-aggressive records):
 
 - `path: str` — the source-image file path. Image bytes resolve via the source filesystem. **The `image` numpy field is dropped at serialization** — downstream consumers read pixels from `path`.
+
+**Host portability.** For non-aggressive records with no pixel-altering Transformation, `path` is the **loader-stamped source path** (typically host-absolute, e.g. `/data/imagefolder/c0/img.png`) — it is **host-bound** and does NOT resolve on a different machine unless the source ImageFolder is present at the same path. Consumers operating across hosts (e.g. materialize on a workstation, train on a cluster) SHOULD either:
+
+- **(a)** declare a `Sinks` block (`format: png_per_record`, `field: image`, a post-transform stage) so per-record images land **under the instance directory** and `path` is rewritten to an instance-relative location. This is exactly the Story J.g `path`-rewrite mechanism — *required* (validator check 26) for the pixel-altering subset, and *available* as a portability tool for the general case; or
+- **(b)** ship the source ImageFolder alongside the instance and reconstruct the original `path` prefix on the consuming host.
+
+Aggressive variants are already instance-relative via `image_path` (below) and need neither workaround. *(F3, pinned in Round 3 — see header. The pixel-altering subset is covered by § "Lazy-mode geometry / pixel-altering Transformations".)*
 
 **Aggressive-mode variants** (Story H.r.2):
 
@@ -380,6 +407,15 @@ Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SC
 - **Assertion `kind` naming** (Story I.x.3 / G16a): three v1 bare-verb names rename to predicate-sentence form — `dtype` → `dtype_equals`, `range` → `value_range`, `record_count` → `record_count_in_range`. The mapping applies to both `InputContracts[*].assertion` and `OutputExpectations[*].assertion`. `required_field` and `distributional` are unchanged. v1 names are removed (not aliased) post-migration; ModelFoundry consumers reading the cached `recipe.json` will see the v2 names exclusively. The seven additional v2 kinds added in Story I.o (`split_record_counts`, `per_class_count_per_split`, `count_by_field`, `count_by_fields`, `shape_equals`, `value_in_set`, `per_class_count_equals`) were already predicate-sentence and are unaffected.
 
 ## Schema-version coordination policy
+
+**Two independent `schema_version` counters — do not conflate them.** A materialized instance carries *two* fields named `schema_version`, governed by different rules:
+
+| Field | Where | Current value | Source of truth |
+|---|---|---|---|
+| `recipe.schema_version` | `recipe.json` (top-level) | `2` | `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION` |
+| `manifest.schema_version` | `manifest.json` (top-level) | `1` | `datarefinery.pipeline.manifest.MANIFEST_SCHEMA_VERSION` |
+
+`recipe.schema_version` versions the **recipe shape** (the loader migrates v1→v2 on read); `manifest.schema_version` versions the **manifest document format** and advances on its own, unrelated cadence. A consumer binding against the recipe-schema coordination logic below MUST read `recipe.schema_version` — reading `manifest.schema_version` (currently `1`) where the recipe version (currently `2`) is meant is a silent off-by-one that will mis-route the migration check. *(F5, pinned in Round 3 — see header.)*
 
 As of the current DataRefinery release the supported set is **`{1, 2}`** with **`LATEST_SCHEMA_VERSION = 2`** (importable as `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION`). DataRefinery's loader applies the registered `(1, 2)` migration chain before validation, so a consumer using `Instance.load` always sees the **v2-shaped** recipe regardless of the on-disk recipe's authored version. A consumer that still pins its tracked set to `{1}` MUST update to include `2` before binding v2 instances, or it will hard-error per the rule below.
 

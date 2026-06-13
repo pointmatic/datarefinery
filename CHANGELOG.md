@@ -193,6 +193,19 @@ are deferred to the bundle's release ceremony.
   enumerated `drift.json.recipe_hash` as a stable field under § "Report
   subsections" and made the § "Failure modes" parenthetical load-bearing
   (Story J.j).
+- **Vendor-dependency-spec ratification Round 3 (Story J.k).**
+  Documentation-only round absorbing five J.d-spike friction items (no
+  code, manifest, or recipe shape change). MF spec:
+  **F8** consumer-side runtime deps (`numpy`/`Pillow`/`pyarrow`) in
+  § Overview; **F6** every top-level recipe section persists in
+  `recipe.json` as its model default in § Recipe-side contract; **F3**
+  host-bound `path` + portability workarounds in § Source-resolution
+  path; **F5** `recipe.schema_version` (2) vs `manifest.schema_version`
+  (1) disambiguation table in § Schema-version coordination policy.
+  NbF spec: **F4** disk-loader vs. library-records Featurization
+  collision asymmetry under § Library entry points. Both spec status
+  blocks gain a "Round 3" note; each absorption site carries an inline
+  provenance marker.
 
 ## [0.19.0] - 2026-05-30
 

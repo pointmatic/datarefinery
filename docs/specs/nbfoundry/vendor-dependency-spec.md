@@ -15,6 +15,18 @@
 > **forward-declared** target separate Phase J follow-up stories not
 > yet authored; the inline cross-reference names the friction-list
 > entry that motivates each.
+>
+> **Round 3 addition 2026-06-12 (Story J.k).** Added § "Disk-loader vs.
+> library-records Featurization asymmetry" under § Library entry points,
+> documenting **F4** from the [J.d MF integration
+> spike](../phase-j-mf-integration-friction.md): a `Featurizations` op
+> whose `output_field` the loader pre-stamps validates on the disk path
+> (check 23 exempts loader-stamped fields) but can hit the unconditional
+> runtime collision guard when records are constructed manually via the
+> library API. Documentation-only — it pins existing behavior and changes
+> no code. (F4 lands here rather than in the MF spec because the
+> library-records path is NbFoundry's home; the MF spec's Round 3 note
+> records the cross-reference.)
 
 ## Overview
 
@@ -173,6 +185,35 @@ One-shot loader → validator → runner → instance. **Discards** the
 intermediate `DataRefinery`, so the cache-hit signal is lost. Use when
 the notebook cell only needs the materialized `Instance` and doesn't
 care whether the run hit cache.
+
+### Disk-loader vs. library-records Featurization asymmetry
+
+A recipe that passes validation through the **disk path** (the loader
+inflates records from `Input.sources`) can still raise at materialize
+time when the **same recipe** is driven via the library API with
+**manually constructed** records — specifically for `Featurizations`
+whose `output_field` is a field the loader normally pre-stamps.
+
+Validator **check 23** exempts loader-stamped fields (`record_id`,
+`image`, `path`, `label`, `partition`) from the `output_field`-collision
+rule, because on the disk path those fields are produced by the loader
+*before* the Featurization runs, and the op legitimately overwrites /
+derives them. But the runtime collision guard in
+[`pipeline/stages/featurizations.py`](../../../src/datarefinery/pipeline/stages/featurizations.py)
+is unconditional: it raises `MaterializeError` if **any** record already
+carries `output_field` when the op runs. So a notebook cell that builds
+records by hand and supplies one already populated with the
+Featurization's `output_field` will hit the runtime check even though
+the recipe validates.
+
+**Guidance for NbFoundry notebook authors:** when supplying records
+manually to the library API, either (a) rely on the loader to stamp the
+field — i.e. drive materialization from `Input.sources` via
+`DataRefinery.from_recipe(...).materialize()` rather than hand-built
+records — or (b) remove the Featurization op (and the pre-populated
+field) when constructing records yourself. *(F4, pinned in Round 3 — see
+header; this documents existing behavior, it does not change the
+collision-check.)*
 
 ## CLI commands
 
