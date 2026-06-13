@@ -809,9 +809,16 @@ def _prepare_record_for_persistence(
         # so legacy/non-image plugins aren't accidentally forced through
         # the PNG path.
         return dict(record)
-    sidecar_dir.mkdir(parents=True, exist_ok=True)
     record_id = str(record["record_id"])
     sidecar_path = sidecar_dir / f"{record_id}.png"
+    # Story J.h: ImageFolder stamps `record_id` as `<source>/<class>/<file>`
+    # (forward slashes) and the aggressive realizer appends `__v<NNN>`, so the
+    # sidecar filename can carry separators that imply nested directories.
+    # Create the leaf's parent (not just `sidecar_dir`) so PIL.save does not
+    # fail with FileNotFoundError. For flat (manual-API) record_ids the parent
+    # is `sidecar_dir` and this is a no-op-equivalent. `record_id` itself is
+    # NOT mutated; `image_path` mirrors it verbatim.
+    sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     pil_image_module.fromarray(img).save(sidecar_path, format="PNG", optimize=False)
     out = dict(record)
     out.pop("image", None)

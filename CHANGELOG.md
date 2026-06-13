@@ -89,6 +89,21 @@ are deferred to the bundle's release ceremony.
   the final materialized records, not the raw input. Selector-coherence
   enforcement is unchanged.
 
+### Fixed
+
+- **Story J.h: ImageFolder + aggressive Augmentations sidecar PNG crash.**
+  End-to-end materialization of a recipe with `Input.type: image_folder`
+  plus aggressive `Augmentations` crashed with `FileNotFoundError` at the
+  dataset-write stage: the ImageFolder loader stamps `record_id` as
+  `<source>/<class>/<file>` (forward slashes) and the aggressive realizer
+  appends `__v<NNN>`, so the sidecar filename implied nested directories
+  the writer never created. [`_prepare_record_for_persistence`](src/datarefinery/pipeline/runner.py)
+  now creates the sidecar's leaf parent (`sidecar_path.parent.mkdir(parents=True)`),
+  preserving the nested layout. `record_id` is not mutated; `image_path`
+  mirrors it verbatim. The disk-loader aggressive path now has end-to-end
+  coverage ([`tests/integration/test_imagefolder_aggressive.py`](tests/integration/test_imagefolder_aggressive.py))
+  that the prior library-API (flat-record_id) tests never exercised.
+
 ### Materialization-bytes notes
 
 - Recipes that declare a `SampleData:` section now produce a sibling
@@ -106,6 +121,15 @@ are deferred to the bundle's release ceremony.
   (canonical recipe bytes unchanged); the on-disk `path` value changes
   → pre-prod re-materialize event for any such recipe. Recipes without
   pixel-altering Transformations are byte-identical to prior output.
+- **Story J.h ImageFolder aggressive sidecars.** ImageFolder recipes with
+  aggressive `Augmentations` previously could not materialize at all
+  (crash); they now produce sidecar PNGs under a nested
+  `dataset/<split>/images/<source>/<class>/...` subtree, with `image_path`
+  mirroring the `/`-bearing `record_id`. No `schema_version` bump
+  (canonical recipe bytes unchanged); pre-prod re-materialize event for
+  any `image_folder` + aggressive recipe (which could not have a cached
+  instance before this fix). Library-API recipes with flat record_ids are
+  byte-identical to prior output.
 
 ### Cross-repo coordination
 
@@ -126,6 +150,12 @@ are deferred to the bundle's release ceremony.
   (`{resize}`, plugin-declared), validator check 26, and the
   instance-relative `path`-rewrite mechanism are now the stable contract.
   Removed the "Pre-J.g caveat" / "Unresolved boundary" framing.
+- [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md):
+  pinned the sidecar `image_path` resolution rule for ImageFolder +
+  aggressive recipes (Story J.h) — `image_path` is exactly
+  `"<split>/images/<record_id>.png"` and may be **nested** when
+  `record_id` carries `/` separators; consumers join it as a relative
+  POSIX path, not a flat `images/` lookup.
 
 ## [0.19.0] - 2026-05-30
 

@@ -157,7 +157,7 @@ Each JSONL line is a single record dict, serialized with sorted keys for byte-st
 
 - `source_record_id: str` — record_id of the input that produced this variant.
 - `variant_index: int` — zero-based index within the variant pack; range `[0, expansion)`.
-- `image_path: str` — relative path under `dataset/` (e.g. `"train/images/img_001__v002.png"`) pointing at the sidecar PNG. ModelFoundry consumers MUST resolve variant pixels via `image_path`; the source `path` field, if present on a variant, is not authoritative.
+- `image_path: str` — relative path under `dataset/` (e.g. `"train/images/img_001__v002.png"`) pointing at the sidecar PNG. ModelFoundry consumers MUST resolve variant pixels via `image_path`; the source `path` field, if present on a variant, is not authoritative. **`image_path` is exactly `"<split>/images/<record_id>.png"`** — when `record_id` contains `/` separators (the ImageFolder loader stamps `record_id` as `<source>/<class>/<file>`), `image_path` carries those separators verbatim and the sidecar lives in a correspondingly **nested** subtree under `<split>/images/` (e.g. `"train/images/imgs/c0/img_0001.png__v000.png"`). Consumers MUST join `image_path` onto the instance directory as a relative POSIX path rather than assuming a single flat `images/` directory (Story J.h).
 
 **Per-record-seed stamps** (Story I.e):
 
@@ -170,7 +170,7 @@ These seeds are the value used by the op's RNG. Consumers reconstructing stage o
 
 A recipe declaring `expansion=N` aggressive op against the train split produces `len(train_records_pre_aug) * N` JSONL lines and exactly the same number of sidecar PNGs. Two aggressive ops chained compose multiplicatively (`expansion=a` then `expansion=b` → `N × a × b` records).
 
-Variant `record_id`s are derived as `f"{source_record_id}__v{variant_index:03d}"` — unique, zero-padded for lex-order = numeric-order under standard sort.
+Variant `record_id`s are derived as `f"{source_record_id}__v{variant_index:03d}"` — unique, zero-padded for lex-order = numeric-order under standard sort. The `source_record_id` is the loader-stamped id verbatim, so an ImageFolder source contributes `/`-separated ids (`<source>/<class>/<file>`) and the variant id inherits them (e.g. `imgs/c0/img_0001.png__v000`). DataRefinery does **not** sanitize `record_id`; the sidecar path-writer creates the nested directories the separators imply (Story J.h).
 
 ### Sidecar PNG encoding
 
