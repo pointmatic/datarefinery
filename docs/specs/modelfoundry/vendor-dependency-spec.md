@@ -93,6 +93,8 @@ Two modes coexist per-op. A single `Augmentations:` block may mix lazy and aggre
 
 - **`materialization: aggressive`**. At materialization time, DataRefinery realizes `expansion` augmented variants per train record via the plugin-registered `Realizer`. Variants become **peer records** in the materialized dataset (record multiplication, see on-disk layout below). The variant's image bytes are persisted as per-record sidecar PNGs; ModelFoundry treats variants as first-class records and does not re-realize them.
 
+**Incompatibility: dtype-altering Transformations + aggressive Augmentations (validator check 27, Story J.i).** The aggressive realizer reconstructs each variant image via `PIL.Image.fromarray`, which requires **uint8**. A *dtype-altering* Transformation op — one that leaves the image in a non-uint8 dtype (today `normalize` / `mean_subtract`, which emit float64; surfaced via `OperationSpec.dtype_altering`) — therefore cannot share a split with an aggressive Augmentation; the combination is **refused at validate time** (check 27). This is independent of the pixel-altering classification (check 26): `resize` is pixel-altering but uint8-preserving, so `resize` + aggressive is **allowed**. Authors who need both float normalization and aggressive augmentation should either keep normalization consumer-side (the recommended path — see § "Normalization is applied by the consumer") or use lazy-mode augmentation.
+
 ### Per-op param schemas
 
 Validated by the realizer's pydantic param model on first variant emission. The plugin's `OperationSpec` also enumerates the same parameters for the recipe validator's check 18.

@@ -36,3 +36,28 @@ def test_pixel_altering_defaults_false() -> None:
     # Augmentation / Featurization / Visualization ops carry the default.
     assert PLUGIN.supported_operations["horizontal_flip"].pixel_altering is False
     assert PLUGIN.supported_operations["flatten"].pixel_altering is False
+
+
+# ---------------------------------------------------------------------------
+# Story J.i: dtype-altering ops (non-uint8 image output) break the aggressive
+# realizer's `Image.fromarray` uint8 assumption.
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_is_dtype_altering() -> None:
+    assert PLUGIN.supported_operations["normalize"].dtype_altering is True
+
+
+def test_mean_subtract_is_dtype_altering() -> None:
+    assert PLUGIN.supported_operations["mean_subtract"].dtype_altering is True
+
+
+def test_resize_is_not_dtype_altering() -> None:
+    # resize is pixel-altering (geometry) but keeps uint8 — it does NOT
+    # break the aggressive realizer, so it is not dtype-altering.
+    assert PLUGIN.supported_operations["resize"].dtype_altering is False
+
+
+def test_dtype_altering_defaults_false() -> None:
+    assert PLUGIN.supported_operations["cast"].dtype_altering is False
+    assert PLUGIN.supported_operations["horizontal_flip"].dtype_altering is False

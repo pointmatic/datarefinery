@@ -48,6 +48,17 @@ class OperationSpec(BaseModel):
     #: reproduces them at load time from persisted stats or recipe params.
     #: Drives validator check 26 and the lazy-mode ``path`` rewrite.
     pixel_altering: bool = False
+    #: Story J.i: a Transformations op is *dtype-altering* when its
+    #: ``apply`` leaves the image array in a non-uint8 dtype (e.g.
+    #: ``normalize`` / ``mean_subtract`` emit float64 z-scores / centered
+    #: values). Such output breaks the aggressive-augmentation realizer's
+    #: ``PIL.Image.fromarray`` uint8 assumption, so check 27 refuses a
+    #: dtype-altering Transformation on a split that also carries an
+    #: aggressive Augmentation. Independent of ``pixel_altering``:
+    #: ``resize`` is pixel-altering but uint8-preserving (not dtype-
+    #: altering); ``normalize`` is dtype-altering but consumer-applied
+    #: (not pixel-altering).
+    dtype_altering: bool = False
 
 
 @runtime_checkable

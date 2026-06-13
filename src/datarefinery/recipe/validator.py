@@ -1407,6 +1407,72 @@ def check_26_pixel_altering_transform_requires_sink(recipe: Recipe, plugin: Plug
     )
 
 
+def check_27_dtype_altering_transform_incompatible_with_aggressive(
+    recipe: Recipe, plugin: Plugin
+) -> CheckResult:
+    """Story J.i: a dtype-altering Transformation cannot share a split with
+    an aggressive Augmentation.
+
+    The aggressive-augmentation realizer fans out the train split *after*
+    the Transformations stage and rebuilds each variant image via
+    ``PIL.Image.fromarray``, which requires uint8. A dtype-altering
+    Transformation op (``OperationSpec.dtype_altering`` — today
+    ``normalize`` / ``mean_subtract``, which emit float64) leaves the
+    image non-uint8, so the realizer raises
+    ``TypeError: Cannot handle this data type`` mid-pipeline. This check
+    refuses the combination at validate time, before any work runs.
+
+    Companion to check 26 (Story J.g), which reads the sibling
+    ``pixel_altering`` flag. The two flags classify different concerns:
+    ``pixel_altering`` (geometry, e.g. ``resize``) drives the lazy-mode
+    ``path`` rewrite; ``dtype_altering`` (non-uint8 output) drives this
+    refusal. ``resize`` is pixel-altering but uint8-preserving, so it is
+    *not* refused here — ``resize`` + aggressive materializes fine.
+
+    The refusal fires per split: a dtype-altering op and an aggressive
+    Augmentation that name any common split (in practice ``train``, since
+    Augmentations are train-only per check 5) collide. Partial-split
+    transforms (e.g. ``normalize`` on train+val, aggressive only on
+    train) are still caught via the train overlap.
+    """
+    descriptor = "dtype_altering_transform_incompatible_with_aggressive"
+    specs = plugin.supported_operations
+    aggressive_splits: set[str] = set()
+    for aug in recipe.Augmentations:
+        if aug.materialization == "aggressive":
+            aggressive_splits.update(aug.splits)
+    if not aggressive_splits:
+        return _passed(27, descriptor)
+
+    aggressive_names = sorted(
+        {aug.op for aug in recipe.Augmentations if aug.materialization == "aggressive"}
+    )
+    issues: list[str] = []
+    for tx in recipe.Transformations:
+        spec = specs.get(tx.op)
+        if spec is None or not spec.dtype_altering:
+            continue
+        overlap = sorted(set(tx.splits) & aggressive_splits)
+        if overlap:
+            issues.append(
+                f"Transformations[{tx.name!r}] (op={tx.op!r}) is dtype-altering "
+                f"(emits non-uint8) and shares split(s) {overlap} with aggressive "
+                f"Augmentation op(s) {aggressive_names}; the aggressive realizer "
+                f"requires uint8 and would crash. Drop the aggressive materialization, "
+                f"move the dtype-altering op off the augmented split, or apply it "
+                f"consumer-side."
+            )
+    if not issues:
+        return _passed(27, descriptor)
+    return CheckResult(
+        check_id=27,
+        descriptor=descriptor,
+        status="fail",
+        location="Transformations",
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1497,6 +1563,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         26,
         "pixel_altering_transform_requires_sink",
         check_26_pixel_altering_transform_requires_sink,
+    ),
+    (
+        27,
+        "dtype_altering_transform_incompatible_with_aggressive",
+        check_27_dtype_altering_transform_incompatible_with_aggressive,
     ),
 )
 

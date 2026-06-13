@@ -217,10 +217,14 @@ def _supported_operations() -> dict[str, OperationSpec]:
             },
             fit_on_train=True,
             applicable_sections=frozenset({"Transformations"}),
+            # Emits float64 z-scores; breaks the aggressive realizer. Story J.i.
+            dtype_altering=True,
         ),
         "mean_subtract": OperationSpec(
             fit_on_train=True,
             applicable_sections=frozenset({"Transformations"}),
+            # Emits float64 centered values; breaks the aggressive realizer. Story J.i.
+            dtype_altering=True,
         ),
         "cast": OperationSpec(
             parameters={

@@ -148,8 +148,8 @@ def test_valid_recipe_passes_all_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 26
-    assert {r.check_id for r in report.results} == set(range(1, 27))
+    assert len(report.results) == 27
+    assert {r.check_id for r in report.results} == set(range(1, 28))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -1945,3 +1945,88 @@ def test_check_26_passes_when_resize_only_on_aggressive_train() -> None:
     )
     report = validate(recipe, _IMAGE_PLUGIN)
     assert not _failures_for(report, 26)
+
+
+# ---------------------------------------------------------------------------
+# Check 27 — dtype-altering Transformation + aggressive Augmentation (Story J.i)
+# ---------------------------------------------------------------------------
+
+
+def _normalize(splits: list[str]) -> dict[str, Any]:
+    return {"name": "norm", "op": "normalize", "fit_source": "train", "splits": splits}
+
+
+def _aggressive_flip() -> dict[str, Any]:
+    return {
+        "name": "flip",
+        "op": "horizontal_flip",
+        "splits": ["train"],
+        "materialization": "aggressive",
+        "expansion": 2,
+    }
+
+
+def test_check_27_refuses_normalize_plus_aggressive_same_split() -> None:
+    recipe = _image_recipe(
+        transformations=[_normalize(["train", "val", "test"])],
+        augmentations=[_aggressive_flip()],
+    )
+    report = validate(recipe, _IMAGE_PLUGIN)
+    failures = _failures_for(report, 27)
+    assert len(failures) == 1
+    assert "normalize" in failures[0].message
+    assert "horizontal_flip" in failures[0].message
+    assert "train" in failures[0].message
+
+
+def test_check_27_refuses_mean_subtract_plus_aggressive() -> None:
+    recipe = _image_recipe(
+        transformations=[
+            {"name": "ms", "op": "mean_subtract", "fit_source": "train", "splits": ["train"]}
+        ],
+        augmentations=[_aggressive_flip()],
+    )
+    report = validate(recipe, _IMAGE_PLUGIN)
+    failures = _failures_for(report, 27)
+    assert len(failures) == 1
+    assert "mean_subtract" in failures[0].message
+
+
+def test_check_27_passes_for_resize_plus_aggressive() -> None:
+    # resize is pixel-altering but uint8-preserving — it does NOT break the
+    # aggressive realizer, so the combination is allowed. (A qualifying image
+    # sink is added so check 26 also passes and the recipe is fully valid.)
+    recipe = _image_recipe(
+        transformations=[{"name": "r", "op": "resize", "params": {"size": 8}, "splits": ["train"]}],
+        augmentations=[_aggressive_flip()],
+        sinks=[_IMAGE_SINK_POST_TX],
+    )
+    report = validate(recipe, _IMAGE_PLUGIN)
+    assert not _failures_for(report, 27)
+
+
+def test_check_27_passes_for_normalize_plus_lazy_augmentation() -> None:
+    recipe = _image_recipe(
+        transformations=[_normalize(["train", "val", "test"])],
+        augmentations=[{"name": "flip", "op": "horizontal_flip", "splits": ["train"]}],
+    )
+    report = validate(recipe, _IMAGE_PLUGIN)
+    assert not _failures_for(report, 27)
+
+
+def test_check_27_passes_for_normalize_only() -> None:
+    recipe = _image_recipe(transformations=[_normalize(["train", "val", "test"])])
+    report = validate(recipe, _IMAGE_PLUGIN)
+    assert not _failures_for(report, 27)
+
+
+def test_check_27_partial_split_overlap_still_refused() -> None:
+    # normalize on train+val, aggressive only on train → train overlap → refuse.
+    recipe = _image_recipe(
+        transformations=[_normalize(["train", "val"])],
+        augmentations=[_aggressive_flip()],
+    )
+    report = validate(recipe, _IMAGE_PLUGIN)
+    failures = _failures_for(report, 27)
+    assert len(failures) == 1
+    assert "train" in failures[0].message

@@ -81,6 +81,24 @@ are deferred to the bundle's release ceremony.
     Splits realized as aggressive variants are exempt (pixels already
     baked via `image_path`).
 
+- **Story J.i: dtype-altering Transformation + aggressive Augmentation
+  guard.** A recipe combining a float-emitting Transformation
+  (`normalize` / `mean_subtract`) with an aggressive Augmentation on the
+  same split previously crashed mid-materialize (`TypeError: Cannot
+  handle this data type` — the aggressive realizer's
+  `PIL.Image.fromarray` requires uint8). Now:
+  - **`OperationSpec.dtype_altering`** — new declarative flag (sibling to
+    `pixel_altering`) marking ops that leave the image non-uint8;
+    `normalize` / `mean_subtract` are flagged.
+  - **FR-2 check 27** (`dtype_altering_transform_incompatible_with_aggressive`)
+    — refuses a dtype-altering Transformation that shares a split with an
+    aggressive Augmentation, naming the op pair and the split. The
+    validator now runs **27** checks. `resize` (pixel-altering but
+    uint8-preserving) is **not** refused — `resize` + aggressive
+    materializes fine. Previously-author-able recipes that hit the crash
+    now fail fast at validate time; existing instances are unaffected
+    (the combination could not materialize before).
+
 ### Changed
 
 - **FR-2 check 16** (`sample_data_strict_subset`) wording flips from
@@ -156,6 +174,10 @@ are deferred to the bundle's release ceremony.
   `"<split>/images/<record_id>.png"` and may be **nested** when
   `record_id` carries `/` separators; consumers join it as a relative
   POSIX path, not a flat `images/` lookup.
+- [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md):
+  documented the dtype-altering-Transformation + aggressive-Augmentation
+  incompatibility under § "Materialization modes" (Story J.i), referencing
+  validator check 27.
 
 ## [0.19.0] - 2026-05-30
 
