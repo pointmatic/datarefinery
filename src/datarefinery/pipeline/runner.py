@@ -574,6 +574,7 @@ class PipelineRunner:
                 plugin_name=self.plugin.name,
                 label_field=label_field,
                 unlabeled_splits=unlabeled_split_names(self.recipe),
+                recipe_hash=cache_key.recipe_hash,
             )
             write_drift(report_root / DRIFT_FILENAME, drift)
 

@@ -81,6 +81,17 @@ are deferred to the bundle's release ceremony.
     Splits realized as aggressive variants are exempt (pixels already
     baked via `image_path`).
 
+- **`drift.json.recipe_hash` (Story J.j).** `report/drift.json` now
+  carries `recipe_hash` — the full 64-hex SHA-256 of the canonical recipe
+  bytes, equal to `manifest.recipe_hash` on every fresh instance. Aligns
+  the code with the long-standing `modelfoundry/vendor-dependency-spec.md`
+  promise that consumers can detect a stale fitted-statistics block from
+  `drift.json` alone, without a second `manifest.json` read (surfaced as
+  J.d friction F7). Additive `report/` field; lives outside the recipe so
+  it perturbs no canonical bytes and no `schema_version` bump. Pre-J.j
+  instances omit the key (read as `null` and fall back to
+  `manifest.recipe_hash`); pre-prod re-materialization populates it.
+
 - **Story J.i: dtype-altering Transformation + aggressive Augmentation
   guard.** A recipe combining a float-emitting Transformation
   (`normalize` / `mean_subtract`) with an aggressive Augmentation on the
@@ -178,6 +189,10 @@ are deferred to the bundle's release ceremony.
   documented the dtype-altering-Transformation + aggressive-Augmentation
   incompatibility under § "Materialization modes" (Story J.i), referencing
   validator check 27.
+- [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md):
+  enumerated `drift.json.recipe_hash` as a stable field under § "Report
+  subsections" and made the § "Failure modes" parenthetical load-bearing
+  (Story J.j).
 
 ## [0.19.0] - 2026-05-30
 

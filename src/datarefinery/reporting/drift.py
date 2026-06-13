@@ -52,6 +52,13 @@ class DriftSchema(BaseModel):
 
     schema_version: int = DRIFT_SCHEMA_VERSION_PLACEHOLDER
     plugin: str
+    #: Story J.j: the full 64-hex SHA-256 of the canonical recipe bytes,
+    #: echoed from the cache key. Consumers compare it against
+    #: ``manifest.recipe_hash`` to detect a drift report rendered against
+    #: a different recipe (a stale fitted-statistics block). Optional so
+    #: reads of pre-J.j instances (which omit the key) do not break;
+    #: fresh instances always populate it.
+    recipe_hash: str | None = None
     splits: dict[str, SplitDriftRecord] = Field(default_factory=dict)
     feature_summary: dict[str, FeatureDriftRecord] = Field(default_factory=dict)
     notes: list[str] = Field(default_factory=list)
@@ -63,6 +70,7 @@ def compute_drift_placeholder(
     plugin_name: str,
     label_field: str | None,
     unlabeled_splits: set[str] | None = None,
+    recipe_hash: str | None = None,
 ) -> DriftSchema:
     """Build a v1 drift placeholder from materialized splits.
 
@@ -73,6 +81,11 @@ def compute_drift_placeholder(
     "labels measured and empty." Feature-level drift summaries are
     intentionally empty in v1 - the schema reserves the slot for
     DataMachine consumers; full per-feature analysis lands post-v1.
+
+    ``recipe_hash`` (Story J.j), when supplied, is echoed onto the schema
+    so consumers can compare it against ``manifest.recipe_hash`` without a
+    second file read; pass the full 64-hex digest, not the truncated
+    cache-path shard.
     """
     unlabeled = unlabeled_splits or set()
     split_records: dict[str, SplitDriftRecord] = {}
@@ -98,6 +111,7 @@ def compute_drift_placeholder(
         )
     return DriftSchema(
         plugin=plugin_name,
+        recipe_hash=recipe_hash,
         splits=dict(sorted(split_records.items())),
         feature_summary={},
         notes=[

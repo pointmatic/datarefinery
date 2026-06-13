@@ -252,6 +252,7 @@ def re_render_report(
         plugin_name=plugin.name,
         label_field=recipe.Labels.field,
         unlabeled_splits=unlabeled_split_names(recipe),
+        recipe_hash=manifest.recipe_hash,
     )
     write_drift(report_root / DRIFT_FILENAME, drift)
 

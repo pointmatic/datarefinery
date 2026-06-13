@@ -140,6 +140,7 @@ def test_drift_json_is_canonical_sorted(tmp_path: Path) -> None:
     assert set(parsed) == {
         "schema_version",
         "plugin",
+        "recipe_hash",
         "splits",
         "feature_summary",
         "notes",
@@ -181,3 +182,40 @@ def test_unlabeled_splits_default_empty_preserves_legacy_behavior() -> None:
     drift = compute_drift_placeholder(splits, plugin_name="x", label_field="label")
     assert drift.splits["train"].note is None
     assert drift.splits["train"].class_distribution == {"a": 1}
+
+
+# ---------------------------------------------------------------------------
+# Story J.j: drift.json.recipe_hash
+# ---------------------------------------------------------------------------
+
+
+def test_compute_drift_placeholder_emits_recipe_hash() -> None:
+    rh = "a" * 64
+    drift = compute_drift_placeholder(
+        _splits_with_labels(),
+        plugin_name="image_classification",
+        label_field="label",
+        recipe_hash=rh,
+    )
+    assert drift.recipe_hash == rh
+
+
+def test_drift_recipe_hash_defaults_none_for_backward_reads() -> None:
+    # Reading an older drift.json that predates the field must not break.
+    drift = DriftSchema(plugin="x")
+    assert drift.recipe_hash is None
+
+
+def test_drift_recipe_hash_round_trips(tmp_path: Path) -> None:
+    rh = "b" * 64
+    drift = compute_drift_placeholder(
+        _splits_with_labels(),
+        plugin_name="image_classification",
+        label_field="label",
+        recipe_hash=rh,
+    )
+    path = tmp_path / "drift.json"
+    write_drift(path, drift)
+    payload = json.loads(path.read_text())
+    assert payload["recipe_hash"] == rh
+    assert read_drift(path).recipe_hash == rh

@@ -268,7 +268,7 @@ A recipe declaring `Transformations: [{op: normalize, ...}]` alongside `Augmenta
 
 ---
 
-### Story J.j: `drift.json.recipe_hash` — align spec promise with code [Planned]
+### Story J.j: `drift.json.recipe_hash` — align spec promise with code [Done]
 
 **Disposition: bugfix + cross-repo contract.** Part of Phase J phase-bundle release (target v0.20.0). Surfaced 2026-06-12 during the [J.d MF integration spike](phase-j-mf-integration-friction.md) (F7).
 
@@ -278,14 +278,14 @@ This is a documented promise that doesn't currently exist in code. The right fix
 
 **Tasks:**
 
-- [ ] Reproduce the gap with a failing test: assert `drift.json` top-level keys include `recipe_hash` and that the value matches `manifest.recipe_hash` for any fresh instance.
-- [ ] Add `recipe_hash` to `drift.json` at the runner's [`compute_drift_placeholder`](../../src/datarefinery/pipeline/runner.py) emission site. Mirror the existing field's emission discipline: copy from `cache_key.recipe_hash` (full 64-hex), not the truncated 16-char shard.
-- [ ] Confirm the field perturbs no canonical bytes (it lives in `report/drift.json`, not the recipe) — the canonical-hash pinning fixture stays green.
-- [ ] Unit test: `compute_drift_placeholder` emits `recipe_hash`. Integration test: round-trip a fresh instance, assert `drift.recipe_hash == manifest.recipe_hash` byte-for-byte.
-- [ ] Cross-repo coordination: update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § "Report subsections" to enumerate `drift.json.recipe_hash` as a stable field; the existing § "Failure modes" parenthetical referencing this field is now load-bearing.
-- [ ] DOC: no recipe-authoring change (drift.json is consumer-facing, not authorable).
-- [ ] CHANGELOG entry under the in-progress v0.20.0 section: additive `drift.json` field; no `schema_version` bump; align spec promise with code.
-- [ ] CI parity: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/`.
+- [x] Reproduce the gap with a failing test: assert `drift.json` top-level keys include `recipe_hash` and that the value matches `manifest.recipe_hash` for any fresh instance. [`tests/integration/test_drift_recipe_hash.py`](../../tests/integration/test_drift_recipe_hash.py) (red pre-fix: no `recipe_hash` key) + unit cases in [`test_drift.py`](../../tests/unit/test_drift.py). The pre-existing `test_drift_json_is_canonical_sorted` key-set pin was updated to include the new top-level key.
+- [x] Add `recipe_hash` to `drift.json` at the runner's [`compute_drift_placeholder`](../../src/datarefinery/pipeline/runner.py) emission site. Mirror the existing field's emission discipline: copy from `cache_key.recipe_hash` (full 64-hex), not the truncated 16-char shard. Added `DriftSchema.recipe_hash: str | None = None` ([`reporting/drift.py`](../../src/datarefinery/reporting/drift.py)) + a `recipe_hash` keyword on `compute_drift_placeholder`; runner passes `cache_key.recipe_hash`; `re_render_report` ([`reporting/report.py`](../../src/datarefinery/reporting/report.py)) passes `manifest.recipe_hash` so re-rendered drift stays consistent. `str | None` (default `None`) keeps reads of pre-J.j instances and the many existing test callers working.
+- [x] Confirm the field perturbs no canonical bytes (it lives in `report/drift.json`, not the recipe) — the canonical-hash pinning fixture stays green. Verified: `tests/unit/test_canonical_hash_pin.py` passes unchanged.
+- [x] Unit test: `compute_drift_placeholder` emits `recipe_hash`. Integration test: round-trip a fresh instance, assert `drift.recipe_hash == manifest.recipe_hash` byte-for-byte. 3 unit cases (emit, backward-read default `None`, write/read round-trip) + the integration test asserting equality with `manifest.recipe_hash` and full 64-hex length.
+- [x] Cross-repo coordination: update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § "Report subsections" to enumerate `drift.json.recipe_hash` as a stable field; the existing § "Failure modes" parenthetical referencing this field is now load-bearing. § "Report subsections" `drift.json` bullet now names `recipe_hash` as the one stable field within the otherwise-unstable schema (equal to `manifest.recipe_hash`, pre-J.j fallback noted); § "Failure modes" parenthetical updated to state it is emitted as of J.j with the pre-J.j fallback.
+- [x] DOC: no recipe-authoring change (drift.json is consumer-facing, not authorable). Confirmed — no edit.
+- [x] CHANGELOG entry under the in-progress v0.20.0 section: additive `drift.json` field; no `schema_version` bump; align spec promise with code. New `Added` bullet + Cross-repo coordination note.
+- [x] CI parity: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/`. 1327 tests pass; mypy clean (212 files); ruff check + format clean.
 
 **Out of Scope:**
 
