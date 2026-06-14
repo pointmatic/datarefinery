@@ -57,7 +57,7 @@ ModelFoundry compiles a single YAML **model recipe** — declaring `plugin`, `Da
   - disables mixed-precision (AMP) by default; recipes that enable AMP relax the byte-identity guarantee to **metric-equivalent within a documented tolerance** (CR-5 marks this as plugin-documented).
   Each plugin documents its backend-specific determinism caveats in its plugin docs.
 - **QR-4: Cross-platform.** Pre-production, macOS (Apple Silicon) is the first-class platform; Linux is best-effort. Post-production, both are first-class. Native Windows is best-effort in any release (CI smoke only); Windows users are not left behind because WSL2 provides the full Linux path on the same hardware, and the project documents WSL2 as the recommended Windows experience.
-- **QR-5: Hardware acceleration.** Metal (Apple Silicon) is the top-priority acceleration target. CUDA is supported as available. CPU always functional. `check` reports acceleration availability without requiring it.
+- **QR-5: Hardware acceleration.** Metal (Apple Silicon) is the top-priority acceleration target. CUDA is supported as available. CPU always functional. `check` reports acceleration availability without requiring it. Recipes may declare `Training.device: Literal["auto", "cpu", "cuda", "mps"] = "auto"` — `"auto"` picks the best available accelerator; explicit values force the chosen device and are validated against the plugin's `health_check`-reported availability (FR-2 check 20). The field drives every model-execution stage (Training, the inner trainings of Optuna Optimization, Evaluation, `predict` / `predict_proba`); eval and inference inherit. Distinct `device` values produce distinct canonical recipe bytes, so a CPU-benchmark run and a GPU run materialize into separate `ModelInstance` cache entries by design.
 - **QR-6: Type discipline.** `mypy --strict` clean across the package and plugin sources.
 - **QR-7: Lint and format discipline.** `ruff` (lint and format) clean.
 - **QR-8: Test coverage.** Coverage on core invariants (recipe loader, schema-version gate, cache identity computation, plugin interface, atomic promote/rollback, architecture round-trip, determinism contract) ≥ 95% in any release. Pre-production, the project-wide 85% line-coverage gate is relaxed; every FR must be exercised by at least a smoke test, but no overall percentage threshold applies. Post-production, overall line coverage ≥ 85%.
@@ -141,6 +141,8 @@ models/instances/<recipe-hash16>/<data-instance-hash16>/<seed>/
 ├── manifest.json                 # full hashes, plugin, plugin version, schema version, timings
 ├── model/
 │   ├── architecture.json         # plugin-agnostic architecture description (round-trip contract)
+│   ├── summary.txt               # torchinfo text render of the model (FR-27); plugin-provided
+│   ├── summary.json              # structured per-layer rows + network totals (FR-27)
 │   ├── weights/                  # plugin-preferred format (state_dict / SavedModel / joblib / ...)
 │   └── tokenizer/                # present only when the plugin needs one (HuggingFace plugin path)
 ├── training/
@@ -225,6 +227,7 @@ Verify a recipe's correctness without running the pipeline. Covers schema correc
 17. Plugin-specific operation parameters validate against the plugin's declared `OperationSpec`.
 18. `Data:` binding cross-check — the bound DataRefinery instance exposes every split referenced by the recipe (`Training` implicitly requires `train`; `Evaluation.splits` must be a subset of the instance's splits); the instance's label schema is compatible with `Architecture`'s declared `num_classes`; the instance's record schema is compatible with the plugin's expected input shape.
 19. Schema-version coordination — if the bound DataRefinery instance's manifest declares a recipe `schema_version` higher than ModelFoundry's highest supported DataRefinery `SUPPORTED_SCHEMA_VERSIONS`, hard error per the vendor-dependency-spec coordination policy.
+20. `Training.device` is `"auto"` or matches one of the plugin's `health_check`-reported available accelerators. Tolerant of plugins whose `health_check` does not yet expose an `accelerators` field (skip with a recorded message rather than fail).
 
 **Edge Cases:**
 - Plugin not installed -> hard error pointing at the plugin name and discovery path.
@@ -325,7 +328,7 @@ Instantiate the model from plugin primitives.
 
 - **Primitives**: `Conv2d`, `BatchNorm2d`, `ReLU`, `MaxPool2d`, `AvgPool2d`, `AdaptiveAvgPool2d`, `Linear`, `Dropout`, `Flatten`.
 - **Composite**: `MLP` (`hidden_dims: list[int]`, `dropout: float`, `activation: str`), `ConvBlock` (`out_channels`, `kernel_size`, `stride`, `padding`, `with_batchnorm: bool`, `with_pool: bool`), `ResidualBlock` (`channels`, `stride`).
-- **Baseline architectures**: `simple_cnn` (a small reference CNN sized for CIFAR-10 — three ConvBlock stacks + classification head), `resnet8` (a ResNet variant sized for CIFAR-10).
+- **Baseline architectures**: `simple_cnn` (a small reference CNN sized for CIFAR-10 — three ConvBlock stacks + classification head), `resnet8` (a ResNet variant sized for CIFAR-10), `resnet20` (the canonical CIFAR ResNet-20 — 3×3 stem → three stages of three `ResidualBlock`s at 16/32/64 channels with option-B projection shortcuts and strided-conv downsampling → global average pool → `Linear` head; 272,474 params at `num_classes=10`).
 - **Optional pretrained-encoder path (deferred but contract-supported)**: `Encoder` (`source: huggingface`, `id: <hf model id>`, `frozen: bool`), `LoRA` (`rank`, `alpha`, `dropout`, `target_modules: list[str]`), `Pooling` (`type: attention | mean | max`, `hidden_dim`), classification `Head` (`type: mlp`, `hidden_dims`, `num_classes`, `id2label`).
 
 **Edge Cases:**
@@ -702,6 +705,25 @@ Documented future upgrade: tight-couple ModelFoundry's cache identity to DataRef
 3. The upgrade requires a ModelFoundry `schema_version` bump and a documented migration of existing cached ModelInstances.
 
 **Status in the pre-production release:** **deferred**. CR-15 explicitly locks loose-coupling for the pre-production release. This FR exists to forward-declare the contract evolution path for future tools (`modelmetrics`, `modelmachine`) that may want tighter guarantees.
+
+### FR-27: Model summary
+
+Generate a human- and machine-readable summary of the materialized model as a reproducible, from-disk artifact.
+
+**Behavior:**
+1. At materialize time, after Persistence, the plugin generates a model summary and writes two artifacts under the instance's `model/` directory:
+   - `model/summary.txt` — a text render of the model (the PyTorch plugin uses `torchinfo`): a per-layer table plus the network totals.
+   - `model/summary.json` — the structured form: an ordered list of per-layer rows and the network totals.
+2. Each per-layer row reports the layer **type**, the **output shape**, the **parameter count**, and the **mult-adds** (multiply-add operations). The network totals report **total parameters**, **trainable parameters**, **non-trainable parameters**, and **total mult-adds**.
+3. The input shape fed to the summary is derived from the bound DataRefinery instance's record schema (e.g. `(N, 3, 32, 32)` for CIFAR-10).
+4. Both artifacts are **byte-deterministic** for a fixed architecture + input size: the reported quantities are functions of the architecture, not of any probe input, and the artifacts carry no timestamp. Generating the summary does not mutate the persisted model (the probe runs in eval mode; the model's training flag is restored).
+5. The summary is surfaced to consumers via `ModelInstance.summary` (the structured `summary.json`, FR-22) and `ModelInstance.summary_text` (the text render); the CLI exposes it as `inspect --view model_summary` (FR-17), which renders the text summary. Substrate-neutral — `print(mi.summary_text)` renders in any notebook host.
+
+**Plugin model:** model-summary generation is an **optional** plugin capability. A plugin that exposes it (the `pytorch` plugin) gets the artifacts written automatically; a plugin that does not (the sklearn baseline, whose `MLPClassifier` has no torchinfo-style layer summary) skips the step cleanly without failing the materialization.
+
+**Edge Cases:**
+- Plugin does not provide a model summary -> the `model/summary.*` artifacts are absent; `ModelInstance.summary` / `summary_text` return `None`; not an error.
+- The bound DataRefinery instance's record schema declares no usable image shape -> the plugin falls back to decoding one record through its dataset adapter to learn the true `(C, H, W)`.
 
 ---
 

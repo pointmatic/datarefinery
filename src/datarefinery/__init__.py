@@ -3,7 +3,16 @@
 
 __version__ = "0.19.0"
 
-from datarefinery.core.datarefinery import DataRefinery, materialize
+from datarefinery.core.datarefinery import DataRefinery, materialize, resolve_instance
 from datarefinery.core.instance import Instance
+from datarefinery.core.status import StatusReport, resolve_status
 
-__all__ = ["DataRefinery", "Instance", "__version__", "materialize"]
+__all__ = [
+    "DataRefinery",
+    "Instance",
+    "StatusReport",
+    "__version__",
+    "materialize",
+    "resolve_instance",
+    "resolve_status",
+]

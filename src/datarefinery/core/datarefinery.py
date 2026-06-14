@@ -330,6 +330,47 @@ def materialize(
     ).materialize()
 
 
+def resolve_instance(
+    recipe_path: Path | str,
+    *,
+    cache_root: Path | str | None = None,
+    seed: int | None = None,
+    variant: str | None = None,
+) -> StatusReport:
+    """Locate the materialized instance for a recipe — the blessed resolver.
+
+    Top-level convenience that composes
+    ``DataRefinery.from_recipe(recipe_path, config, variant, seed).status()``
+    so a consumer need not build a full handle just to ask "where is my
+    instance?". It returns the same :class:`StatusReport` ``status()``
+    returns — ``cache_status`` (``"hit"`` / ``"miss"`` / ``"corrupt"``),
+    the deterministic ``instance_path`` (set even on a miss — it is where
+    the instance *would* live), the full ``cache_key``, and the parsed
+    ``manifest`` on a hit.
+
+    Like :func:`materialize`, this is a thin facade over the handle —
+    one resolution implementation, two ergonomic entry points. Resolution
+    hashes the recipe's declared inputs (cache identity includes the input
+    hash), so the inputs must be present on the resolving host, exactly as
+    for ``status()`` / ``materialize()``.
+
+    **Consumers MUST NOT recompute the cache key / instance path
+    themselves.** The cache identity is DataRefinery's contract; any change
+    to the canonical-bytes algorithm or a pydantic default silently breaks
+    a hand-rolled reimplementation. Always resolve through this function
+    (or ``DataRefinery.status()``).
+
+    ``cache_root`` selects the cache location (default: ``RuntimeConfig``'s
+    default). A recipe needing a custom ``plugin_path`` should build the
+    full handle (``DataRefinery.from_recipe(config=RuntimeConfig(...))``)
+    rather than this common-case facade.
+    """
+    config = RuntimeConfig(cache_root=Path(cache_root)) if cache_root is not None else None
+    return DataRefinery.from_recipe(
+        Path(recipe_path), config=config, variant=variant, seed=seed
+    ).status()
+
+
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------

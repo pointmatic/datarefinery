@@ -81,6 +81,20 @@ are deferred to the bundle's release ceremony.
     Splits realized as aggressive variants are exempt (pixels already
     baked via `image_path`).
 
+- **`datarefinery.resolve_instance(...)` (Story J.l).** New top-level
+  facade for locating a materialized instance:
+  `resolve_instance(recipe_path, *, cache_root=None, seed=None,
+  variant=None) -> StatusReport`. Delegates to
+  `DataRefinery.from_recipe(...).status()` (one resolution
+  implementation, two ergonomic entry points — same relationship the
+  top-level `materialize()` has to the handle). `StatusReport` and
+  `resolve_status` are now re-exported from the top-level `datarefinery`
+  package. Closes the ergonomics/discoverability gap that led a consumer
+  to **reimplement** the cache-key/instance-ID math — a hand-rolled key
+  silently breaks after any canonical-bytes change. Additive library
+  surface; no recipe/manifest/on-disk shape change, no `schema_version`
+  bump.
+
 - **`drift.json.recipe_hash` (Story J.j).** `report/drift.json` now
   carries `recipe_hash` — the full 64-hex SHA-256 of the canonical recipe
   bytes, equal to `manifest.recipe_hash` on every fresh instance. Aligns
@@ -193,6 +207,12 @@ are deferred to the bundle's release ceremony.
   enumerated `drift.json.recipe_hash` as a stable field under § "Report
   subsections" and made the § "Failure modes" parenthetical load-bearing
   (Story J.j).
+- [`modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md)
+  + [`nbfoundry/vendor-dependency-spec.md`](docs/specs/nbfoundry/vendor-dependency-spec.md):
+  added the "Resolving a materialized instance" contract (Story J.l) —
+  names `resolve_instance(...)` / `status()` as the one blessed resolver,
+  documents the `StatusReport` shape, and forbids consumers recomputing
+  the cache key / instance path.
 - **Vendor-dependency-spec ratification Round 3 (Story J.k).**
   Documentation-only round absorbing five J.d-spike friction items (no
   code, manifest, or recipe shape change). MF spec:

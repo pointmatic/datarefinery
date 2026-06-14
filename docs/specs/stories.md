@@ -321,6 +321,34 @@ Each friction item is a small spec edit; bundling them avoids over-decomposition
 
 ---
 
+### Story J.l: v0.20.0 `resolve_instance` convenience + cache-identity resolution contract [Done]
+
+**Disposition: feature addition (library ergonomics) + cross-repo contract.** Part of Phase J phase-bundle release (target v0.20.0). Surfaced 2026-06-13: ModelFoundry **reimplemented** the DataRefinery instance-ID (cache-key) computation rather than calling the producer's resolver — exactly the brittleness the reproducibility contract exists to prevent (any canonical-bytes change silently breaks a consumer's hand-rolled key math).
+
+`DataRefinery.from_recipe(...).status()` already is the authoritative resolver (`hash_inputs → compute_cache_key → resolve_status → StatusReport`). The gap is **ergonomics + discoverability**: locating an instance requires constructing a full handle, and a consumer scanning the top-level `datarefinery` namespace finds `materialize()` but no obvious "where is my instance?" entry point — so they roll their own. Close the gap with a top-level facade, and harden the contract doc so reimplementation is explicitly out-of-contract.
+
+**Approach.** Add `datarefinery.resolve_instance(...)` as a thin top-level convenience — an alias composing `from_recipe(...).status()`, returning the same `StatusReport`. Symmetric with the existing top-level `materialize()` facade (one-line wrapper over `from_recipe(...).materialize()`); **one resolution implementation, two ergonomic entry points** — no logic duplication, no second result shape. Re-export the result type so consumers type against it without spelunking submodules. Then add a "Resolving a materialized instance" section to the MF contract that names the blessed resolver and forbids cache-key reimplementation.
+
+**Tasks:**
+
+- [x] Add `resolve_instance(recipe_path, *, cache_root=None, seed=None, variant=None) -> StatusReport` in [`core/datarefinery.py`](../../src/datarefinery/core/datarefinery.py), delegating to `DataRefinery.from_recipe(recipe_path, config, variant, seed).status()`. `cache_root: Path | str | None` builds a `RuntimeConfig(cache_root=...)` (default `RuntimeConfig()` when `None`). Docstring notes a custom `plugin_path` requires the full handle (resolve_instance is the common-case facade). Docstring also carries the "consumers MUST NOT recompute the cache key" rule.
+- [x] Re-export `resolve_instance`, `StatusReport`, and `resolve_status` from [`datarefinery/__init__.py`](../../src/datarefinery/__init__.py) so the resolution surface is reachable as `from datarefinery import resolve_instance, StatusReport`. `__all__` updated.
+- [x] Unit tests: `resolve_instance` returns a `StatusReport`; miss case (deterministic `instance_path`, `cache_status="miss"`, populated `cache_key`); `seed` / `variant` flow through to the resolved key; `cache_root=None` uses the default; result is byte-equal to `from_recipe(...).status()` (delegation equivalence); top-level importability. Top-level importability + `__all__` membership in [`test_resolve_instance_exports.py`](../../tests/unit/test_resolve_instance_exports.py) (3); miss/hit/delegation/seed/variant/str-path coercion in [`test_resolve_instance.py`](../../tests/integration/test_resolve_instance.py) (7) — delegation equivalence asserts `resolve_instance(...) == from_recipe(...).status()`.
+- [x] Integration test: materialize an instance, then `resolve_instance(...)` returns `cache_status="hit"` with `instance_path` equal to the materialized dir and a parsed `manifest` whose `recipe_hash` matches; a never-materialized recipe resolves to `miss`. Both covered in `test_resolve_instance.py`.
+- [x] **Cross-repo coordination.** Add a "Resolving a materialized instance" section to [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md): name `datarefinery.resolve_instance(...)` / `DataRefinery.status()` as the **one** supported way to locate an instance; document the `StatusReport` shape + `hit`/`miss`/`corrupt` contract; **explicitly forbid** consumers recomputing the cache key / instance path themselves, with the rationale (canonical-bytes changes silently break a reimplementation — the 2026-06-13 MF bug). Add a brief `resolve_instance` entry to [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) § "Library entry points" (its natural home). Header ratification notes in both specs. New MF § "Resolving a materialized instance" (placed right after § Cache-identity contract — the section that documents the key math, i.e. the reimplementation temptation); new NbF § "Top-level `resolve_instance()` convenience"; dated 2026-06-13 (Story J.l) header notes in both.
+- [x] CHANGELOG entry under the in-progress v0.20.0 section: additive library API + cross-repo contract hardening; no `schema_version` bump (no recipe/manifest/on-disk shape change). Added bullet + Cross-repo coordination bullet.
+- [x] CI parity: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/`. 1337 tests pass; mypy clean (214 files); ruff check + format clean. (Note: the Pyve v3 testenv had been re-created empty since the prior story — reprovisioned via `pyve env run testenv -- pip install -e ".[corruptions]"` + `pyve env install testenv -r requirements-dev.txt`, a recurring v3 churn to flag upstream.)
+- [x] Bump version to v0.20.0
+
+**Out of Scope:**
+
+- Machine-readable CLI `status --json` (J.b friction F2) — a separate, larger story. `resolve_instance` is the **library** facade; the CLI JSON surface is its own future work.
+- Resolving without the recipe's inputs present. Cache identity includes the input hash, so resolution hashes the declared inputs (same as `status()`/`materialize()`); a host without the inputs cannot resolve from scratch and must be handed the path (or read the manifest of an existing instance).
+- A new `CacheKey`-from-recipe public helper beyond what `StatusReport.cache_key` already exposes. The facade returns the full key; no separate key-only API is added.
+- Changing `status()` semantics. `resolve_instance` delegates to it unchanged; validation still runs (a recipe that can't load/validate can't have a valid instance anyway).
+
+---
+
 ## Future
 
 <!--

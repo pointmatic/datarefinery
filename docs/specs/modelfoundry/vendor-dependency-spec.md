@@ -1,79 +1,16 @@
 # DataRefinery ↔ ModelFoundry dependency contract
 
-> **Status:** authoritative cross-repo contract (Story H.s, v0.15.0).
-> Pre-production: this document may evolve as ModelFoundry adoption
-> surfaces gaps. Post-production: it becomes a stability contract —
-> changes follow the schema-version-bump + migration ceremony in
-> `docs/specs/project-essentials.md` § "Cache identity is the
-> reproducibility contract."
+> **Status:** authoritative cross-repo contract (Story H.s, v0.15.0). Pre-production: this document may evolve as ModelFoundry adoption surfaces gaps. Post-production: it becomes a stability contract — changes follow the schema-version-bump + migration ceremony in `docs/specs/project-essentials.md` § "Cache identity is the reproducibility contract."
 >
-> **DataRefinery counter-proposal 2026-06-11.** The 2026-06-11
-> ModelFoundry-side revision was reviewed against current DataRefinery
-> source. **Accepted:** the new § "Fitted statistics ModelFoundry binds
-> against", the instance-level on-disk tree, the explicit
-> `LATEST_SCHEMA_VERSION = 2` coordination note, and the "missing
-> required fitted statistics" failure mode. **Corrected:** the
-> persisted recipe file is `recipe.json` (not `recipe.yaml`); the
-> dropped `manifest.class_balance` row + shape subsection are restored
-> (DR still emits the field, v0.18.0+); the schema v1→v2 migration
-> detail subsection is restored under § Cache-identity contract; the
-> stage-aware viz dispatch clarification is restored under § Report
-> subsections; the `normalize` "std may be absent" claim is corrected —
-> DR's `normalize` always emits both `mean` and `std`, mean-only
-> behavior is the separate `mean_subtract` op (different `op_id`
-> directory, no `std.parquet`). **Forward-declared by DR:** the
-> `manifest.sample` row + shape subsection and the instance-tree
-> `sample/` block, targeting Phase J Story J.a (v0.20.0). Full
-> coordination on Phase J surfaces happens when J.a lands.
+> **DataRefinery counter-proposal 2026-06-11.** The 2026-06-11 ModelFoundry-side revision was reviewed against current DataRefinery source. **Accepted:** the new § "Fitted statistics ModelFoundry binds against", the instance-level on-disk tree, the explicit `LATEST_SCHEMA_VERSION = 2` coordination note, and the "missing required fitted statistics" failure mode. **Corrected:** the persisted recipe file is `recipe.json` (not `recipe.yaml`); the dropped `manifest.class_balance` row + shape subsection are restored (DR still emits the field, v0.18.0+); the schema v1→v2 migration detail subsection is restored under § Cache-identity contract; the stage-aware viz dispatch clarification is restored under § Report subsections; the `normalize` "std may be absent" claim is corrected — DR's `normalize` always emits both `mean` and `std`, mean-only behavior is the separate `mean_subtract` op (different `op_id` directory, no `std.parquet`). **Forward-declared by DR:** the `manifest.sample` row + shape subsection and the instance-tree `sample/` block, targeting Phase J Story J.a (v0.20.0). Full coordination on Phase J surfaces happens when J.a lands.
 >
-> **Round 2 additions 2026-06-11.** ModelFoundry clarifying questions
-> surfaced three further contract gaps. **Pinned** in this round: the
-> `normalize` parquet internal shape and channel ordering (single
-> `value` column, `C` rows, RGB axis order for the v1
-> image_classification plugin); the **zero-variance std guard** as an
-> explicit consumer obligation (exact `std == 0` substitution to `1.0`,
-> no tolerance) so consumer-applied normalization matches DR's apply
-> semantics on every channel; the `manifest.class_balance` per-class-
-> counts and chained fit-on-train ordering notes; and the fact that the
-> original authored YAML is **not** persisted in the instance (only the
-> canonical `recipe.json` is). **Forward-declared** in this round:
-> `manifest.label_classes` (Phase J Story J.f, target v0.20.0) closes
-> the class-set enumeration gap so consumers stop deriving
-> sorted-from-train independently. **New § Consumer-applied
-> transformations vs. baked transformations** (Phase J Story J.g,
-> target v0.20.0) draws the apply-boundary explicitly and identifies
-> the lazy-mode geometry-transform gap (`path` points at source while
-> `Transformations` are not reflected in JSONL pixels).
+> **Round 2 additions 2026-06-11.** ModelFoundry clarifying questions surfaced three further contract gaps. **Pinned** in this round: the `normalize` parquet internal shape and channel ordering (single `value` column, `C` rows, RGB axis order for the v1 image_classification plugin); the **zero-variance std guard** as an explicit consumer obligation (exact `std == 0` substitution to `1.0`, no tolerance) so consumer-applied normalization matches DR's apply semantics on every channel; the `manifest.class_balance` per-class-counts and chained fit-on-train ordering notes; and the fact that the original authored YAML is **not** persisted in the instance (only the canonical `recipe.json` is). **Forward-declared** in this round: `manifest.label_classes` (Phase J Story J.f, target v0.20.0) closes the class-set enumeration gap so consumers stop deriving sorted-from-train independently. **New § Consumer-applied transformations vs. baked transformations** (Phase J Story J.g, target v0.20.0) draws the apply-boundary explicitly and identifies the lazy-mode geometry-transform gap (`path` points at source while `Transformations` are not reflected in JSONL pixels).
 >
-> **J.g ratified 2026-06-12 (v0.20.0).** The lazy-mode geometry-transform
-> gap above is now **closed**, not forward-declared. The closed set of
-> pixel-altering Transformation ops (today: `resize`) is enforced by
-> validator **check 26**: a recipe with a pixel-altering Transformation
-> on any lazily-serialized split MUST declare a qualifying image sink
-> (`format: png_per_record`, `field: image`, a post-Transformations
-> stage) covering those splits, and DataRefinery rewrites each affected
-> record's JSONL `path` to that sink's per-record output (instance-
-> relative). The § "Consumer-applied transformations vs. baked
-> transformations" subsection below is updated accordingly. Additive —
-> no `schema_version` bump (canonical recipe bytes unchanged); the
-> on-disk `path` value changes for affected recipes → pre-prod
-> re-materialize event.
+> **J.g ratified 2026-06-12 (v0.20.0).** The lazy-mode geometry-transform gap above is now **closed**, not forward-declared. The closed set of pixel-altering Transformation ops (today: `resize`) is enforced by validator **check 26**: a recipe with a pixel-altering Transformation on any lazily-serialized split MUST declare a qualifying image sink (`format: png_per_record`, `field: image`, a post-Transformations stage) covering those splits, and DataRefinery rewrites each affected record's JSONL `path` to that sink's per-record output (instance-relative). The § "Consumer-applied transformations vs. baked transformations" subsection below is updated accordingly. Additive — no `schema_version` bump (canonical recipe bytes unchanged); the on-disk `path` value changes for affected recipes → pre-prod re-materialize event.
 >
-> **Round 3 additions 2026-06-12 (Story J.k).** Absorbs four
-> documentation-only clarifications surfaced by the [J.d MF integration
-> spike](../phase-j-mf-integration-friction.md) (no code or shape
-> change): **F8** — the consumer-side runtime deps a downstream tool needs
-> beyond stdlib (`numpy` / `Pillow` / `pyarrow`), added to § Overview;
-> **F6** — every top-level recipe section persists in `recipe.json` as its
-> model default whether declared or not, added to § Recipe-side contract;
-> **F3** — the non-aggressive `path` field is host-bound, with the two
-> portability workarounds (`Sinks` rewrite / ship the source), added to
-> § Source-resolution path; **F5** — `recipe.schema_version` (`2`) and
-> `manifest.schema_version` (`1`) are independent counters, disambiguated
-> in § Schema-version coordination policy. Each absorption site carries an
-> inline "*(Fn, pinned in Round 3)*" provenance marker. *(F4 — the
-> disk-loader vs. library-records Featurization asymmetry — lands in the
-> NbF spec, which owns the library-records path.)*
+> **Round 3 additions 2026-06-12 (Story J.k).** Absorbs four documentation-only clarifications surfaced by the [J.d MF integration spike](../phase-j-mf-integration-friction.md) (no code or shape change): **F8** — the consumer-side runtime deps a downstream tool needs beyond stdlib (`numpy` / `Pillow` / `pyarrow`), added to § Overview; **F6** — every top-level recipe section persists in `recipe.json` as its model default whether declared or not, added to § Recipe-side contract; **F3** — the non-aggressive `path` field is host-bound, with the two portability workarounds (`Sinks` rewrite / ship the source), added to § Source-resolution path; **F5** — `recipe.schema_version` (`2`) and `manifest.schema_version` (`1`) are independent counters, disambiguated in § Schema-version coordination policy. Each absorption site carries an inline "*(Fn, pinned in Round 3)*" provenance marker. *(F4 — the disk-loader vs. library-records Featurization asymmetry — lands in the NbF spec, which owns the library-records path.)*
+>
+> **2026-06-13 (Story J.l).** Added § "Resolving a materialized instance": names `datarefinery.resolve_instance(...)` / `DataRefinery.status()` as the **one** blessed way to locate an instance, documents the `StatusReport` shape + hit/miss/corrupt contract, and **forbids** consumers recomputing the cache key / instance path themselves (a hand-rolled key silently breaks after any canonical-bytes change). Closes the gap that led a consumer to reimplement the instance-ID math. Additive library facade (`resolve_instance` composes `status()`); no recipe/manifest/on-disk shape change, no `schema_version` bump.
 
 ## Overview
 
@@ -405,6 +342,36 @@ Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SC
 - **`FilterOp`** (Story I.x.1 / G15): v1 nested `predicate: {op, ...rest, seed?}`; v2 lifts to top-level `{op, params, seed?}` (matches every other section). The migration is one-way; ModelFoundry should bind against the v2 shape and rely on the loader to migrate v1 recipes on read.
 - **`GenerationOp`** (Story I.x.2 / G12): v1 left `op` implicit (the recipe's `name` doubled as the op lookup key), called the splits field `applies_at`, and required `output_schema` to be an explicit `dict[str, FieldSpec]`. v2 has explicit `op: str` at top level, renames `applies_at` → `splits`, and widens `output_schema` to accept the literal `"matches_input"` shorthand (resolved at materialize time to `Output.record_schema` plus declared tag fields). The migration handles all three reshapes and the documented v1 workaround pattern of stashing `op:` inside `params:`; ModelFoundry should bind against the v2 names and treat `output_schema: "matches_input"` as a possible value.
 - **Assertion `kind` naming** (Story I.x.3 / G16a): three v1 bare-verb names rename to predicate-sentence form — `dtype` → `dtype_equals`, `range` → `value_range`, `record_count` → `record_count_in_range`. The mapping applies to both `InputContracts[*].assertion` and `OutputExpectations[*].assertion`. `required_field` and `distributional` are unchanged. v1 names are removed (not aliased) post-migration; ModelFoundry consumers reading the cached `recipe.json` will see the v2 names exclusively. The seven additional v2 kinds added in Story I.o (`split_record_counts`, `per_class_count_per_split`, `count_by_field`, `count_by_fields`, `shape_equals`, `value_in_set`, `per_class_count_equals`) were already predicate-sentence and are unaffected.
+
+## Resolving a materialized instance
+
+The previous section documents the cache-key derivation for **understanding and audit only**. Consumers MUST NOT reimplement it. DataRefinery exposes one blessed resolver; use whichever entry point fits.
+
+```python
+from datarefinery import resolve_instance     # top-level facade
+
+report = resolve_instance("recipe.yaml", cache_root="./data", seed=None, variant=None)
+```
+
+```python
+from datarefinery import DataRefinery        # equivalent, via the handle
+
+report = DataRefinery.from_recipe("recipe.yaml", config=cfg, variant=v, seed=s).status()
+```
+
+`resolve_instance(...)` is a thin convenience that **delegates to `DataRefinery.status()`** and returns the identical `StatusReport` — the same relationship the top-level `materialize()` has to `DataRefinery.from_recipe(...).materialize()` (one resolution implementation, two ergonomic entry points). `seed=None` uses the recipe's `seed` (an int overrides it); `cache_root=None` uses `RuntimeConfig`'s default. Both forms hash the recipe's declared inputs (cache identity includes the input hash; see § Cache-identity contract), so the inputs must be present on the resolving host — a recipe needing a custom `plugin_path` should use the full handle.
+
+**`StatusReport` shape** (`datarefinery.StatusReport`, a frozen dataclass):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `cache_status` | `"hit" \| "miss" \| "corrupt"` | `hit`: instance + parseable `manifest.json` present. `miss`: no instance for this recipe + inputs + seed (not an error). `corrupt`: directory present but `manifest.json` missing/unparseable. |
+| `instance_path` | `Path` | The **deterministic** instance directory — populated even on a `miss` (where the instance *would* live). |
+| `cache_key` | `CacheKey` | Full `recipe_hash` (64-hex), `input_hash` (64-hex), `seed`; `.short` is the 16-char path shard. |
+| `manifest` | `Manifest \| None` | Parsed manifest on `hit`; `None` otherwise. |
+| `note` | `str \| None` | Human-readable detail on `corrupt`. |
+
+**Do NOT recompute the cache key or instance path yourself.** Cache identity is DataRefinery's contract, not a consumer-replicable formula. Per § Cache-identity contract, `recipe_hash` is `SHA-256` over `model_dump(mode="json")` + canonical `json.dumps`, and **every pydantic field default participates** — so a DataRefinery release that adds a field, changes a default, or refines the canonical algorithm shifts `recipe_hash` for overlapping recipes. A consumer that hand-rolls the key (or builds the `<recipe-hash16>/<input-hash16>/<seed>` path directly) will, after any such change, **silently resolve to the wrong or a stale directory with no error** — exactly the brittleness this resolver exists to absorb. Bind to `report.instance_path` and `report.cache_key`; never to a locally-computed equivalent. *(Pinned 2026-06-13, Story J.l — see header.)*
 
 ## Schema-version coordination policy
 

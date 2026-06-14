@@ -5,8 +5,9 @@ name = "datarefinery"
 
 [env.root]
 purpose = "utility"
-backend = "micromamba"
+backend = "venv"
 
 [env.testenv]
 purpose = "test"
+backend = "venv"
 default = true
