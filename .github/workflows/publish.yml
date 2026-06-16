@@ -35,13 +35,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify pyproject.toml version matches tag
+      - name: Verify package version matches tag
         run: |
           tag="${GITHUB_REF_NAME}"
           version="${tag#v}"
-          pyproject_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
-          if [ "${pyproject_version}" != "${version}" ]; then
-            echo "::error::Tag ${tag} does not match pyproject.toml version ${pyproject_version}"
+          # The version is single-sourced in src/datarefinery/__init__.py;
+          # Hatchling reads it via [tool.hatch.version] and [project].version is
+          # declared dynamic, so it is NOT readable from pyproject.toml (Story J.m).
+          pkg_version="$(sed -nE 's/^__version__ = "([^"]+)"$/\1/p' src/datarefinery/__init__.py)"
+          if [ "${pkg_version}" != "${version}" ]; then
+            echo "::error::Tag ${tag} does not match package version ${pkg_version}"
             exit 1
           fi
 

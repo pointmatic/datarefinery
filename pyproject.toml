@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ml-datarefinery"
-version = "0.20.0"
+dynamic = ["version"]
 description = "Recipe-driven data preparation and caching for machine learning"
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0" }
@@ -53,6 +53,13 @@ datarefinery = "datarefinery.cli.app:main_entry"
 image_classification = "datarefinery.plugins.image_classification.plugin:PLUGIN"
 tabular = "datarefinery.plugins.tabular.plugin:PLUGIN"
 text = "datarefinery.plugins.text.plugin:PLUGIN"
+
+# Single source of truth for the package version: the `__version__`
+# literal in `src/datarefinery/__init__.py`. Hatchling's default (regex)
+# version source extracts it at build time, so `[project].version` is
+# declared `dynamic` above and never hand-maintained in this file (Story J.m).
+[tool.hatch.version]
+path = "src/datarefinery/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/datarefinery"]

@@ -349,6 +349,36 @@ Each friction item is a small spec edit; bundling them avoids over-decomposition
 
 ---
 
+### Story J.m: v0.21.0 Hatchling dynamic version — single source of truth for the package version [Done]
+
+**Disposition: build/release hygiene (bugfix).** Standalone post-bundle story owning its own **v0.21.0** bump — the Phase J v0.20.0 phase-bundle has shipped (tag `v0.20.0` exists; Story J.l owned that bump), so this is new work with its own release rather than part of the bundle. Surfaced 2026-06-16.
+
+The package version is declared in two hand-maintained places that have drifted: [`pyproject.toml`](../../pyproject.toml) `[project].version = "0.20.0"` (static) and [`src/datarefinery/__init__.py`](../../src/datarefinery/__init__.py) `__version__ = "0.19.0"` (stale). The drift originated in Story J.l, whose "Bump version to v0.20.0" task updated `pyproject.toml` but not `__init__.py`. It is consumer-visible: [`cli/app.py`](../../src/datarefinery/cli/app.py) resolves `--version` via `from datarefinery import __version__`, so `datarefinery --version` reports **0.19.0** while the built wheel's package metadata reports **0.20.0** — "which version is this?" has two answers.
+
+The project already builds with Hatchling (`build-backend = "hatchling.build"`); the fix is to adopt Hatchling's dynamic-version source so the literal lives in exactly one place. (A build-system improvement, hence a minor bump rather than a patch number-fix.)
+
+**Approach.** Make [`src/datarefinery/__init__.py`](../../src/datarefinery/__init__.py) `__version__` the **single source of truth**. `pyproject.toml` declares `dynamic = ["version"]` and points `[tool.hatch.version]` at the `__init__.py` literal, which Hatchling extracts at build time. `cli/app.py` is unchanged (keeps importing `__version__`, so `--version` works in editable / source-checkout / uninstalled contexts with no runtime metadata lookup). The `importlib.metadata` direction was considered and rejected (see Out of Scope).
+
+**Tasks:**
+
+- [x] In [`pyproject.toml`](../../pyproject.toml): remove the static `version = "0.20.0"` from `[project]`, add `dynamic = ["version"]` to `[project]`, and add a `[tool.hatch.version]` table with `path = "src/datarefinery/__init__.py"`. Hatchling's default (regex) version source reads the `__version__ = "..."` assignment from that file. Done — `[project].version` replaced with `dynamic = ["version"]`; `[tool.hatch.version] path = "src/datarefinery/__init__.py"` added with a single-source comment above the wheel-target block.
+- [x] Bump the now-canonical literal in [`src/datarefinery/__init__.py`](../../src/datarefinery/__init__.py) to `__version__ = "0.21.0"`. This is the single bump this story owns. Done.
+- [x] Audit and update tooling that read the now-removed static `[project].version`. The release workflow [`.github/workflows/publish.yml`](../../.github/workflows/publish.yml) "Verify … version matches tag" step read `pyproject.toml["project"]["version"]` and `KeyError`ed on the dynamic field — re-pointed it at the single source (`sed`-extract `__version__` from `src/datarefinery/__init__.py`) and renamed the step. Repo-wide grep confirms `publish.yml` was the only other static-version reader (`ci.yml`'s `tomllib` read is the coverage config, not the version). Surfaced when the `v0.21.0` tag push failed the publish job at this step (pre-PyPI-upload, so no release was affected); the corrected extraction was simulated locally against the tag (`0.21.0` == `0.21.0`).
+- [x] Verify the build reads it: build a wheel via the project's build path (`python -m build`) and confirm its `METADATA` `Version:` field equals `0.21.0` (and `hatch version` reports `0.21.0` if `hatch` is available). No second edit site exists. Verified via the editable reinstall (`pyve env run testenv -- pip install -e ".[corruptions]"`), which builds through the same Hatchling backend: produced `ml_datarefinery-0.21.0-py3-none-any.whl` (version sourced from `__init__.py` — the only source) and uninstalled the prior `0.19.0` editable metadata. `build`/`hatch` aren't in the runtime testenv, so the pip editable build is the build-time proof.
+- [x] Verify the consumer surface: `datarefinery --version` reports `0.21.0`, and — after a fresh install — `importlib.metadata.version("ml-datarefinery") == datarefinery.__version__`. Verified post-reprovision: `datarefinery --version` → `0.21.0`; `importlib.metadata.version("ml-datarefinery") == datarefinery.__version__ == "0.21.0"`. (Pre-reprovision the testenv carried stale editable metadata `0.19.0` — the exact drift class this story closes.)
+- [x] Add a drift-regression guard so this cannot silently recur: a unit test ([`tests/unit/test_version_single_source.py`](../../tests/unit/test_version_single_source.py)) asserting (a) `pyproject.toml` declares `version` as dynamic and carries no static `[project].version` literal (the structural single-source invariant), and (b) the installed package metadata version equals `datarefinery.__version__`. Note the editable-install caveat inline: (b) requires the env to reflect current source (CI installs fresh; a stale local editable install must be reprovisioned via `pyve` first). Done — 4 tests: version literal well-formed; pyproject declares `version` dynamic + no static literal; `[tool.hatch.version].path` points at `__init__.py`; installed metadata == source `__version__` (skips if the dist is absent, with the editable-stale caveat in the assertion message + a comment).
+- [x] CHANGELOG: open a new `## [0.21.0]` section above `[0.20.0]`; entry under it noting the single-source-of-truth fix and that `datarefinery --version` now matches package metadata (it previously reported the stale `0.19.0`). No `schema_version` / canonical-bytes impact (build-config + version-string change only). Done — new `## [0.21.0] - 2026-06-16` § with a `Fixed` entry; the `[0.20.0] - in progress` section is left untouched (out of scope).
+- [x] CI parity: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/` — all green. `pyve test` 1341 passed (1337 + 4 new); mypy clean (215 files); ruff check + ruff format clean.
+
+**Out of Scope:**
+
+- The `importlib.metadata` direction (pyproject canonical, `__init__` derives the version at runtime). Considered and rejected: it requires the package to be installed before its own `__version__` is importable and adds a metadata lookup on import; keeping the literal in source keeps `--version` working in any context and matches the Hatchling idiom.
+- Reconciling the `[0.20.0] - in progress` CHANGELOG header against the existing `v0.20.0` tag, and any Phase J phase-bundle closure bookkeeping. Separate release-hygiene item; this story does not retro-edit the v0.20.0 section beyond adding the new v0.21.0 section above it.
+- Release-automation / auto-bump tooling (`hatch version minor`, a bump pre-commit hook, tag-from-version CI). The single-source change makes such tooling possible later; building it is its own story.
+- Distribution / import-name changes. The distribution stays `ml-datarefinery`; the import name and CLI stay `datarefinery` (per Story H.e). Untouched here.
+
+---
+
 ## Future
 
 <!--

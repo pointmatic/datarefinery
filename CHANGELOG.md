@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-16
+
+### Fixed
+
+- **Single source of truth for the package version (Story J.m).** The
+  version was hand-maintained in two places that had drifted —
+  `pyproject.toml` (`0.20.0`) and `src/datarefinery/__init__.py`
+  (`0.19.0`) — so `datarefinery --version` (which reads
+  `datarefinery.__version__`) reported `0.19.0` while the built wheel's
+  package metadata reported `0.20.0`. `pyproject.toml` now declares
+  `version` as `dynamic` and sources it from the `__version__` literal in
+  `src/datarefinery/__init__.py` via Hatchling's `[tool.hatch.version]`;
+  that literal is the only place the version is edited. A new
+  `tests/unit/test_version_single_source.py` guard trips if a static
+  `[project].version` is re-introduced or if installed metadata diverges
+  from source. No `schema_version` / canonical-bytes impact (build-config
+  + version-string change only).
+
 ## [0.20.0] - in progress (Phase J phase-bundle)
 
 Phase J: ModelFoundry + NbFoundry consumer-integration phase. Stories
