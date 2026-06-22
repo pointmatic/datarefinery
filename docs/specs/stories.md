@@ -833,7 +833,7 @@ Bring fit-on-train normalization to audio spectral features. Per the J.n design 
 
 ---
 
-### Story J.u: `source_record_id` contract surface + cross-repo coordination (R7) [Planned]
+### Story J.u: `source_record_id` contract surface + cross-repo coordination (R7) [Done]
 
 **Disposition: cross-repo contract authoring.** Part of Phase J phase-bundle release. Closes R7.
 
@@ -841,14 +841,14 @@ Pin `source_record_id` as the consumer-bind grouping key for audio window aggreg
 
 **Tasks:**
 
-- [ ] Document `source_record_id` and `window_index` in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § JSONL records under a new "Audio window records" subsection, mirroring the structure already in place for FR-11 aggressive variants. Cross-reference the FR-11 entry where the field semantics overlap.
-- [ ] Document the aggregation contract: DR guarantees every window record carries a valid `source_record_id` matching a clip-level identifier present in the source records; the consumer groups by it and applies the aggregation policy (mean, max, etc.) on its training-side or eval-side outputs. DataRefinery emits no aggregation policy — it is purely a consumer concern.
-- [ ] Add a Failure-modes-MF-SHOULD-detect entry: "window record's `source_record_id` does not resolve to any clip in the materialized instance → instance is corrupt; refuse to consume."
-- [ ] Add a parallel "Audio window records" section to [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) covering the notebook-display ergonomics (e.g., per-window vs. per-clip table renderings).
-- [ ] Extend [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" to name audio's window-record fields alongside the existing image surfaces.
-- [ ] DOC: brief [`concept.md`](concept.md) cross-link confirming the audio modality boundary as the second real plugin validating the plugin-interface honesty goal.
-- [ ] CHANGELOG entry (cross-repo contract additions).
-- [ ] CI parity (doc-only; no code change).
+- [x] Document `source_record_id` and `window_index` in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § Audio window records. **Already stood up by J.q** (the `__v`/`__w` distinction table + field semantics); J.u sharpened it rather than adding a duplicate subsection — see the aggregation-contract task below.
+- [x] Document the aggregation contract: added a bold **Aggregation contract (R7 — DR owns the key, the consumer owns the math)** paragraph to § Audio window records — the producer guarantee (every window's `source_record_id` is the verbatim parent-clip `record_id`; all windows of a clip share one key and land in one split per R6/J.r) + the consumer obligation (group by it, apply mean/max/logit-average/vote) + the explicit "DR emits no aggregation policy and ships no aggregation op".
+- [x] Add a Failure-modes-MF-SHOULD-detect entry: new **Dangling audio window grouping key** bullet ("window's `source_record_id` resolves to no clip → corrupt instance, refuse to consume") in § Failure modes ModelFoundry SHOULD detect.
+- [x] Add a parallel "Audio window records" section to [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md): new § Audio window records under Notebook-output ergonomics — per-clip rollup vs. per-window table renderings, consumer-owned grouping, and the arrays-absent-from-JSONL note; cross-references the MF spec for the full contract.
+- [x] Extend [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check": named the **per-record dataset-JSONL field set** as a shape-binding surface, enumerating the image aggressive-variant fields (`source_record_id`/`variant_index`/`image_path`) and audio window fields (`source_record_id`/`window_index`) as grouping keys consumers bind against.
+- [x] DOC: brief [`concept.md`](concept.md) cross-link — § Plugin-interface honesty value criterion now notes `audio_classification` (Phase J Subphase J-1) as the second *fully real* (non-stub) plugin landing on the existing category-agnostic abstractions, with pointers to both vendor specs.
+- [x] CHANGELOG entry (cross-repo contract additions). New J.u bullet under the Subphase J-1 `[Unreleased]` section.
+- [x] CI parity (doc-only; no code change). `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/` + `ruff format --check` — all green (no source touched).
 
 **Out of Scope:**
 

@@ -248,6 +248,14 @@ Marimo enforces single-definition-per-symbol across cells: re-using a binding na
 
 `RuntimeConfig` defaults to `cache_root=Path("data")` — a **relative** path. A notebook run from `~/my-notebooks/` produces `~/my-notebooks/data/instances/...`. NbFoundry SHOULD prompt notebook users to set an explicit `cache_root` (via `--cache-root`, `DATAREFINERY_CACHE_ROOT`, or passing `RuntimeConfig(cache_root=...)` into `DataRefinery.from_recipe`) early in the notebook flow so the cache lives in a predictable location (F12 from J.b spike).
 
+### Audio window records (Story J.u, R7)
+
+When a recipe uses the `audio_classification` plugin's `window` Generation op, one decoded clip is fanned into N fixed-length **window records**, each carrying `source_record_id` (the parent clip's `record_id`, shared across all windows of the clip) and `window_index` (the `[0, n_windows)` ordinal). `manifest.record_counts` reflects the post-windowing count, not the clip count. The full producer/consumer contract — including the grouping-key guarantee, the `__w` vs. `__v` record-id distinction, and the aggregation boundary — is pinned in the **[MF vendor-dependency-spec § Audio window records](../modelfoundry/vendor-dependency-spec.md)**; NbF binds against the same fields. NbF's concern here is **display ergonomics**:
+
+- **Per-window vs. per-clip table renderings.** A naive `status` / `inspect` table lists every window row, so a 9-clip dataset windowed into ~10 windows each renders ~90 rows — visually dominated by intra-clip repetition. Notebook authors SHOULD offer a **per-clip rollup** view (group rows by `source_record_id`, show clip count + per-clip window count) alongside the raw per-window view, since the clip is usually the unit a human reasons about.
+- **Grouping key is consumer-owned.** Aggregating window-level model outputs back to a clip-level result (mean / max / vote) is the consumer's job (R7); DataRefinery emits no aggregation op. A notebook that displays predictions SHOULD group by `source_record_id` and surface `window_index` only when intra-clip ordering matters.
+- **Arrays are not in the JSONL.** The decoded `sample_array` and the spectral `mel` / `feature` arrays are in-pipeline only and are not serialized into `dataset/<split>.jsonl` (see the MF spec). A notebook table reading the JSONL shows metadata (`record_id`, `source_record_id`, `window_index`, `label`, `path`, `sample_rate`), not the audio/feature tensors.
+
 ## Schema-version coordination policy
 
 NbFoundry SHOULD track DataRefinery's `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` set (importable; v0.22.0+ ships `{1, 2, 3}` with `LATEST_SCHEMA_VERSION = 3`). The loader auto-migrates v1→v2→v3 on read; the persisted `recipe.json` inside a materialized instance is always the latest (v3) shape.

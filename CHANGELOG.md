@@ -81,6 +81,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statistics subsection (per-mel-bin axis) and an updated audio-features section.
   `recipe-authoring.md` § Featurizations documents the two-op `mel`→`feature`
   chain.
+- **`source_record_id` clip↔window contract surface (Story J.u, R7).**
+  Documentation/cross-repo only — pins `source_record_id` (+ `window_index`) as
+  the consumer-bind grouping key for audio window aggregation across both vendor
+  specs. The MF vendor-dependency-spec § Audio window records gains an explicit
+  aggregation contract (DR guarantees every window's `source_record_id` is the
+  verbatim parent-clip `record_id`; the consumer owns the mean/max/vote math; DR
+  ships no aggregation op) plus a new failure mode (dangling `source_record_id`
+  → corrupt instance, refuse to consume). The NbF vendor-dependency-spec gains a
+  parallel § Audio window records covering notebook display ergonomics (per-clip
+  rollup vs. per-window rows, arrays absent from the JSONL). `project-essentials.md`
+  § cross-repo coordination now names the per-record dataset-JSONL grouping-key
+  fields as a shape-binding surface; `concept.md` § Plugin-interface honesty notes
+  `audio_classification` as the second fully-real plugin. No code change.
 
 
 re-founds DataRefinery's cache identity on a **segmented** model with

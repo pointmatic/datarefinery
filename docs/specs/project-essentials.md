@@ -99,6 +99,8 @@ Five surfaces leave DataRefinery and bind downstream consumers (ModelFoundry tod
 2. **Manifest schema** emitted by `pipeline.manifest.write_manifest` — every key, type, and emitted-bytes default is read by downstream tools.
 3. **Report subsections** — `report/report.md`, `report/drift.json`, and persisted reporting-mode visualizations. Schema changes in `drift.json` and section ordering / heading text in `report.md` are both consumer-visible.
 
+Within the materialized instance, the **per-record dataset JSONL field set** (`dataset/<split>.jsonl`) is itself a shape-binding surface. Record-multiplying mechanisms stamp grouping-key fields consumers bind against: image aggressive variants carry `source_record_id` / `variant_index` / `image_path` (Story H.r.2); audio window records carry `source_record_id` (the parent clip's `record_id`, the documented R7 clip↔window aggregation key) / `window_index` (Stories J.q + J.u). Renaming or repurposing these fields — or changing how `source_record_id` is derived — is a cross-repo contract change; the field semantics live in the MF spec § Audio window records and § Record-multiplication shape.
+
 **Interaction-binding surfaces** (the library API + CLI; bind primarily NbFoundry, but every consumer driving DataRefinery from a notebook / script):
 
 4. **Library API** in `src/datarefinery/__init__.py` and `src/datarefinery/core/datarefinery.py` — `DataRefinery`, `Instance`, `materialize`, `__version__`; method signatures, property shapes, and return types are contract surfaces.
