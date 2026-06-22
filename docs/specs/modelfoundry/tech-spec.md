@@ -13,13 +13,13 @@ For the upstream contract ModelFoundry consumes (DataRefinery as vendor), see [`
 | Concern | Choice | Notes |
 |---|---|---|
 | **Language** | Python 3.12.x | Pinned via `asdf` / `pyve`. Use `python`, never `python3`, to honor the `asdf` shim. |
-| **`requires-python`** (pyproject.toml) | `>=3.12,<3.14` | PyPI-friendly range. The exact `python=3.12.13` pin lives in `environment.yml` (env reproducibility). The `3.14` ceiling protects against ML-stack incompatibilities seen in adjacent projects. |
-| **Environment manager** | `pyve` (micromamba backend) | Two micromamba envs declared in `pyve.toml` (schema 3.0): a `purpose = "utility"` **root** (`.pyve/envs/root/conda`, ad-hoc runs / scripts) and a `default = true` **`testenv`** (`.pyve/envs/testenv/conda`; editable package + PyTorch plugin + dev tooling; `environment.yml` manifest). See [`env-dependencies.md`](env-dependencies.md) for the authoritative env spec and `project-essentials.md` § Pyve Essentials. |
+| **`requires-python`** (pyproject.toml) | `>=3.12,<3.14` | PyPI-friendly range. The exact `python 3.12.13` pin lives in `.tool-versions` (asdf; env reproducibility). The `3.14` ceiling protects against ML-stack incompatibilities seen in adjacent projects. |
+| **Environment manager** | `pyve` (venv backend) | A venv multi-env layout in `pyve.toml` (schema 3.0): a `purpose = "utility"` **root** (`.venv` at the repo root, ad-hoc runs / scripts), a `default = true` **`testenv`** (base `-e .`, no torch — the framework-agnostic suite + lint/format), and lazy **`smoke-pytorch`** (the full torch closure, where the torch tests run), **`smoke-tensorflow`** / **`smoke-huggingface`** (declared placeholders), and **`typecheck`** (`mypy --strict` closure). All `backend = venv`. See [`env-dependencies.md`](env-dependencies.md) for the authoritative env spec and `project-essentials.md` § Pyve Essentials. |
 | **Build backend** | `hatchling` | Configured via `pyproject.toml`; no `setup.py`. |
 | **Package layout** | `src/` layout (`src/modelfoundry/...`) | Forces tests against the *installed* package, surfaces packaging bugs that flat layout hides. Mirrors DataRefinery and nbfoundry. |
 | **Linter / formatter** | `ruff` (check + format) | Single tool covers lint + format. Default rule set + `B`, `I`, `UP`, `SIM`, `RUF`. |
 | **Type checker** | `mypy --strict` over the **whole package** | Per `features.md` QR-6; pydantic v2 mypy plugin auto-loaded; `py.typed` marker ships in the wheel. |
-| **Test runner** | `pytest` + `pytest-cov` + `hypothesis` | Run via `pyve test`; never bare `pytest`. Dev tools live in the testenv (see § Two-environment install below). |
+| **Test runner** | `pytest` + `pytest-cov` + `hypothesis` | Never bare `pytest`. Plain `pyve test` runs the framework-agnostic suite in `testenv` (torch tests skip); `pyve test --env smoke-pytorch` runs the complete suite incl. torch. See § Multi-environment install below. |
 | **CLI framework** | `typer` | Mirrors DataRefinery and nbfoundry. Built on click; migration path stays open. |
 | **Editable install** | Testenv editable install required | Tests exercise CLI entry points; `pythonpath` alone does not register console scripts. |
 | **Pre-commit hooks** | **Not used in the pre-production series**; CI gates only | Vendored hook envs drift from project Python; revisit if drift becomes painful. |
@@ -30,22 +30,25 @@ For the upstream contract ModelFoundry consumes (DataRefinery as vendor), see [`
 
 ```bash
 project-guide mode plan_stories                       # change mode after this spec is approved
-pyve test                                             # run the test suite
+pyve test --env smoke-pytorch                         # run the full test suite (torch closure)
 pyve env run testenv -- ruff check src tests
 pyve env run testenv -- ruff format --check src tests
-pyve env run testenv -- mypy src tests
+pyve env run typecheck -- mypy src tests
 ```
 
-### Two-environment install
+### Multi-environment install
 
-Two micromamba envs are declared in `pyve.toml` (schema 3.0) — see [`env-dependencies.md`](env-dependencies.md) for the authoritative spec. The `utility` **root** carries the editable package for ad-hoc runs; the `test` **`testenv`** carries the package + PyTorch plugin + dev tooling and owns the suite. Because this project ships a **CLI** (`modelfoundry`), the testenv needs an editable install so its console-script entry points resolve. (`pyve env install` skips conda-backed envs in pyve 3.0.6, so pip installs into the micromamba envs run through `pyve env run`.)
+A venv multi-env layout is declared in `pyve.toml` (schema 3.0) — see [`env-dependencies.md`](env-dependencies.md) for the authoritative spec. The `utility` **root** carries the editable package for ad-hoc runs; the `default` **`testenv`** carries the base `-e .` (no torch) and runs the framework-agnostic suite + lint/format; lazy **`smoke-pytorch`** carries the package + PyTorch plugin and runs the torch tests (and, as a superset, the complete suite); lazy **`typecheck`** carries the full type closure for `mypy --strict`. Because this project ships a **CLI** (`modelfoundry`), both `testenv` and `smoke-pytorch` do an editable install so console-script entry points resolve. (Each env is `backend = venv`; provisioning runs through `pyve env run` per its `requirements` file.)
 
 ```bash
-pyve env init root                                          # utility root: .pyve/envs/root/conda
-pyve run pip install -e ".[pytorch]"                        # editable package + runtime closure (root)
-pyve env init testenv                                       # test env: .pyve/envs/testenv/conda
-pyve env run testenv -- pip install -e ".[pytorch]"         # testenv editable install (CLI entry points)
-pyve env run testenv -- pip install -r requirements-dev.txt # dev tool pinset
+pyve env init root                                                # utility root: .venv (repo root)
+pyve run pip install -e ".[pytorch]"                             # editable package + runtime closure (root)
+pyve env init testenv                                             # light test env: .pyve/envs/testenv/venv
+pyve env run testenv -- pip install -r requirements-test.txt      # base -e . (no torch) + lint/format/test tooling
+pyve env init smoke-pytorch                                       # suite env (lazy): .pyve/envs/smoke-pytorch/venv
+pyve env run smoke-pytorch -- pip install -r tests/integration/env/pytorch.txt  # editable pkg + torch closure
+pyve env init typecheck                                           # type-check env (lazy): .pyve/envs/typecheck/venv
+pyve env run typecheck -- pip install -r requirements-typecheck.txt             # full mypy closure
 ```
 
 ### Invocation rules (LLM-internal vs. developer-facing)
@@ -111,14 +114,16 @@ Source layout, with one-line descriptions per file:
 ```
 modelfoundry/                                       # repo root
 ├── pyproject.toml                                  # build backend (hatchling), deps, console script, ruff/mypy/pytest config
-├── pyve.toml                                        # pyve 3.0 env spec: [env.root] utility + [env.testenv] test (both micromamba)
-├── requirements-dev.txt                            # dev tools for testenv (ruff, mypy, pytest, pytest-cov, hypothesis, nbclient, ipykernel, types-pyyaml)
-├── environment.yml                                 # shared conda manifest for both micromamba envs (python=3.12.13 + pip)
+├── pyve.toml                                        # pyve 3.0 env spec: [env.root] utility + light [env.testenv] + lazy [env.smoke-*] / [env.typecheck] (all venv)
+├── requirements-test.txt                           # [env.testenv] deps: base -e . (no torch) + requirements-dev.txt → framework-agnostic suite
+├── requirements-dev.txt                            # shared dev tooling (ruff, mypy, pytest, pytest-cov, hypothesis, nbclient, ipykernel, types-pyyaml, build)
+├── requirements-typecheck.txt                      # full mypy --strict closure for [env.typecheck] (-e .[pytorch] + requirements-dev.txt)
+├── tests/integration/env/pytorch.txt               # [env.smoke-pytorch] deps: editable pkg + torch closure + pytest (the real suite env)
 ├── README.md                                       # quickstart: install, CIFAR-10 walkthrough, library + CLI usage
 ├── LICENSE                                         # Apache-2.0
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                                  # ruff + mypy --strict + pyve test + CIFAR-10 smoke on PRs and main (macOS primary, Linux stretch)
+│       ├── ci.yml                                  # ruff + mypy --strict (typecheck) + pyve test --env smoke-pytorch (incl. CIFAR-10 smoke) on PRs and main (macOS primary, Linux stretch)
 │       └── publish.yml                             # PyPI Trusted Publishing on tagged releases (v*.*.*)
 ├── src/
 │   └── modelfoundry/
@@ -332,27 +337,26 @@ Loaded materialized artifacts. Frozen dataclass (not pydantic) since it represen
 @dataclasses.dataclass(frozen=True)
 class ModelInstance:
     path: pathlib.Path                         # the instance directory
-    manifest: Manifest                         # parsed manifest.json
-    recipe: ModelRecipe                        # canonicalized recipe used
-    is_partial: bool                           # True when loaded from a FAILED temp dir
+    manifest: Manifest                         # parsed manifest.json (manifest.is_partial flags a partial read)
+    plugin: Plugin                             # resolved from manifest.plugin at load time (FR-23)
 
     # --- Notebook-shaped properties (computed lazily; cached after first access) ---
     @cached_property
-    def metrics(self) -> pandas.DataFrame | None: ...        # training/history.parquet
-    @cached_property
     def evaluation(self) -> dict[str, dict[str, Any]]: ...   # evaluation/metrics.json
+    @cached_property
+    def metrics(self) -> dict[str, dict[str, Any]]: ...      # alias for evaluation (not per-epoch history)
     @cached_property
     def confusion_matrix(self) -> dict[str, numpy.ndarray]: ...  # evaluation/confusion_matrix.npz
     @cached_property
-    def calibration(self) -> dict[str, pandas.DataFrame] | None: ...  # evaluation/calibration.parquet
+    def calibration(self) -> pandas.DataFrame | None: ...    # evaluation/calibration.parquet
     @cached_property
-    def predictions(self) -> dict[str, pandas.DataFrame]: ... # evaluation/predictions.parquet
+    def predictions(self) -> pandas.DataFrame | None: ...    # evaluation/predictions.parquet
     @cached_property
     def trials(self) -> pandas.DataFrame | None: ...         # optimization/trials.parquet
     @cached_property
     def best_params(self) -> dict[str, Any] | None: ...      # optimization/best-params.json
     @cached_property
-    def figures(self) -> dict[str, matplotlib.figure.Figure]: ...  # report/visualizations/*.png
+    def figures(self) -> dict[str, bytes]: ...               # report/visualizations/*.png (PNG bytes)
     @cached_property
     def summary(self) -> dict[str, Any] | None: ...          # model/summary.json (FR-27)
     @cached_property
@@ -363,8 +367,8 @@ class ModelInstance:
     def predict_proba(self, X: PredictInput) -> numpy.ndarray | pandas.DataFrame: ...
 
     @classmethod
-    def load(cls, path: pathlib.Path) -> "ModelInstance": ...
-    def render_report(self) -> None: ...
+    def load(cls, path: str | pathlib.Path, *, plugin: Plugin | None = None) -> "ModelInstance": ...
+    def render_report(self) -> str: ...        # re-renders report/ and returns the Markdown
 ```
 
 Where `PredictInput` is a plugin-defined union; the PyTorch plugin accepts `pd.DataFrame` (record-schema), `list[pathlib.Path]` (image paths), or `numpy.ndarray` of shape `(N, H, W, C)`.
@@ -604,7 +608,7 @@ Implements the Plugin Protocol against PyTorch. Key sub-modules:
 - `architecture.py` — registers CIFAR-10-scale CNN primitives, composites, and baseline architectures (FR-ARCH-1). Each op is a `nn.Module` subclass + a pydantic `OperationSpec` param model. The plugin composes them via a recursive builder that reads the canonical `Architecture` block.
 - `data.py` — `DataRefineryDataset(torch.utils.data.Dataset)` adapter. Reads the bound instance's `dataset/<split>.jsonl`; resolves `path` / `image_path` per the vendor-dep-spec; decodes with Pillow; applies the recipe's lazy `Augmentations` block at iteration time. Per-record-seed stamps from DataRefinery's vendor-dep-spec (`<AugmentationOp.name>_seed`) are honored for aggressive variants (read directly from the JSONL record); lazy augmentations realize via `torchvision.transforms.v2` against the seeding contract from `pipeline.seeding`.
 - `augmentations.py` — torchvision-v2 realizers for `random_crop`, `horizontal_flip`, `color_jitter`, `random_erasing`. Visual semantics match DataRefinery's Pillow-based aggressive realizers, verified by a hypothesis property-based test on a fixture set (semantic equivalence, not byte-equivalence — the two paths are fundamentally different code).
-- `trainer.py` — Training-loop implementation honoring `Training.max_epochs`, `Training.batch_size`, `Training.early_stopping`, `Training.checkpoint_cadence`. Calls `determinism.enable_deterministic_algorithms()` before model construction. Uses `pipeline.seeding.worker_init_fn_factory` for DataLoaders.
+- `trainer.py` — Training-loop implementation honoring `Training.max_epochs`, `Training.batch_size`, `Training.early_stopping`, `Training.checkpoint_cadence`. (Weight-init seeding happens earlier, via the runner's `prepare_for_build` hook before `build_model`; the trainer re-asserts `determinism.enable_deterministic_algorithms()` for the loop and seeds dropout.) Uses `pipeline.seeding.worker_init_fn_factory` for DataLoaders. Periodic checkpoints are persisted with `torch.save(Checkpoint(...).model_dump(), path)` — `torch.save` is byte-stable across equal tensors, whereas raw-pickling tensors is not (required for the FR-25 byte-identity contract).
 - `optimization.py` — Optuna-backed Optimization stage. `RDBStorage` with `sqlite:///<temp-dir>/optimization/study.db`; sampler seeded via `derive_seed(master_seed, "optuna_sampler")`; `n_jobs=1` enforced. `baseline_trial: enqueue_recipe_defaults` calls `study.enqueue_trial(recipe.optimizer.params | recipe.training.params | …)` before `study.optimize(...)`. Best-trial params are merged back into the recipe via `recipe.search_space.apply_params(...)` and the Training stage proceeds with the merged recipe.
 - `evaluation.py` — Metric implementations via `torchmetrics` (`MulticlassF1Score`, `MulticlassConfusionMatrix`, `CalibrationError`). ECE via torchmetrics' `CalibrationError`; calibration_curve via sklearn helpers. Baseline-model resolution (FR-12) attempts HuggingFace download lazily; failures emit a warning and continue (the rest of evaluation succeeds).
 - `visualizations.py` — Matplotlib renderers for `training_curves`, `optimization_history`, `confusion_matrix`, `calibration_curve`, `predictions_grid`. Each visualization op takes `InstanceArtifacts` and returns PNG bytes (single PNG) or `None` (skipped, e.g. `optimization_history` without an Optimization stage and `mode: reporting` declared — emits a placeholder PNG so the manifest's `visualizations` record is consistent).
@@ -851,7 +855,7 @@ See `docs/project-guide/developer/best-practices-guide.md` for full rationale.
 
 **Atomic writes.** All writes inside the instance directory target the materialize temp dir (`<cache-root>/instances/.tmp/<run-id>/`) until promote. The `os.replace` rename is the single atomic step. Same-filesystem-only requirement (cross-device-rename limitation) is documented in FR-5 and surfaced by `check`.
 
-**Determinism plumbing.** The deterministic-algorithm mode (PyTorch plugin) is enabled by the plugin's `health_check` and by `materialize()` before model construction. `CUBLAS_WORKSPACE_CONFIG` is set in `os.environ` if not already present. The `worker_init_fn` derived from `pipeline.seeding` is passed to every `DataLoader`. AMP is off unless the recipe sets `Training.precision: "amp"`; AMP recipes are stamped with `manifest.byte_identity_guaranteed: false` and `manifest.metric_tolerance` from the plugin's documented tolerance table.
+**Determinism plumbing.** Before each `build_model` of the to-be-trained model (the `architecture` stage, and the post-Optimization rebuild), the materialize runner calls the plugin's `prepare_for_build(seed)` hook — the runner is plugin-agnostic, so RNG seeding is delegated. For the PyTorch plugin that hook enables deterministic-algorithm mode and seeds the weight-init RNG (`derive_seed(seed, "weight_init")`), so weight initialization is reproducible across runs (FR-25); for sklearn it is a no-op (the estimator's `random_state` is seeded at `fit` time). `CUBLAS_WORKSPACE_CONFIG` is set in `os.environ` if not already present. The `worker_init_fn` derived from `pipeline.seeding` is passed to every `DataLoader`. AMP is off unless the recipe sets `Training.precision: "amp"`; AMP recipes are stamped with `manifest.byte_identity_guaranteed: false` and `manifest.metric_tolerance` from the plugin's documented tolerance table.
 
 **Device resolution.** `Training.device` (`Literal["auto", "cpu", "cuda", "mps"]`, default `"auto"`) drives every model-execution stage in the plugin: Training, the inner trainings of Optuna Optimization, Evaluation, `predict`, and `predict_proba`. Eval and inference resolve the device implicitly from the field — there is no separate `Evaluation.device` knob. `"auto"` lets the plugin pick the best accelerator its `health_check` reports available (MPS > CUDA > CPU in the PyTorch plugin's preference order); explicit values force the choice and are validated against `health_check.accelerators` (FR-2 check 20). Because `device` participates in canonical recipe bytes, distinct device choices produce distinct cache entries — a CPU-benchmark run and an MPS run on the same recipe materialize into separate `ModelInstance` directories rather than colliding on a shared key. Plugins that have not yet wired an `accelerators` field into their `health_check` report are tolerated: the validator records a skip message instead of failing, so honest in-progress plugins are not blocked.
 
@@ -931,4 +935,4 @@ Mirrors features.md TR-1..TR-16 with the tests/ layout above. Categories:
 
 ## CI/CD Automation
 
-GitHub Actions: `ci.yml` runs `ruff check` + `ruff format --check` + `mypy --strict` + `pyve test` + the CIFAR-10 smoke (TR-12) on every PR and push to `main` on macOS (Apple Silicon) primary with Linux as a stretch matrix entry; `publish.yml` performs PyPI Trusted Publishing on tagged commits (`v*.*.*`); GitHub branch protection and Codecov / Coveralls coverage upload are explicitly out of scope for the pre-production series per CR-1, with coverage produced locally via `pyve test --cov` as the in-repo report.
+GitHub Actions: `ci.yml` runs `ruff check` + `ruff format --check` (testenv) + `mypy --strict` (typecheck) + `pyve test --env smoke-pytorch` + the CIFAR-10 smoke (TR-12) on every PR and push to `main` on macOS (Apple Silicon) primary with Linux as a stretch matrix entry; `publish.yml` performs PyPI Trusted Publishing on tagged commits (`v*.*.*`); GitHub branch protection and Codecov / Coveralls coverage upload are explicitly out of scope for the pre-production series per CR-1, with coverage produced locally by the `smoke-pytorch` run (`--cov` is enabled by default) as the in-repo report.

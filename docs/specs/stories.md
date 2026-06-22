@@ -379,6 +379,558 @@ The project already builds with Hatchling (`build-backend = "hatchling.build"`);
 
 ---
 
+## Subphase J-1: Audio Classification
+
+A consumer is planning to use DataRefinery for audio classification. This phase is focused on implementing the requirements in `docs/specs/audio-classification-requirements.md`.
+
+> **⏸ PAUSED (2026-06-13).** Stories J.o–J.w are on hold pending the segmented-recipe-identity rearchitecture (Story J.x spike → [`phase-j-recipe-architecture-spike.md`](phase-j-recipe-architecture-spike.md) → forthcoming `plan_phase` / Phase K), which sequences **before** this subphase resumes. J.n Finding A (`target_sample_rate` would invalidate every image cache) generalized into a recipe-model rearchitecture decision.
+>
+> **Dependency precision:** the hard dependency begins at **J.p** (audio sources + `target_sample_rate` need the plugin-surface segment; the `AudioSource` variant *is* that segment in miniature). **J.o** (bare scaffold — touches no recipe-model/canonical-bytes surface) is technically independent, but is kept behind the rearchitecture too for coherence and because building audio on the flat model would enlarge the one-time migration (adds surface to the very model being re-segmented — against the memo's §8 timing argument). Audio is therefore built **once**, on the new foundation, not refactored.
+>
+> J.p/J.q/etc. also still reference the pre-v3 `pyve testenv run …` form — to be updated to `pyve env run …` when these stories execute.
+
+---
+
+### Story J.n: Spike — Audio-classification plugin design (Q1–Q4 verification) [Done]
+
+**Disposition: investigation spike** (throwaway; deliverable is the documented decision, not code). Part of Phase J phase-bundle release. No version bump.
+
+**Trigger.** Subphase J-1 introduces a new modality plugin that touches the Stage model, Splits/Generation ordering, fit-on-train discipline, and the cross-repo `source_record_id` contract. Four open questions from [`audio-classification-requirements.md`](audio-classification-requirements.md) § Open Questions need to be settled before the R-stories execute. The developer-approved working recommendations are Q1 Generation (windowing as a record-count-changing op), Q2 per-recipe canonical sample rate (default 16000 Hz), Q3 DR-owns-grouping-key only (consumer owns the aggregation math), Q4 audio-domain augmentations deferred to Future. This spike's job is to **verify each recommendation against current DataRefinery source** and produce a frozen design memo that J.o–J.w execute against.
+
+**Why a spike rather than a design memo.** The Q1 choice (windowing as Generation) cascades through Splits ordering, manifest `record_counts` semantics, and `source_record_id` field reuse from FR-11 aggressive variants. If any of those assumptions doesn't hold against current code, the cascade breaks differently and J.q–J.r must reshape. Better to find out at spike time than during execution.
+
+**Tasks:**
+
+- [x] **Verify Q1 — Generation as the windowing placement.** Read [`src/datarefinery/pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py) (and the stage-ordering definition) to confirm Generation runs **after** Splits. Confirm `manifest.record_counts` reflects post-Generation expansion (read the FR-11 aggressive-mode precedent in [`tests/integration/test_runner.py`](../../tests/integration/test_runner.py)). Document file:line citations. **Verified** (memo § Q1): `STAGE_NAMES` orders `Splits`(runner.py:109) before `Generation`(runner.py:111); `record_counts` computed post-Generation (runner.py:525). Clip→window split-integrity falls out of stage order for free.
+- [x] **Verify Q1 corollary — `source_record_id` mechanism precedent.** Trace how FR-11 aggressive variants derive `source_record_id` and variant `record_id` (`f"{source_record_id}__v{variant_index:03d}"`). Decide: do audio window records reuse `source_record_id` or introduce a sibling field name? Recommended default: **reuse `source_record_id`** + add `window_index: int` (parallel to `variant_index`). Confirm against the vendor-dependency-spec's JSONL records section. **Verified** (memo § Q1 corollary): `_realizer.py:49-59,113-115`. Reuse `source_record_id` is unambiguous (no aggressive audio augs in v1 → a record is never both window+variant); add `window_index`; derive `__w{window_index:04d}`.
+- [x] **Verify Q2 — per-recipe canonical sample rate participates in canonical bytes.** Read [`src/datarefinery/recipe/models.py`](../../src/datarefinery/recipe/models.py) to see how plugin-specific input-source params are wired into the canonical-bytes path. Confirm that a new `target_sample_rate: int` field on the audio input source would participate in cache identity automatically. **Verified with a placement refinement — see memo Finding A.** It participates (canonical.py:20-40 dumps the whole graph), BUT `InputSource` is shared across modalities (models.py:86) and `model_dump` emits all fields, so adding it there invalidates *every image recipe's* cache. Resolution: a discriminated `AudioSource` variant carries the field so image canonical bytes stay put. J.p adjusted.
+- [x] **Verify Q3 — DR's `source_record_id` is already the documented consumer-bind for grouping.** Read [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § JSONL records. Document whether the field name can be carried verbatim from FR-11's documentation or whether the audio variant needs its own subsection. **Verified** (memo § Q3): field name carries, but semantics differ (window-of-clip vs. variant-of-image) → audio needs its own "Audio window records" subsection under § JSONL records. That is J.u's scope. "DR owns key; consumer owns aggregation" boundary is consistent with current posture.
+- [x] **Verify Q4 — deferring audio-domain augmentations is consistent.** Trace R1–R7 to confirm no requirement transitively pulls in augmentation behavior; confirm the existing `Augmentations` contract would absorb future audio augmentations (SpecAugment-style time/freq masking) without a contract change. **Verified** (memo § Q4): R1–R7 map onto non-Augmentation stages; the modality-agnostic `AugmentationOp` (models.py:356) would absorb future SpecAugment ops with no contract change. Defer cleanly; no v1 surface.
+- [x] **Verify R5 normalize feasibility — reuse or new op?** Read [`src/datarefinery/plugins/image_classification/operations/transformations.py`](../../src/datarefinery/plugins/image_classification/operations/transformations.py) `NormalizeOp` + `_per_channel_mean_std`. The existing impl computes `stack.mean(axis=axes_to_reduce)` where `axes_to_reduce = tuple(range(stack.ndim - 1))` — i.e., reduces across all axes except the last. Confirm whether this generalizes to per-mel-bin (where the "last axis" is the mel-bin axis in a `(time_frames, n_mels)` feature) or whether a new `audio_normalize` op is warranted. Recommended default: **reuse if the verify holds**, else split into `audio_normalize`. **Verified — verify does NOT hold; see memo Finding B.** Existing op keeps the *last* axis (transformations.py:226-240); librosa-native `(n_mels, n_frames)` has mel as axis 0, so reuse yields per-*frame* not per-*mel-bin* stats. Per J.n's own fallback → split into `audio_normalize` (B1), extracting a shared mean/std helper to bound duplication. J.t adjusted.
+- [x] **Verify R4 spectral primitive — log-mel only for v1.** R4 lists "log-mel spectrogram, or MFCC." Recommended default for v1: **log-mel only**; MFCC moves to Future. Confirm against the requirements spec. **Verified** (memo § R4): nothing in R1–R8 or the acceptance criteria requires MFCC; log-mel only for v1, MFCC → Future. Feature orientation frozen as `(n_mels, n_frames)`.
+- [x] **Decide decode library — librosa vs. soundfile vs. torchaudio.** Tradeoffs: librosa (featureful + numpy-coupled; pulls scipy/soundfile transitively), soundfile (thin libsndfile wrapper), torchaudio (framework-coupled, complicates pluggability). Recommended default: **librosa for both decode and featurization** (simplest one-dependency path). Confirm against project-essentials' Pyve env-management constraints. **Decided** (memo § Decode library): librosa for decode+featurize, behind an **`[audio]` optional extra** (mirrors `[corruptions]`/`[llm]` in pyproject.toml) to keep the base install lean; imported lazily inside op `apply` so plugin discovery/contract-tests don't require it.
+- [x] **Write the design memo** at `docs/specs/phase-j-subphase-1-audio-design-memo.md` capturing each verified answer with file:line citations, and a "frozen design" section enumerating: stage placements (Generation: `window`; Featurization: `log_mel_spectrogram`; Transformations: `normalize`), field names (`source_record_id`, `window_index`, `feature`, `target_sample_rate`), decode library choice, and the per-mel-bin normalization axis decision. Written at [`phase-j-subphase-1-audio-design-memo.md`](phase-j-subphase-1-audio-design-memo.md): § 1 verifications (cited), § 2 Findings A/B, § 3 frozen-design table, § 4 downstream-story adjustments, § 5 conclusion.
+- [x] Present the memo at the approval gate; the developer's confirmation freezes the design for J.o–J.w execution. **No code, no test, no version bump.** Presented; design frozen **pending developer sign-off on Findings A and B** at this gate.
+
+**Out of Scope:**
+
+- Implementing any audio op or scaffolding. Spike is investigation only.
+- Renegotiating Q1–Q4 conclusions unless verification surfaces a blocker. Recommendations are accepted; the spike's job is to verify, not re-debate.
+- Performance / latency analysis of decode-library candidates. Functional fit is the criterion.
+
+---
+
+### Story Bundle: Recipe Architecture Improvements
+
+See [phase-j-recipe-architecture-spike.md](phase-j-recipe-architecture-spike.md).
+
+---
+
+### Story J.n.1: Design-decision memo — resolve open Qs Q1–Q8 [Planned]
+
+**Disposition: investigation spike** (throwaway; deliverable is the resolved-decisions memo, not code). Part of the Recipe Architecture bundle. No version bump.
+
+The [spike memo](phase-j-recipe-architecture-spike.md) § 9 enumerates 7 substantive open design questions plus the Q8 vertical-axis decision. Settle them in a frozen tech spec at `docs/specs/phase-j-recipe-architecture-design.md` before implementation begins. Mirrors the I.r.0 / J.n spike pattern: spike findings produce a memo, the memo's resolved decisions land in a second memo, then implementation executes against the second memo without re-debating.
+
+**Tasks:**
+
+- [ ] **Q1 — Plugin-surface representation.** Decide between (a) discriminated unions per shared model (per-type `ImageSource` / `AudioSource` siblings) — incremental, local; (b) a nested `plugin:` sub-document holding all plugin-scoped config — cleaner segment boundary, bigger migration. Document the trade-off; verify against current [`src/datarefinery/recipe/models.py`](../../src/datarefinery/recipe/models.py) before committing.
+- [ ] **Q2 — Overlay composition & identity.** How `variants` (FR-14) maps to first-class overlays; ordering/conflict rules; additive (LoRA-analogy) vs. override semantics; whether overlays are typed or open-bag. Decide.
+- [ ] **Q3 — `join_stable` shape.** Concatenated digests vs. Merkle tree; empty-segment marker bytes; how cumulative-prefix composition is expressed (for the deferred vertical axis). Pick the simplest form that supports prefix chains so the door stays open for the vertical axis without forcing adoption.
+- [ ] **Q4 — Versioning umbrella.** Per-segment versions only, or per-segment + a thin global umbrella? Migration-registry keying mechanics (`(segment, from, to)` vs. tuple-of-segment-versions). Decide.
+- [ ] **Q5 — Extensions namespace syntax.** `extensions:` block vs. `x-*` keys; how plugins declare which extension keys they consume (validator surface); where `extra="forbid"` relaxes and where it stays strict. Decide.
+- [ ] **Q6 — Validator adaptation.** How the validator's stage/field checks + check-23 reserved-field logic adapt to segmented surfaces. Ties to the Future "plugin-pluggable validator reserved-set hook" entry — decide whether that Future entry collapses into J.n.7.
+- [ ] **Q7 — No-implicit-defaults rollout mechanics.** How `ParameterSpec` drops `default=`; how `required` is re-expressed; how the scaffolder sources the recommended values it now emits; how existing fixtures / recipes are mass-rewritten in the one-time migration window. Decide.
+- [ ] **Q8 — Vertical stage-reuse decision.** Adopt a minimal cut (aggressive-augmentation realization / audio decode+window+featurize / normalize fit) or rely entirely on existing `export` / `report` / partial-run primitives? Confirm `join_stable` supports cumulative-prefix composition regardless (so Q8 stays a deferrable yes/no rather than a redesign).
+- [ ] Write the design memo at `docs/specs/phase-j-recipe-architecture-design.md` with explicit Q1–Q8 answers + file:line citations for any verification work. Present at the approval gate; the developer's confirmation freezes the design for J.n.2–J.n.7.
+- [ ] **Cross-tool family coordination.** Per spike memo § 10, pass the resolved-decisions memo to ModelFoundry — they adopt the horizontal mechanism + no-implicit-defaults wholesale. Coordinate any divergence cross-repo before locking the design.
+
+**Out of Scope:**
+
+- Implementing the rearchitecture. This memo is settle-decisions only.
+- Re-litigating the spike memo § 3 resolved stance (no-implicit-defaults, required-vs-optional rule, pre-1.0 zero support window) — those are settled. Q1–Q8 are the open dimensions.
+
+---
+
+### Story J.n.2: Segment-aware canonical hasher + per-segment versioning infrastructure [Planned]
+
+**Disposition: feature addition (infrastructure).** Part of the Recipe Architecture bundle.
+
+Implement the segment-aware canonical-bytes machinery per the J.n.1 design memo: `join_stable(segments) → bytes`, per-segment hashing, empty-segment markers, per-segment version constants. Built alongside the existing flat-model `model_dump` canonical bytes (shadow mode) so the J.n.3 + J.n.4 mass invalidation can flip atomically rather than incrementally.
+
+**Tasks:**
+
+- [ ] Implement `join_stable` per J.n.1 Q3 (concatenated digests or Merkle); ensure it supports cumulative-prefix composition (the deferred Q8 vertical-axis hook).
+- [ ] Define empty-segment markers; pin-test that an empty segment contributes a fixed nothing to the join.
+- [ ] Add per-segment version constants (e.g., `CORE_SCHEMA_VERSION`, `PLUGIN_IMAGE_SCHEMA_VERSION`, `PLUGIN_AUDIO_SCHEMA_VERSION`, `OVERLAYS_SCHEMA_VERSION`, `EXTENSIONS_SCHEMA_VERSION`).
+- [ ] Add migration registry skeleton keyed per J.n.1 Q4 (`(segment, from, to) → migration_fn`).
+- [ ] Provide a shadow-comparison mode: when active, the runner computes both old flat canonical bytes AND new segmented bytes, asserting they hash identically for existing flat-shape recipes (transition correctness; turned off in J.n.3 when segmented becomes the only path).
+- [ ] Unit tests for `join_stable` determinism, empty-segment isolation, prefix-composition behavior, shadow-mode parity on a sweep of fixture recipes.
+- [ ] DOC: document the new internal API in [`tech-spec.md`](tech-spec.md) § Cache identity.
+- [ ] CI parity: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+
+**Out of Scope:**
+
+- Moving any actual recipe field into a segment (J.n.3 owns).
+- Per-segment migration logic + pin tests (J.n.7 owns the registry population + comprehensive pin-test discipline).
+
+---
+
+### Story J.n.3: Recipe model refactor into segments + plugin-surface representation closes Finding A [Planned]
+
+**Disposition: feature addition (mass refactor) + one-time pre-1.0 cache invalidation.** Part of the Recipe Architecture bundle. Closes spike memo Finding A.
+
+Refactor `Recipe` from a flat pydantic model into a segmented one: `core`, `plugin`, `overlays`, `extensions`. Audio's `target_sample_rate` lands in the `plugin:audio` segment only — image recipes' canonical bytes are byte-identical before/after the refactor (modulo the one-time segment-combiner change). Per J.n.1 Q1, the plugin surface uses discriminated unions OR a nested sub-doc (whichever was chosen).
+
+**This is the one-time pre-1.0 cache-invalidation event.** Every existing recipe re-materializes once. Acceptable now, prohibitive post-1.0 per spike memo § 8.
+
+**Tasks:**
+
+- [ ] Refactor [`src/datarefinery/recipe/models.py`](../../src/datarefinery/recipe/models.py): split `Recipe` into segment-typed sub-models per J.n.1 Q1 + Q2 decisions.
+- [ ] Implement the chosen plugin-surface representation (discriminated unions or nested sub-doc); migrate every plugin-specific field into the active plugin's segment.
+- [ ] Wire the runner / loader / validator / cache identity to use the segmented canonical bytes from J.n.2 (turn off shadow mode; segmented becomes the only path).
+- [ ] Audio-specific verification: `target_sample_rate` and any other audio-only fields live in `plugin:audio` only; pin-test that they do NOT appear in image recipes' canonical bytes (the direct resolution of J.n Finding A).
+- [ ] Migration logic v1 → vN (where N is the new segmented version) keyed by `(segment, from, to)` per J.n.2's registry. The loader applies migrations on read; the cached `recipe.json` reflects the new segmented shape.
+- [ ] Update all fixture recipes to the new segmented shape.
+- [ ] Integration test: image-fixture pin test shows hash UNCHANGED across an audio-plugin-surface change. Audio-fixture pin test shows hash CHANGED only for audio-segment changes.
+- [ ] DOC: update [`tech-spec.md`](tech-spec.md) § Data Models to describe the segmented recipe shape.
+- [ ] CHANGELOG entry under the in-progress v0.22.0 section: one-time pre-1.0 cache invalidation; document recompute cost and rationale.
+- [ ] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § Recipe-side contract + § Cache-identity contract; mirror in [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md). Full sweep of cross-repo docs lives in J.n.8; this story carries the local diffs that directly correspond to the refactor.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- No-implicit-defaults rollout (J.n.4 owns).
+- Overlay reconsideration as first-class composable dimension (J.n.5 owns).
+- Extensions namespace (J.n.6 owns).
+- Full per-segment pin-test suite (J.n.7 owns); initial pin tests for Finding A + flat→segmented parity land here.
+
+---
+
+### Story J.n.4: No-implicit-defaults rollout [Planned]
+
+**Disposition: feature addition (mass refactor + orthogonal mass change) + one-time pre-1.0 cache invalidation.** Part of the Recipe Architecture bundle.
+
+Adopt the spike memo § 3 resolved stance #1: kill code-supplied defaults. The interpreting code supplies no behavior-affecting value; the scaffolder (`init`) emits recommended values explicitly into the recipe text, so they are in canonical bytes, audit-visible, and versioned. Mode-selecting optionality (where absence is itself meaningful — `normalize.mean: None ⇒ "fit from train"`, `log_mel_spectrogram.f_max: None ⇒ "Nyquist"`) is KEPT, but the "absent ⇒ behavior" mapping becomes part of the versioned plugin-segment contract.
+
+**This is orthogonal to but coordinated with J.n.3** — both ship in the same pre-1.0 mass-invalidation window to keep the user-visible blast radius a single re-materialization event, not two.
+
+**Tasks:**
+
+- [ ] Audit every `ParameterSpec(default=…)` in [`src/datarefinery/plugins/base.py`](../../src/datarefinery/plugins/base.py) and per-plugin op definitions; classify each as:
+  - **Default-value optionality** (absent ⇒ code fills in X): eliminate; the scaffolder emits the value explicitly.
+  - **Mode-selecting optionality** (absence is itself meaningful): keep; document the "absent ⇒ behavior" mapping in the plugin-segment contract.
+- [ ] Drop `default=` from every default-value-optionality param.
+- [ ] Re-express `required` per J.n.1 Q7: adding a `required` param to an existing op is now a plugin-segment-version bump (+ support window); adding a mode-selecting-optional param is free (sparse-hashing — absent keys contribute nothing).
+- [ ] Update the scaffolder ([`scaffolder/init.py`](../../src/datarefinery/scaffolder/init.py)) to emit recommended values explicitly into every scaffolded recipe section.
+- [ ] Update every fixture recipe AND every example recipe under [`docs/guides/`](../guides/) to carry values explicitly.
+- [ ] Unit test: scaffolder output validates AND materializes AND every value appears verbatim in the recipe text (no "missing" canonical key that the code fills in).
+- [ ] Pin test: a `default=` re-introduction anywhere in any `ParameterSpec` fails CI (guards regression).
+- [ ] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) to explain the no-implicit-defaults discipline (canonical bytes contain exactly what the author wrote; absence is mode-selecting, not value-filling).
+- [ ] DOC: update [`plugin-authoring.md`](../guides/plugin-authoring.md) to instruct plugin authors on declaring required-vs-mode-selecting params.
+- [ ] CHANGELOG entry: this lands in the same v0.22.0 release as J.n.3; the mass invalidation cost is enumerated once across both stories.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Per-segment migration registry / broader pin tests (J.n.7 owns; the default-reintroduction guard is included here as a regression test).
+- Tooling to detect historical `ParameterSpec` default changes — the Future "default-change discipline tooling" entry collapses into J.n.4 + J.n.7.
+
+---
+
+### Story J.n.5: Overlays mechanism — `variants` as first-class composable overlays [Planned]
+
+**Disposition: feature addition.** Part of the Recipe Architecture bundle.
+
+Per spike memo § 4 and J.n.1 Q2: reconsider `variants` (FR-14) as first-class orthogonal overlays with independent identity. Today variants collapse into the base before hashing; under the new model each overlay hashes independently, their composition is order-stable, and recipes with no overlays carry an empty `overlays` segment contributing nothing to canonical bytes (pin-tested in J.n.7).
+
+**Tasks:**
+
+- [ ] Refactor `variants` into the segmented `overlays` representation per J.n.1 Q2 decisions (additive vs. override semantics; ordering/conflict rules; typed-vs-open-bag).
+- [ ] Update loader / runner / validator to apply overlays in declared order with independent per-overlay identity.
+- [ ] Migration for existing variant-using recipes per J.n.1 Q4 migration mechanics: the migrated recipe's canonical bytes must match the old variant-using recipe's bytes (one-time event coordinated with J.n.3 to keep the mass invalidation a single window).
+- [ ] Pin test: a recipe with no overlays hashes identically before/after the overlays mechanism is introduced (proves additivity).
+- [ ] Unit tests: overlay composition ordering; conflict resolution; independent identity per overlay (a change to one overlay does not move another's hash).
+- [ ] Integration test: a multi-overlay recipe materializes deterministically; the report's overlay echo names every applied overlay.
+- [ ] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) § Variants → Overlays; document composition rules.
+- [ ] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § Recipe-side contract: rename `variant` → `overlays` semantics. Update `manifest.variant` field semantics (or rename) per J.n.1 Q2 decision. Carry parallel diffs in [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md). Full doc sweep is J.n.8; local diffs land here.
+- [ ] CHANGELOG entry.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Net-new overlay capabilities beyond what `variants` provides today — this is a refactor + isolation story, not a feature expansion. Net-new overlay types are post-bundle.
+
+---
+
+### Story J.n.6: Extensions namespace + plugin extension-key declaration [Planned]
+
+**Disposition: feature addition.** Part of the Recipe Architecture bundle.
+
+Per spike memo § 4 and J.n.1 Q5: introduce the sanctioned `extensions:` namespace (or `x-*` keys, per Q5) where `extra="forbid"` is relaxed inside the namespace only. Plugin/hook code reads extension parameters; the namespace enters identity only when non-empty (empty for everyone at landing time → no existing cache breaks).
+
+**Strict scope per spike memo § 6.** Extensions carry **parameters** (data read by installed plugin code). Recipe-activated arbitrary code is explicitly OUT — that's a separate trust-boundary effort if ever pursued. The recipe stays a declarative artifact.
+
+**Tasks:**
+
+- [ ] Add the `extensions:` block (or `x-*` keys) per J.n.1 Q5 syntax decision; relax `extra="forbid"` inside the namespace only.
+- [ ] Plugin extension-key declaration mechanism: plugins enumerate which extension keys they consume; the validator validates that every extension key in a recipe is declared by an installed plugin. Undeclared keys → refuse with a clear message naming the unknown key.
+- [ ] Identity: `extensions` segment contributes nothing when empty (pin-tested in J.n.7).
+- [ ] Unit + integration tests: empty extensions (cache identity unchanged from a no-extensions baseline); declared extension keys validate; undeclared keys refuse; relaxed `extra="forbid"` inside the namespace; strict elsewhere.
+- [ ] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) with the extensions namespace, including the spike memo § 6 trust-boundary callout: extensions are declarative parameters only; recipe-activated code is a separate effort.
+- [ ] DOC: update [`plugin-authoring.md`](../guides/plugin-authoring.md) to explain plugin extension-key declaration.
+- [ ] CHANGELOG entry: additive (no canonical-bytes perturbation for existing recipes — empty namespace marker contributes nothing).
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Recipe-activated arbitrary code / hook execution — explicitly out per spike memo § 6 trust boundary.
+- "Promotion" tooling to move an extension into core/plugin scope — manual today; tooling is post-bundle.
+
+---
+
+### Story J.n.7: Per-segment migration registry + per-segment canonical-hash pin tests [Planned]
+
+**Disposition: feature addition + enforcement infrastructure.** Part of the Recipe Architecture bundle. **Subsumes** the existing [`stories.md § Future`](stories.md) "Default-change discipline tooling for cache-identity stability" entry — remove that Future entry as part of this story.
+
+Replace the single global `schema_version` with per-segment versions and per-segment migrations. Pin-test every segment in isolation so isolation is enforced, not asserted. Per spike memo § 7.
+
+**Tasks:**
+
+- [ ] Populate the migration registry from J.n.2's skeleton: `(segment, from, to) → migration_fn`. Migrations run during the loader's read path; the cached `recipe.json` always reflects the latest segmented shape.
+- [ ] Per-segment canonical-hash pin tests:
+  - Image-only fixture: hash MUST NOT move on any audio plugin-surface change (Finding A enforced).
+  - Audio-only fixture: hash MUST NOT move on any image plugin-surface change.
+  - Recipe-without-overlays: hash UNCHANGED before/after overlays mechanism (J.n.5).
+  - Recipe-without-extensions: hash UNCHANGED before/after extensions mechanism (J.n.6).
+  - Each segment gets its own pinned fixture; an unexpected hash change at that fixture is a blocking CI failure that forces a conscious per-segment `schema_version` bump + migration.
+- [ ] Pin test for the no-implicit-defaults rollout (J.n.4): default-reintroduction anywhere in any `ParameterSpec` fails CI.
+- [ ] (Optional, per J.n.1 Q8) If the minimal vertical-axis cut is adopted: stage-boundary pin tests — a downstream-only segment change MUST leave the expensive upstream stage's prefix hash byte-identical; a reused-upstream materialization MUST byte-match a from-scratch run. Skip if Q8 declined.
+- [ ] DOC: update [`tech-spec.md`](tech-spec.md) § Cache Identity to describe per-segment versions + migration registry + pin-test discipline.
+- [ ] Remove the [`stories.md § Future`](stories.md) "Default-change discipline tooling for cache-identity stability" entry (subsumed). Cross-reference J.n.7 from the removal.
+- [ ] If J.n.1 Q6 decided so: collapse the Future "plugin-pluggable validator reserved-set hook" entry into this story; otherwise leave as-is.
+- [ ] CHANGELOG entry.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Cross-repo doc updates beyond the local tech-spec changes (J.n.8 owns the cross-repo sweep).
+
+---
+
+### Story J.n.8: Cross-repo coordination — vendor-dependency-spec + project-essentials updates [Planned]
+
+**Disposition: cross-repo contract authoring.** Part of the Recipe Architecture bundle.
+
+Per spike memo § 10: the horizontal segmented-identity mechanism + no-implicit-defaults discipline are the **cross-tool-family standard**. ModelFoundry adopts wholesale (NbFoundry mirrors per its CLI/library binding). Update both vendor-dependency-specs and `project-essentials.md` to reflect the new architecture and pin it as the shared family standard with the same governance status as the existing cross-repo contracts.
+
+**Tasks:**
+
+- [ ] Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md):
+  - § Cache-identity contract: replace flat `model_dump` canonical-bytes description with segmented model; document per-segment versioning + migration registry; cite the spike memo as the architectural rationale; remove the "Schema v1 → v2" subsection (superseded by segmented identity) — replace with a "Segmented identity v1" subsection.
+  - § Recipe-side contract: describe segment-scoped recipe shape; document where each field lives (core / plugin / overlays / extensions).
+  - § Schema-version coordination policy: re-express in per-segment terms; consumers track per-segment supported-version sets.
+- [ ] Update [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) parallel sections (mirror the MF doc's structure; same per-segment coordination policy).
+- [ ] Update [`project-essentials.md`](project-essentials.md) § "Cache identity is the reproducibility contract" — replace flat-model description with segmented identity; rewrite the "every pydantic field default participates in canonical bytes" warning to reflect the no-implicit-defaults discipline (the warning's framing no longer applies — defaults live in the scaffolder, not the code).
+- [ ] Add new [`project-essentials.md`](project-essentials.md) entry: **"No implicit defaults — the interpreting code supplies no behavior-affecting value."** Scaffolder emits recommended values into recipe text; required-vs-optional is the bump-vs-free rule; pre-1.0 support window = zero by default per spike memo § 3 resolved stance #3. Why / How-to-apply per project-essentials template.
+- [ ] Extend [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" — the "three surfaces" framing extends to call out segmented recipe identity; name the segments individually (`core`, `plugin:<name>`, `overlays`, `extensions`) as separately-bumping contract surfaces.
+- [ ] **ModelFoundry coordination.** Confirm MF's wholesale adoption of horizontal mechanism + no-implicit-defaults per spike memo § 10. Vertical axis stays MF-owned (DR may adopt a minimal cut later per J.n.1 Q8).
+- [ ] CHANGELOG entry: cross-repo contract change; segmented identity adopted as cross-tool-family standard.
+- [ ] CI parity (doc-only; no code change — code lands in J.n.2–J.n.7).
+
+**Out of Scope:**
+
+- Net-new contract surfaces beyond what segmented identity introduces.
+- ModelFoundry-side / NbFoundry-side implementation of their adoption — owned by their repos.
+
+---
+
+### Story J.n.9: v0.22.0 release — Phase-J Recipe Architecture bundle close [Planned]
+
+**Disposition: release bundle.** Part of the Recipe Architecture bundle (closing story).
+
+Phase-bundle release closing the rearchitecture work. Bumps the package version to v0.22.0, writes the CHANGELOG release entry with prominent blast-radius announcement (one-time pre-1.0 mass cache invalidation), and presents the final state at the approval gate. **After this lands, Subphase J-1 audio (J.o–J.w) resumes against the segmented foundation.**
+
+**Tasks:**
+
+- [ ] Bump [`src/datarefinery/__init__.py`](../../src/datarefinery/__init__.py) `__version__` to `"0.22.0"`. Hatchling reads this as the single source of truth — no `pyproject.toml [project].version` edit per memory `[[project_version_single_source]]`.
+- [ ] CHANGELOG entry under `## [0.22.0]`:
+  - **Breaking (cache invalidation):** one-time pre-1.0 mass invalidation. Every existing recipe re-materializes once. Document recompute cost and rationale; cite the [spike memo](phase-j-recipe-architecture-spike.md).
+  - **Added:** segmented canonical recipe identity (`core` / `plugin:<name>` / `overlays` / `extensions`); per-segment versioning + migration registry; per-segment canonical-hash pin-test discipline; sanctioned extensions namespace.
+  - **Changed:** Recipe model refactored into segments; `variants` → first-class `overlays`; `ParameterSpec` drops implicit defaults; scaffolder emits recommended values into recipe text.
+  - **Cross-repo coordination:** segmented identity adopted as the cross-tool-family standard per spike memo § 10; vendor-dependency-spec + project-essentials updates landed (J.n.8).
+  - **Removed:** the single global recipe `schema_version` (replaced by per-segment versions); `ParameterSpec(default=…)` implicit defaults; the Future "default-change discipline tooling" entry (subsumed by J.n.7); optionally the Future "plugin-pluggable validator reserved-set hook" entry (if J.n.1 Q6 absorbed it).
+  - **Notes:** Subphase J-1 audio (J.o–J.w) resumes after this release on the segmented foundation.
+- [ ] Cross-repo coordination final check: confirm [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md), [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md), and [`project-essentials.md`](project-essentials.md) are all current per J.n.8.
+- [ ] Run the full local-verification suite per memory `[[feedback_local_verification_mirrors_ci]]`: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+- [ ] Present at the approval gate. After approval, Subphase J-1 audio resumes.
+
+**Out of Scope:**
+
+- Vertical stage-reuse implementation — per J.n.1 Q8, either deferred entirely or scoped to a post-bundle story for the minimal expensive-boundary cut.
+- Audio plugin work (J.o–J.w) — paused through this release; resumes after.
+- Tagging / pushing the release — developer-initiated.
+
+---
+
+### Story J.o: `audio_classification` plugin scaffold + protocol conformance [Planned]
+
+**Disposition: feature addition (plugin seam).** Part of Phase J phase-bundle release. Closes R8.
+
+Stand up the bare `audio_classification` plugin so the existing plugin-discovery, validator, and contract-test machinery has a registered seam to build against. The plugin starts with `supported_operations = []` and `is_stub() → False` (real plugin, just empty). Subsequent stories J.p–J.t fill in operations.
+
+**Tasks:**
+
+- [ ] Add `src/datarefinery/plugins/audio_classification/__init__.py` and `src/datarefinery/plugins/audio_classification/plugin.py` with the minimum `Plugin` protocol implementation: `name = "audio_classification"`, `supported_sections` per the J.n design memo, `supported_operations = []`, `is_stub() → False`, `operation_factory` raising `PluginError` for any op kind until populated.
+- [ ] Register the plugin via the existing `datarefinery.plugins` entry-point group in [`pyproject.toml`](../../pyproject.toml).
+- [ ] Add `loader_stamped_fields(recipe)` hook stub (per the Future entry on plugin-pluggable validator reserved-set hooks); audio scaffold returns an empty set initially — populated as J.p–J.t add field-stamping ops.
+- [ ] Unit test that the plugin loads, reports the correct name, `is_stub() → False`, and an empty operation list.
+- [ ] Plugin-contract test: declare a minimal fixture recipe with `plugin: audio_classification`, no operations; confirm it validates cleanly and materializes an empty instance (mirrors the precedent for image_classification with no Filters/Generation/etc.).
+- [ ] DOC: brief [`docs/guides/plugin-authoring.md`](../guides/plugin-authoring.md) cross-reference noting `audio_classification` is the second real plugin (joining `image_classification`), validating the plugin-interface honesty goal from `concept.md` and `features.md`.
+- [ ] CI parity: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+
+**Out of Scope:**
+
+- Any audio op implementation (J.p–J.t own).
+- Updating `tabular` / `text` stubs — separate Future stories.
+
+---
+
+### Story J.p: Audio input sources + decode (R1 + R2) [Planned]
+
+**Disposition: feature addition.** Part of Phase J phase-bundle release. Closes R1 + R2.
+
+Implement the two audio input source kinds (parallel to `image_folder` and `image_flat` with `label_from`) and the decode operation that produces a canonical in-pipeline representation: `(record_id, sample_array, sample_rate, path)`. Decode honors a recipe-declared canonical sample rate (Q2 settled in J.n; default `16000 Hz`).
+
+**Tasks:**
+
+- [ ] Implement `audio_folder` source kind in `src/datarefinery/plugins/audio_classification/inputs.py`: directory-of-class-subdirectories form; labels derived from the immediate-parent directory name; per-file `record_id` derivation matching the `image_folder` pattern.
+- [ ] Implement `audio_flat` source kind with `label_from` (CSV/manifest join by `record_id`).
+- [ ] Support `unlabeled: true` partitions for both source kinds — consistent with `Labels.source.kind: direct` semantics; label-dependent stages refuse on unlabeled partitions as already enforced for images.
+- [ ] Implement decode op via librosa (per J.n decision): read source audio file, resample to recipe-declared `target_sample_rate`, emit a record `{record_id, sample_array: np.ndarray, sample_rate: int, path: str}`.
+- [ ] Add `target_sample_rate: int = 16000` to the audio input source pydantic model (canonical-bytes participation auto-included; default value perturbs canonical bytes only for recipes declaring the audio plugin — pre-prod re-materialize event for those recipes only).
+- [ ] Add `librosa` (and transitive `soundfile`) dependency. Pinned version chosen by the J.n memo if it surfaced one; otherwise current stable.
+- [ ] Unit tests: decode determinism (same bytes → byte-identical decoded array); per-source-rate resampling determinism; cross-source-rate canonicalization to the recipe's target rate; `unlabeled: true` partition handling.
+- [ ] Integration test: tiny fixture audio dataset (3 clips, mixed source rates) loads and decodes to expected `(count, sample_rate, shape)` tuples.
+- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Audio sources subsection.
+- [ ] CHANGELOG entry under the in-progress next-minor (target v0.22.0) section: new audio input sources + decode op; new dependency on `librosa`.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Any windowing or featurization (J.q+).
+- Multi-channel (stereo) audio — v1 is mono-focused; stereo to Future if a consumer needs it.
+- Audio augmentations (Future).
+
+---
+
+### Story J.q: Windowing as a Generation op (R3) [Planned]
+
+**Disposition: feature addition.** Part of Phase J phase-bundle release. Closes R3.
+
+Implement the windowing op that turns a variable-length decoded clip into N fixed-length window records, with author-declared window length and hop. Window records carry `source_record_id` (the parent clip's id) so R7 aggregation can group them. Trailing-remainder policy (pad vs. drop) is author-declared and deterministic. Window-`record_id` derivation follows the J.n design memo (recommended: `f"{source_record_id}__w{window_index:04d}"`, mirroring H.r.2 aggressive variants' `__v{i:03d}`; 4-digit width chosen to accommodate typical clip→window counts up to ~10k).
+
+**Tasks:**
+
+- [ ] Implement `window` op in `src/datarefinery/plugins/audio_classification/operations/generation.py`:
+  - Inputs: clip record `{record_id, sample_array, sample_rate, path}`.
+  - Params: `window_length_samples: int` (mutually exclusive with `window_length_seconds: float` — choose one in the J.n memo), `hop_samples: int`, `remainder: Literal["pad_zero", "drop"]`.
+  - Output: N window records, each `{record_id: "<parent>__w0042", source_record_id: "<parent>", window_index: 42, sample_array: <window>, sample_rate: <inherited>, path: <inherited>}`.
+- [ ] Register the op in the plugin's `supported_operations` with `OperationSpec` (Generation stage; `fit_on_train: False`; non-stochastic — fully deterministic per record given params).
+- [ ] Update the plugin's `operation_factory` to dispatch to the window op.
+- [ ] Unit tests: window count math (under both `pad_zero` and `drop` remainders); `source_record_id` preservation; deterministic byte-identical output across worker counts per the determinism contract in [`project-essentials.md`](project-essentials.md) § "Determinism contract in `pipeline.workers`".
+- [ ] Integration test: a 3-clip fixture with varied lengths → expected window counts; manifest `record_counts` reflects post-windowing expansion.
+- [ ] **Cross-repo coordination.** Extend [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § JSONL records to document the window-record fields (`source_record_id`, `window_index`) alongside the existing aggressive-variant fields — clarifying that `source_record_id` is now used by **two** mechanisms (FR-11 aggressive variants AND audio windowing). Pre-prod doc-evolution addition, no `schema_version` bump.
+- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Generation: window subsection.
+- [ ] CHANGELOG entry.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Clip-level label propagation discipline (J.r).
+- Featurization (J.s).
+- Stochastic window selection (Future; the v1 op is fully deterministic per record).
+
+---
+
+### Story J.r: Clip-level label semantics + Splits-before-Generation order (R6) [Planned]
+
+**Disposition: feature addition + validator check.** Part of Phase J phase-bundle release. Closes R6.
+
+Make clip-level labels propagate to all windows of a clip and enforce that all windows of one clip stay in a single split. Per the J.n design memo (Q1), this is achieved by running Splits at clip-level (before windowing) so each split is a set of clip-IDs, and windowing fans them out within their assigned split. Add a validator check that defensively refuses any recipe configuration where windowing would otherwise cross splits (guards against future ordering bugs).
+
+**Tasks:**
+
+- [ ] Confirm the runner enforces Splits → Generation order via an integration-test guard so the ordering can't regress (build on the J.n memo's verification).
+- [ ] Implement label propagation: when the window op derives child records, the parent's `label` field is inherited verbatim, along with any other label-bearing fields per the recipe's `Labels.field` declaration.
+- [ ] Add validator **check N+1** (new check; integration suite count assertion updates): when the recipe declares a Generation op that fans records out AND Splits is present AND Labels exists, confirm Splits operates at the parent-record level (no per-child stratification path). Refuse with a clear message naming the affected sections if the configuration would otherwise stratify on post-Generation child records.
+- [ ] Unit tests: label propagation across windows; window→parent grouping integrity; validator refuses a leak-prone configuration.
+- [ ] Integration test: a multi-clip fixture with stratified Splits → assert every clip's windows land in exactly one split (no clip's `source_record_id` appears in two splits).
+- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Splits + clip-level labels callout.
+- [ ] CHANGELOG entry.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Noisy-label / label-confidence handling — explicitly out of scope per R6 spec ("belongs to the modeling repo").
+- Multi-label-per-clip extensions.
+
+---
+
+### Story J.s: Spectral featurization op — `log_mel_spectrogram` (R4) [Planned]
+
+**Disposition: feature addition.** Part of Phase J phase-bundle release. Closes R4 (log-mel only; MFCC stays in Future per J.n).
+
+Implement the Featurization-stage operation that converts a fixed-length window into a log-mel spectrogram via librosa. The op accepts a window record's sample array and adds a `feature` field (a 2D numpy array of shape `(n_mels, n_frames)`) plus metadata. One feature output per input window — no record-count change at the Featurization stage.
+
+**Tasks:**
+
+- [ ] Implement `log_mel_spectrogram` op in `src/datarefinery/plugins/audio_classification/operations/featurizations.py`:
+  - Inputs: window record.
+  - Params: `n_fft: int = 2048`, `hop_length: int = 512`, `n_mels: int = 128`, `f_min: float = 0.0`, `f_max: float | None = None`, `power: float = 2.0`.
+  - Output: window record extended with `feature: np.ndarray` of shape `(n_mels, n_frames)`; preserve all existing fields.
+- [ ] Register the op in `supported_operations` with `OperationSpec` (Featurization stage; `fit_on_train: False`; deterministic).
+- [ ] Unit tests: shape correctness across various input lengths and `n_mels`; determinism (byte-identical feature arrays across runs); parameter validation (reject negative `n_fft`, `n_mels`, etc.); behavior when `hop_length > n_fft`.
+- [ ] Integration test: a windowed fixture → featurized → assert `feature` field shape and byte-identicality across worker counts.
+- [ ] **Cross-repo coordination.** Extend [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) JSONL records section to document that audio records carry a `feature: np.ndarray` field. Pre-prod doc-evolution addition.
+- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Featurization: log_mel_spectrogram subsection.
+- [ ] CHANGELOG entry.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- `mfcc` op — Future per J.n recommendation.
+- Other spectral representations (CQT, chroma, etc.) — Future.
+- Augmentations on featurized output (SpecAugment) — Future.
+
+---
+
+### Story J.t: Fit-on-train feature normalization for audio + `stats_from_instance` parity (R5) [Planned]
+
+**Disposition: feature addition (or extension of existing op, depending on J.n outcome).** Part of Phase J phase-bundle release. Closes R5.
+
+Bring fit-on-train normalization to audio spectral features. Per the J.n design memo, normalization operates per-mel-bin (vector of `n_mels` means and `n_mels` stds), fit only on the training split, persisted to `fitted_statistics/<op_id>/` in the existing structured form (JSON scalars + parquet vectors). Confirm the `stats_from_instance` sibling-import path works unchanged for audio normalization (FR-ARCH-1 loose-coupling invariant per project-essentials).
+
+**Tasks:**
+
+- [ ] Per J.n decision: (a) reuse the existing `normalize` op with shape-agnostic per-last-axis fitting (default; cleanest if the J.n verify holds), OR (b) implement a new `audio_normalize` op (warranted only if the audio shape semantics differ enough).
+- [ ] If (a): document in [`tech-spec.md`](tech-spec.md) that `normalize` is shape-agnostic across modalities; add audio-specific unit tests covering per-mel-bin fit + apply.
+- [ ] If (b): implement `audio_normalize` mirroring `NormalizeOp`'s fit/apply discipline; add to `supported_operations`; document the deliberate split.
+- [ ] Verify `stats_from_instance` path: a consumer recipe importing an audio sibling's normalization stats reads them through correctly; the read-through invariant (no copy into the consumer's `fitted_statistics/`) holds.
+- [ ] Verify zero-variance guard semantics carry over: per-mel-bin channels with zero variance trigger the same `std == 0 → 1.0` substitution at apply (and the persisted `std.parquet` carries the unmodified fit value, matching the existing contract pinned in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md)).
+- [ ] Unit tests: fit determinism; apply correctness; zero-variance bin guard; `stats_from_instance` round-trip on an audio fixture.
+- [ ] Integration test: train + val materialize → val records carry the train-fitted normalization byte-identically.
+- [ ] **Cross-repo coordination.** Extend [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § `normalize` statistics to describe the audio shape variant: per-mel-bin axis order alongside the RGB-channel-order rule for images. If (b), document `audio_normalize` separately with its own subsection.
+- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Audio normalization callout.
+- [ ] CHANGELOG entry.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Per-frame normalization (Future).
+- Multi-channel normalization for stereo audio (Future).
+
+---
+
+### Story J.u: `source_record_id` contract surface + cross-repo coordination (R7) [Planned]
+
+**Disposition: cross-repo contract authoring.** Part of Phase J phase-bundle release. Closes R7.
+
+Pin `source_record_id` as the consumer-bind grouping key for audio window aggregation. Update both [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) and [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) (created in J.c) to document the field for audio records and reaffirm the "DR owns the grouping key; consumer owns the aggregation math" boundary (Q3 settled in J.n).
+
+**Tasks:**
+
+- [ ] Document `source_record_id` and `window_index` in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § JSONL records under a new "Audio window records" subsection, mirroring the structure already in place for FR-11 aggressive variants. Cross-reference the FR-11 entry where the field semantics overlap.
+- [ ] Document the aggregation contract: DR guarantees every window record carries a valid `source_record_id` matching a clip-level identifier present in the source records; the consumer groups by it and applies the aggregation policy (mean, max, etc.) on its training-side or eval-side outputs. DataRefinery emits no aggregation policy — it is purely a consumer concern.
+- [ ] Add a Failure-modes-MF-SHOULD-detect entry: "window record's `source_record_id` does not resolve to any clip in the materialized instance → instance is corrupt; refuse to consume."
+- [ ] Add a parallel "Audio window records" section to [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) covering the notebook-display ergonomics (e.g., per-window vs. per-clip table renderings).
+- [ ] Extend [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" to name audio's window-record fields alongside the existing image surfaces.
+- [ ] DOC: brief [`concept.md`](concept.md) cross-link confirming the audio modality boundary as the second real plugin validating the plugin-interface honesty goal.
+- [ ] CHANGELOG entry (cross-repo contract additions).
+- [ ] CI parity (doc-only; no code change).
+
+**Out of Scope:**
+
+- The aggregation math itself (MF / NbF own).
+- A `clip_record_count` manifest field — derivable from `record_counts` and `source_record_id` distinct count; not requested by R7.
+
+---
+
+### Story J.v: End-to-end audio integration fixture + acceptance gate [Planned]
+
+**Disposition: integration test.** Part of Phase J phase-bundle release. Closes acceptance criteria 1–9 from [`audio-classification-requirements.md`](audio-classification-requirements.md) § Acceptance criteria.
+
+Author a tiny but realistic audio fixture dataset (9 clips across 3 classes, varied durations, mixed source sample rates, one unlabeled partition) and a recipe exercising every R1–R7 capability. Run `init → validate → materialize` end-to-end and assert each of the 9 acceptance criteria. This is the integration gate that catches inter-story gaps before phase-bundle release.
+
+**Tasks:**
+
+- [ ] Add `tests/fixtures/audio/` with 9 short synthetic audio files (sine sweeps and simple tones — deterministic synthesis; no real recordings, keeps the repo lean and avoids licensing questions).
+- [ ] Author `tests/fixtures/recipes/audio_classification_v1.yaml` exercising audio_folder + `label_from` + decode + window (Generation) + log_mel_spectrogram (Featurization) + normalize (fit-on-train) + Splits.
+- [ ] Add `tests/integration/test_audio_classification.py` covering:
+  - AC1: init → validate → materialize succeeds with no workarounds.
+  - AC2: byte-identical re-run (excluding `created_at` / `elapsed_seconds`).
+  - AC3: cosmetic edit → cache hit; semantic edit (window_length change) → cache miss.
+  - AC4: window determinism across worker counts (`workers=1, 2, 4`).
+  - AC5: featurization is one-output-per-input (record count unchanged at the Featurization stage).
+  - AC6: `stats_from_instance` round-trip with a sibling eval recipe.
+  - AC7: stratified splits → every window's `source_record_id` lands in exactly one split.
+  - AC8: plugin-contract test green.
+  - AC9: failure path (deliberately broken decode params) → FAILED-marked temp directory; no partial cached instance.
+- [ ] Document any surprises encountered as a friction-list note (either an addendum to an existing phase-J friction doc or a new `phase-j-subphase-1-audio-friction.md`); follow-up fixes become J.w-adjacent or post-phase stories at developer discretion.
+- [ ] CHANGELOG entry.
+- [ ] CI parity.
+
+**Out of Scope:**
+
+- Performance benchmarking (Future).
+- Real-audio-dataset fixtures (Future; behind a licensing decision).
+
+---
+
+### Story J.w: vX.Y.0 release — Subphase J-1 phase-bundle close [Planned]
+
+**Disposition: release bundle.** Part of Phase J phase-bundle release. The last story in Subphase J-1 (and in Phase J, unless further accretion lands first).
+
+Phase-bundle release closing Subphase J-1. Bumps the package version, writes the CHANGELOG release entry, and presents the final phase-state at the approval gate.
+
+**Tasks:**
+
+- [ ] Bump `src/datarefinery/__init__.py` `__version__` to the next minor (per the Version Cadence rule: "highest-impact change in the bundle"; a new modality plugin is **minor**). Hatchling reads this as the single source of truth — no `pyproject.toml [project].version` edit.
+- [ ] CHANGELOG entry: enumerate the new `audio_classification` plugin and the R1–R8 closures; cross-repo contract additions from J.q + J.s + J.t + J.u; new dependency on `librosa`; CHANGELOG note that the second real plugin validates the plugin-interface honesty goal.
+- [ ] Cross-repo coordination final check: confirm [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) and [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) are both current with the audio additions.
+- [ ] Run the full local-verification suite: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+- [ ] Present at the approval gate.
+
+**Out of Scope:**
+
+- Any scope not already in Phase J at this point — new asks become Phase K candidates rather than piling into the release.
+- Tagging / pushing the release — developer-initiated.
+
+---
+
+### Story J.x: Spike — Segmented recipe identity / scoped cache invalidation [Done]
+
+**Disposition: design spike** (exploratory; deliverable is the design memo + a `plan_phase` recommendation, not code). Phase J catch-all item — surfaced by the J-1 audio integration (J.n Finding A) and generalized by the developer into a recipe-model architecture question. No version bump.
+
+The flat `recipe.model_dump(mode="json")` canonical form couples cache identity to model-class shape rather than pipeline behavior, so any field added anywhere invalidates every recipe of every modality (the J.n Finding A blast radius), `extra="forbid"` leaves no room to prototype a parameter before committing it to the schema, and a single global `schema_version` makes every shape change a whole-world event. The developer proposed decomposing the recipe into general / plugin-variant / orthogonal-overlay / extensions layers; this spike synthesizes that into one mechanism — **segmented canonical bytes** — and recommends executing it pre-1.0 (before more plugin/modality surface accretes onto the flat model) via `plan_phase`.
+
+**Tasks:**
+
+- [x] Verify the root cause against source: total `model_dump` ([canonical.py:20-40](../../src/datarefinery/recipe/canonical.py#L20-L40)); shared `InputSource` ([models.py:86](../../src/datarefinery/recipe/models.py#L86)); `extra="forbid"` ([models.py:24](../../src/datarefinery/recipe/models.py#L24)); single global `schema_version` ([loader.py](../../src/datarefinery/recipe/loader.py)); op-level `params` as the existing scoped-identity precedent.
+- [x] Write the design memo at [`phase-j-recipe-architecture-spike.md`](phase-j-recipe-architecture-spike.md): problem, the segmented-bytes synthesis (core / plugin / overlays / extensions), design principles + the scoped-invalidation reframe, per-segment versioning, the declarative-extensions vs. recipe-activated-code trust boundary, per-segment pin-test enforcement, pre-1.0 rollout, open questions for plan_phase, and the relationship to in-flight audio work.
+- [x] Mark Subphase J-1 (J.o–J.w) PAUSED pending the rearchitecture; J.n Finding A's `AudioSource` recast as the plugin-surface segment in miniature (stepping stone, possibly reshaped by plan_phase's representation choice).
+- [x] Present at the approval gate with the recommendation to run `plan_phase`. **No code, no tests, no version bump.**
+- [x] Fold the design-discussion conclusions into the memo (§ 3 "Resolved stance", recommended-not-frozen): **no implicit defaults** (interpreting code supplies no value; scaffolder emits recommended values explicitly into the recipe); **`required` vs. `optional` = the bump-vs-free rule**; **content-addressed ⇒ support window is a re-derivability horizon**, with the **pre-1.0 window = zero by default** policy. § 9 open-questions trimmed of the now-resolved forks.
+- [x] Cross-pollinate from the reciprocal [ModelFoundry spike](modelfoundry/phase-i-recipe-architecture-spike.md): pulled upstream the **vertical stage-reuse axis + the "internal materialization-cache optimization vs. unchanged external identity" reframe** (§ 4 new subsection — acknowledged but **deferred**; DR's flatter compute gradient makes it secondary, with DR's existing `viz_snapshots`/`export`/`report`/`stop_after` credited as embryonic precedent); **`join_stable` future-proofed** for cumulative-prefix composition (§ 4, § 9.8); **cross-tool-family governance** (§ 10 — the horizontal mechanism + no-implicit-defaults are now the shared family standard MF adopted wholesale; the vertical axis is MF's own); conditional stage-isolation pin test (§ 7). Declined to pull MF's 1,000-GPU-hour urgency / full stage-artifact-store overhaul (disproportionate to DR's gradient).
+
+**Out of Scope:**
+
+- Implementing segmented canonical bytes / any model change. That is the `plan_phase`-drafted phase (Phase K candidate), not this spike.
+- Recipe-activated arbitrary code (hooks/callbacks the recipe points at). Flagged as a separate trust-boundary effort; this memo keeps the recipe declarative.
+- Creating the new phase heading/bundle — `plan_phase`'s exclusive job.
+
+---
+
 ## Future
 
 <!--
