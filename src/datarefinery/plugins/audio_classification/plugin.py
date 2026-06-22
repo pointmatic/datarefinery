@@ -23,7 +23,13 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.core.errors import PluginError
-from datarefinery.plugins.base import Operation, OperationSpec
+from datarefinery.plugins.audio_classification.operations.generation import window
+from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
+
+#: Generation-stage op handles dispatched by :meth:`operation_factory`.
+_GENERATION_OPS: dict[str, Operation] = {
+    "window": window,
+}
 
 #: The full standard recipe section set. Mirrors `image_classification` —
 #: `Output`/`Labels`/`Splits` are mandatory recipe sections, so they MUST be
@@ -48,31 +54,56 @@ SUPPORTED_SECTIONS = frozenset(
 )
 
 
+def _supported_operations() -> dict[str, OperationSpec]:
+    return {
+        # ----- Generation (R3, Story J.q) -----
+        "window": OperationSpec(
+            parameters={
+                # Exactly one of the two length forms (mode-selecting optionals);
+                # hop_samples + remainder are required (no-implicit-defaults).
+                "window_length_samples": ParameterSpec(type="int", required=False),
+                "window_length_seconds": ParameterSpec(type="float", required=False),
+                "hop_samples": ParameterSpec(type="int", required=True),
+                "remainder": ParameterSpec(type="str", required=True),
+            },
+            fit_on_train=False,
+            applicable_sections=frozenset({"Generation"}),
+        ),
+    }
+
+
+#: Recommended starting values the scaffolder emits into recipe text (J.n.4).
+_RECOMMENDED_PARAMS: dict[str, dict[str, Any]] = {
+    "window": {"window_length_seconds": 1.0, "hop_samples": 8000, "remainder": "drop"},
+}
+
+
 class AudioClassificationPlugin:
-    """Real plugin, empty operation set (J.o scaffold)."""
+    """Real plugin (`is_stub() → False`); operations land across J.q-J.t."""
 
     name = "audio_classification"
     schema_version = 1
     supported_sections = SUPPORTED_SECTIONS
 
     def __init__(self) -> None:
-        #: Populated by J.p-J.t (`window`, `log_mel_spectrogram`, `audio_normalize`).
-        self.supported_operations: dict[str, OperationSpec] = {}
+        self.supported_operations: dict[str, OperationSpec] = _supported_operations()
 
     def operation_factory(self, section: str, op_name: str) -> Operation:
+        if section == "Generation" and op_name in _GENERATION_OPS:
+            return _GENERATION_OPS[op_name]
         raise PluginError(
-            f"audio_classification has no operation yet "
-            f"(section={section!r}, op={op_name!r}); audio ops land in Stories J.p-J.t"
+            f"audio_classification has no operation for "
+            f"(section={section!r}, op={op_name!r}); remaining audio ops land in "
+            f"Stories J.s-J.t"
         )
 
     def is_stub(self) -> bool:
-        # A real plugin (the seam is live), unlike the tabular/text stubs —
-        # even though no operations are implemented yet.
+        # A real plugin (the seam is live), unlike the tabular/text stubs.
         return False
 
     def recommended_params(self, section: str, op_name: str) -> dict[str, Any]:
-        """No recommended values yet (Story J.n.4); populated as ops land."""
-        return {}
+        """Recommended starting values the scaffolder emits (Story J.n.4)."""
+        return dict(_RECOMMENDED_PARAMS.get(op_name, {}))
 
     def extension_keys(self) -> dict[str, set[str]]:
         """No extensions consumed (Story J.n.6)."""

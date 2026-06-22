@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   draft's "default 16000"). librosa is imported lazily so the plugin stays
   importable without the extra. CI installs `[corruptions,audio]` to exercise the
   decode path. `recipe-authoring.md` § Input gains an Audio sources subsection.
+- **Windowing as a Generation op (Story J.q).** New `window` op
+  (`audio_classification`, Generation stage) fans each decoded clip into N
+  fixed-length window records — author-declared length (`window_length_samples`
+  *or* `window_length_seconds`), `hop_samples`, and a `remainder: "pad_zero" |
+  "drop"` trailing policy. With `replace_input_records: true` each clip is
+  replaced by its windows, so `manifest.record_counts` reflects the expansion.
+  Each window carries `source_record_id` (parent clip) + `window_index`;
+  `record_id = "<clip>__w{index:04d}"`. Fully deterministic (no RNG). This is the
+  first audio op to exercise `operation_factory`. Cross-repo: the MF
+  vendor-dependency-spec § JSONL records documents the window fields and that
+  `source_record_id` now serves two mechanisms (aggressive variants `__v` +
+  audio windows `__w`). `recipe-authoring.md` § Generation gains a `window`
+  subsection.
 
 
 re-founds DataRefinery's cache identity on a **segmented** model with

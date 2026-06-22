@@ -597,6 +597,31 @@ This is the transformation-style case: `imagecorruptions_apply` emits `n_corrupt
 
 `replace_input_records` is part of the recipe's canonical bytes — toggling it produces a different cache instance.
 
+#### Generation: `window` (audio)
+
+The `audio_classification` plugin's `window` op turns each variable-length decoded clip into N fixed-length window records — the standard way to feed clip-level audio into fixed-input models. It runs at the Generation stage with `replace_input_records: true` (each clip is replaced by its windows):
+
+```yaml
+Generation:
+  - name: win
+    op: window
+    inputs: [sample_array]
+    output_schema: matches_input
+    seed: 0                              # required by the model; windowing is deterministic
+    splits: [train, val, test]          # window every split, not just train
+    replace_input_records: true
+    params:
+      window_length_seconds: 1.0        # OR window_length_samples: 16000 — exactly one
+      hop_samples: 8000                 # stride between window starts (overlap when < length)
+      remainder: drop                   # "drop" the trailing partial, or "pad_zero" it
+```
+
+- **Length:** declare exactly one of `window_length_samples` or `window_length_seconds` (the seconds form is resolved against each clip's `sample_rate`). Both required-vs-optional follow the no-implicit-defaults rule; `hop_samples` and `remainder` are required.
+- **Remainder:** a window begins at every `hop_samples` offset within the clip. Full windows are emitted as-is; any window extending past the clip end is **zero-padded** (`remainder: pad_zero`) or **skipped** (`remainder: drop`).
+- **Grouping:** each window record carries `source_record_id` (the parent clip id) and `window_index`, and `record_id = "<clip>__w0000"`. Downstream tools group windows back to their clip via `source_record_id` (the clip↔window aggregation key). `manifest.record_counts` reflects the expanded window count.
+- **Determinism:** windowing is fully deterministic (no RNG) — byte-identical across runs and worker counts.
+- **Splits-before-windowing:** because Splits run before Generation, each clip's windows all land in the clip's assigned split (clip-level split integrity; the defensive validator check lands in a later story).
+
 #### `tag_fields` on `imagecorruptions_apply`
 
 `tag_fields` controls which metadata the op stamps onto each output record. The canonical metadata names are **`corruption`**, **`severity`**, and **`source_path`**. Two authoring forms are accepted:

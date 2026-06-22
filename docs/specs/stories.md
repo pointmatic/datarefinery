@@ -731,7 +731,7 @@ Implement the two audio input source kinds (parallel to `image_folder` and `imag
 
 ---
 
-### Story J.q: Windowing as a Generation op (R3) [Planned]
+### Story J.q: Windowing as a Generation op (R3) [Done]
 
 **Disposition: feature addition.** Part of Phase J phase-bundle release. Closes R3.
 
@@ -739,18 +739,14 @@ Implement the windowing op that turns a variable-length decoded clip into N fixe
 
 **Tasks:**
 
-- [ ] Implement `window` op in `src/datarefinery/plugins/audio_classification/operations/generation.py`:
-  - Inputs: clip record `{record_id, sample_array, sample_rate, path}`.
-  - Params: `window_length_samples: int` (mutually exclusive with `window_length_seconds: float` — choose one in the J.n memo), `hop_samples: int`, `remainder: Literal["pad_zero", "drop"]`.
-  - Output: N window records, each `{record_id: "<parent>__w0042", source_record_id: "<parent>", window_index: 42, sample_array: <window>, sample_rate: <inherited>, path: <inherited>}`.
-- [ ] Register the op in the plugin's `supported_operations` with `OperationSpec` (Generation stage; `fit_on_train: False`; non-stochastic — fully deterministic per record given params).
-- [ ] Update the plugin's `operation_factory` to dispatch to the window op.
-- [ ] Unit tests: window count math (under both `pad_zero` and `drop` remainders); `source_record_id` preservation; deterministic byte-identical output across worker counts per the determinism contract in [`project-essentials.md`](project-essentials.md) § "Determinism contract in `pipeline.workers`".
-- [ ] Integration test: a 3-clip fixture with varied lengths → expected window counts; manifest `record_counts` reflects post-windowing expansion.
-- [ ] **Cross-repo coordination.** Extend [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § JSONL records to document the window-record fields (`source_record_id`, `window_index`) alongside the existing aggressive-variant fields — clarifying that `source_record_id` is now used by **two** mechanisms (FR-11 aggressive variants AND audio windowing). Pre-prod doc-evolution addition, no `schema_version` bump.
-- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Generation: window subsection.
-- [ ] CHANGELOG entry.
-- [ ] CI parity.
+- [x] Implement `window` op in [`plugins/audio_classification/operations/generation.py`](../../src/datarefinery/plugins/audio_classification/operations/generation.py): standard Generation-op signature; `WindowParams` (pydantic, frozen, `extra=forbid`) with the one-of length forms + required `hop_samples`/`remainder`; emits `{record_id: "<parent>__w0042", source_record_id, window_index, sample_array, sample_rate, path, label …inherited}`. A window begins at every `hop_samples` offset; trailing partial → zero-padded (`pad_zero`) or skipped (`drop`).
+- [x] Register the op in `supported_operations` (`OperationSpec`, Generation, `fit_on_train: False`, params schema) + `recommended_params` (`{window_length_seconds: 1.0, hop_samples: 8000, remainder: "drop"}`); `operation_factory` dispatches `Generation/window`.
+- [x] Unit tests ([`tests/plugins/audio_classification/test_window_op.py`](../../tests/plugins/audio_classification/test_window_op.py), 11): count math under `pad_zero`/`drop`, `source_record_id`/`window_index`/record-id format, inheritance, seconds-form resolution, determinism (byte-identical), multi-clip independence, short-clip, missing-`sample_array` error, one-of-length + non-positive validation. **Determinism note:** windowing is non-stochastic (a pure function of the clip + params), so worker-count invariance holds by construction — asserted via the byte-identical test rather than a workers=1/2/4 audio-materialize run.
+- [x] Integration test ([`tests/integration/test_audio_windowing.py`](../../tests/integration/test_audio_windowing.py)): 3-clip varied-length `audio_folder` fixture (0.3s/0.2s/0.5s) → full pipeline → `sum(manifest.record_counts) == 10` (post-windowing expansion from 3 clips).
+- [x] **Cross-repo coordination.** [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § JSONL records → new "Audio window records" subsection: window fields + the `__v` (variant) vs `__w` (window) distinction, `source_record_id` as the clip↔window grouping key now serving two mechanisms. Pre-prod doc addition, no `schema_version` bump.
+- [x] DOC: [`recipe-authoring.md`](../guides/recipe-authoring.md) § Generation → `window` subsection (length one-of, remainder, grouping, determinism, splits-before-windowing).
+- [x] CHANGELOG entry under the Subphase J-1 `[Unreleased]` section.
+- [x] CI parity: `pyve test` (1468 pass), `mypy src tests` (clean, 237 files), `ruff check`/`format` (clean), core-invariant coverage gate (all 8 ≥ 95%; window op module 96%). Updated J.o's `test_operation_set_is_empty_in_the_scaffold` (op set no longer empty).
 
 **Out of Scope:**
 

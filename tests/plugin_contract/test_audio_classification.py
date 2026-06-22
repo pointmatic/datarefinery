@@ -32,8 +32,11 @@ def test_plugin_metadata() -> None:
     assert PLUGIN.is_stub() is False
 
 
-def test_operation_set_is_empty_in_the_scaffold() -> None:
-    assert PLUGIN.supported_operations == {}
+def test_operations_grow_as_ops_land() -> None:
+    # J.q adds the `window` Generation op; later stories add log_mel_spectrogram
+    # (J.s) and audio_normalize (J.t).
+    assert "window" in PLUGIN.supported_operations
+    assert PLUGIN.supported_operations["window"].applicable_sections == frozenset({"Generation"})
 
 
 def test_supported_sections_cover_required_recipe_set() -> None:

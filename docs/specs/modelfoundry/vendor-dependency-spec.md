@@ -153,6 +153,18 @@ A recipe declaring `expansion=N` aggressive op against the train split produces 
 
 Variant `record_id`s are derived as `f"{source_record_id}__v{variant_index:03d}"` — unique, zero-padded for lex-order = numeric-order under standard sort. The `source_record_id` is the loader-stamped id verbatim, so an ImageFolder source contributes `/`-separated ids (`<source>/<class>/<file>`) and the variant id inherits them (e.g. `imgs/c0/img_0001.png__v000`). DataRefinery does **not** sanitize `record_id`; the sidecar path-writer creates the nested directories the separators imply (Story J.h).
 
+#### Audio window records (Story J.q)
+
+`source_record_id` is now used by **two** record-multiplying mechanisms — note the distinction when binding:
+
+| Field | FR-11 aggressive image variants | Audio windowing (`window` Generation op) |
+|---|---|---|
+| `record_id` | `f"{source_record_id}__v{variant_index:03d}"` | `f"{source_record_id}__w{window_index:04d}"` |
+| index field | `variant_index: int` (`[0, expansion)`) | `window_index: int` (`[0, n_windows)`) |
+| `source_record_id` | the original image's id | the original **clip's** id |
+
+The `audio_classification` plugin's `window` op runs at the **Generation** stage with `replace_input_records: true`, so each decoded clip is replaced by its fixed-length window records — `manifest.record_counts` reflects the post-windowing count, not the clip count (exactly as aggressive augmentation already does). Each window record carries `source_record_id` (the parent clip) and `window_index`; the trailing remainder is zero-padded or dropped per the recipe's `remainder` param. `source_record_id` remains DataRefinery's documented **clip↔window grouping key** for downstream aggregation (R7): DR owns the key, the consumer owns the aggregation math (no DR aggregation op). The `__w` vs `__v` suffix disambiguates the two; a record is never both (no aggressive audio augmentation in v1). Pre-prod doc-evolution addition — no `schema_version` bump.
+
 ### Sidecar PNG encoding
 
 Pillow `Image.save(path, format="PNG", optimize=False)`. Defaults verbatim — no quality/compression knobs. Determinism check: two runs of the same recipe + seed + inputs produce byte-identical sidecar files (validated by `tests/integration/test_runner.py` :: `test_aggressive_materialize_is_deterministic_across_runs`).
