@@ -778,7 +778,7 @@ Make clip-level labels propagate to all windows of a clip and enforce that all w
 
 ---
 
-### Story J.s: Spectral featurization op — `log_mel_spectrogram` (R4) [Planned]
+### Story J.s: Spectral featurization op — `log_mel_spectrogram` (R4) [Done]
 
 **Disposition: feature addition.** Part of Phase J phase-bundle release. Closes R4 (log-mel only; MFCC stays in Future per J.n).
 
@@ -786,17 +786,14 @@ Implement the Featurization-stage operation that converts a fixed-length window 
 
 **Tasks:**
 
-- [ ] Implement `log_mel_spectrogram` op in `src/datarefinery/plugins/audio_classification/operations/featurizations.py`:
-  - Inputs: window record.
-  - Params: `n_fft: int = 2048`, `hop_length: int = 512`, `n_mels: int = 128`, `f_min: float = 0.0`, `f_max: float | None = None`, `power: float = 2.0`.
-  - Output: window record extended with `feature: np.ndarray` of shape `(n_mels, n_frames)`; preserve all existing fields.
-- [ ] Register the op in `supported_operations` with `OperationSpec` (Featurization stage; `fit_on_train: False`; deterministic).
-- [ ] Unit tests: shape correctness across various input lengths and `n_mels`; determinism (byte-identical feature arrays across runs); parameter validation (reject negative `n_fft`, `n_mels`, etc.); behavior when `hop_length > n_fft`.
-- [ ] Integration test: a windowed fixture → featurized → assert `feature` field shape and byte-identicality across worker counts.
-- [ ] **Cross-repo coordination.** Extend [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) JSONL records section to document that audio records carry a `feature: np.ndarray` field. Pre-prod doc-evolution addition.
-- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Featurization: log_mel_spectrogram subsection.
-- [ ] CHANGELOG entry.
-- [ ] CI parity.
+- [x] Implement `log_mel_spectrogram` op in [`plugins/audio_classification/operations/featurizations.py`](../../src/datarefinery/plugins/audio_classification/operations/featurizations.py): Featurization op handle (`fit_on_train=False`, no-fit `fit` + `apply`) reading `inputs[0]` (the sample array field) and writing the log-mel array under `output_field`, shape **`(n_mels, n_frames)`** (librosa-native, mel on axis 0); preserves all existing fields. **No-implicit-defaults adjustment** (story text predated J.n.4): the listed param "defaults" become **required** params on a frozen `LogMelParams` model (`extra=forbid`); `f_max` stays **mode-selecting** optional (`None ⇒ Nyquist`, like `normalize.mean`). librosa imported lazily inside `apply` → module importable without the `[audio]` extra; `PluginError` if invoked without it.
+- [x] Register the op in `supported_operations` with `OperationSpec` (Featurizations section; `fit_on_train: False`; required vs. mode-selecting `ParameterSpec`s) + `operation_factory` dispatch (`_FEATURIZATION_OPS`) + `recommended_params` (`n_fft`/`hop_length`/`n_mels`/`f_min`/`power`; `f_max` omitted as mode-selecting) ([`plugin.py`](../../src/datarefinery/plugins/audio_classification/plugin.py)). Updated the two J.o contract tests that asserted the op had-not-landed (now assert the handle dispatches + recommended_params populated; the "raises" case repointed at the still-unlanded `audio_normalize`).
+- [x] Unit tests: shape across input lengths + `n_mels`; determinism (byte-identical arrays); param validation (reject non-positive `n_fft`/`n_mels`/`hop_length`/`power`, unknown key); `hop_length > n_fft` allowed; `f_max: None ⇒ Nyquist`; field preservation + `output_field` honoring; no-op fit ([`test_log_mel_op.py`](../../tests/plugins/audio_classification/test_log_mel_op.py), 12).
+- [x] Integration test ([`tests/integration/test_audio_featurization.py`](../../tests/integration/test_audio_featurization.py)): (a) full decode→window→featurize materialize → `manifest.record_counts` unchanged across the Featurization stage (one-output-per-input, 10 windows in = 10 out); (b) stage-level featurization through the real plugin + real librosa asserting `feature` shape `(n_mels, n_frames)` and byte-identical features across a re-run. **Worker-count invariance** holds by construction (pure function, no RNG) — asserted via the byte-identical re-run rather than a workers=1/2/4 run, mirroring the J.q windowing-determinism rationale.
+- [x] **Cross-repo coordination.** Extended [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § Audio window records with an **Audio `feature` field** paragraph: shape `(n_mels, n_frames)` + librosa-native mel-axis orientation as the contract; documents accurately that — like `sample_array` — `feature` is an array-valued in-pipeline field **not** serialized into the dataset JSONL (it feeds the fit-on-train `audio_normalize` op in J.t, whose stats *are* persisted). Pre-prod doc-evolution addition, no `schema_version` bump.
+- [x] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Featurizations → new **Audio-classification Featurizations** subsection (`log_mel_spectrogram` YAML, required-vs-mode-selecting params, determinism, `[audio]`-extra gating, in-pipeline-not-JSONL note).
+- [x] CHANGELOG entry under the Subphase J-1 `[Unreleased]` section.
+- [x] CI parity. `pyve test` (1491 pass), `pyve env run mypy src tests` (clean), `pyve env run ruff check src/ tests/` + `ruff format --check` (clean).
 
 **Out of Scope:**
 

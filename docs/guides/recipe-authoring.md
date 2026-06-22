@@ -893,6 +893,29 @@ Featurizations:
     splits: [train, val, test]
 ```
 
+**Audio-classification Featurizations.**
+
+`log_mel_spectrogram` (no fit) — convert each fixed-length window's `sample_array` into a **log-mel spectrogram**: a 2-D array of shape `(n_mels, n_frames)` (librosa-native orientation — mel bins on axis 0) written under `output_field`. One feature per input window — the Featurization stage does not change the record count. The op is fully deterministic (a pure function of the window samples + params, so byte-identical across runs and worker counts) and is **only available with the `[audio]` extra** (librosa); invoking it without the extra raises an actionable error.
+
+```yaml
+Featurizations:
+  - name: logmel
+    inputs: [sample_array]                 # the decoded/windowed sample array
+    output_field: feature
+    op: log_mel_spectrogram
+    params:
+      n_fft: 2048
+      hop_length: 512
+      n_mels: 128
+      f_min: 0.0
+      power: 2.0
+      # f_max omitted ⇒ Nyquist (sample_rate / 2). It is the one
+      # mode-selecting optional; all other params are required.
+    splits: [train, val, test]
+```
+
+`n_fft` / `hop_length` / `n_mels` / `f_min` / `power` are **required** (no-implicit-defaults rule); `f_max` is **mode-selecting** — omit it to use the Nyquist frequency, or pin a ceiling explicitly. Per-mel-bin normalization of the feature is a separate fit-on-train op (`audio_normalize`, § Transformations) added in a later story; v1 ships log-mel only (MFCC and other spectral representations are Future). Like `sample_array`, the `feature` array is an in-pipeline representation — it is consumed by downstream stages (e.g. `audio_normalize`) and is not serialized into the dataset JSONL.
+
 **Reserved `output_field` names.** A Featurization's `output_field` must not collide with a field the input loader stamps on every record. Validator check 23 (`featurization_output_field_loader_collision`) catches these at validate time. For the `image_classification` plugin the reserved set is:
 
 - `record_id`, `image`, `path` — always.

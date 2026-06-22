@@ -23,12 +23,21 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.core.errors import PluginError
+from datarefinery.plugins.audio_classification.operations.featurizations import (
+    LogMelSpectrogramOp,
+)
 from datarefinery.plugins.audio_classification.operations.generation import window
 from datarefinery.plugins.base import Operation, OperationSpec, ParameterSpec
 
 #: Generation-stage op handles dispatched by :meth:`operation_factory`.
 _GENERATION_OPS: dict[str, Operation] = {
     "window": window,
+}
+
+#: Featurization-stage op handles (objects with fit/apply) dispatched by
+#: :meth:`operation_factory`.
+_FEATURIZATION_OPS: dict[str, Any] = {
+    "log_mel_spectrogram": LogMelSpectrogramOp(),
 }
 
 #: The full standard recipe section set. Mirrors `image_classification` —
@@ -69,12 +78,37 @@ def _supported_operations() -> dict[str, OperationSpec]:
             fit_on_train=False,
             applicable_sections=frozenset({"Generation"}),
         ),
+        # ----- Featurization (R4, Story J.s) -----
+        "log_mel_spectrogram": OperationSpec(
+            parameters={
+                # All required (no-implicit-defaults) except f_max, which is
+                # mode-selecting: absent ⇒ Nyquist (sample_rate / 2).
+                "n_fft": ParameterSpec(type="int", required=True),
+                "hop_length": ParameterSpec(type="int", required=True),
+                "n_mels": ParameterSpec(type="int", required=True),
+                "f_min": ParameterSpec(type="float", required=True),
+                "f_max": ParameterSpec(type="float", required=False),
+                "power": ParameterSpec(type="float", required=True),
+            },
+            fit_on_train=False,
+            applicable_sections=frozenset({"Featurizations"}),
+        ),
     }
 
 
 #: Recommended starting values the scaffolder emits into recipe text (J.n.4).
+#: Mode-selecting optionals are omitted (e.g. `window_length_samples`,
+#: `log_mel_spectrogram.f_max`) so the scaffolder doesn't pin a mode the author
+#: should choose — absence is itself meaningful (f_max absent ⇒ Nyquist).
 _RECOMMENDED_PARAMS: dict[str, dict[str, Any]] = {
     "window": {"window_length_seconds": 1.0, "hop_samples": 8000, "remainder": "drop"},
+    "log_mel_spectrogram": {
+        "n_fft": 2048,
+        "hop_length": 512,
+        "n_mels": 128,
+        "f_min": 0.0,
+        "power": 2.0,
+    },
 }
 
 
@@ -91,10 +125,12 @@ class AudioClassificationPlugin:
     def operation_factory(self, section: str, op_name: str) -> Operation:
         if section == "Generation" and op_name in _GENERATION_OPS:
             return _GENERATION_OPS[op_name]
+        if section == "Featurizations" and op_name in _FEATURIZATION_OPS:
+            return _FEATURIZATION_OPS[op_name]
         raise PluginError(
             f"audio_classification has no operation for "
-            f"(section={section!r}, op={op_name!r}); remaining audio ops land in "
-            f"Stories J.s-J.t"
+            f"(section={section!r}, op={op_name!r}); the remaining audio op "
+            f"(audio_normalize) lands in Story J.t"
         )
 
     def is_stub(self) -> bool:

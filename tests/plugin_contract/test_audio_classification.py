@@ -50,13 +50,24 @@ def test_supported_sections_include_the_frozen_audio_stages() -> None:
     assert {"Generation", "Featurizations", "Transformations"}.issubset(PLUGIN.supported_sections)
 
 
-def test_operation_factory_raises_until_ops_land() -> None:
+def test_operation_factory_returns_log_mel_spectrogram_handle() -> None:
+    # Story J.s: the Featurization op is now registered and dispatchable.
+    handle = PLUGIN.operation_factory("Featurizations", "log_mel_spectrogram")
+    assert hasattr(handle, "fit") and hasattr(handle, "apply")
+    assert handle.fit_on_train is False
+
+
+def test_operation_factory_raises_for_unlanded_op() -> None:
+    # audio_normalize (Transformations, Story J.t) has not landed yet.
     with pytest.raises(PluginError, match="audio_classification"):
-        PLUGIN.operation_factory("Featurizations", "log_mel_spectrogram")
+        PLUGIN.operation_factory("Transformations", "audio_normalize")
 
 
-def test_recommended_params_and_extension_keys_are_empty() -> None:
-    assert PLUGIN.recommended_params("Featurizations", "log_mel_spectrogram") == {}
+def test_recommended_params_for_log_mel_and_empty_extension_keys() -> None:
+    rec = PLUGIN.recommended_params("Featurizations", "log_mel_spectrogram")
+    # Required params are recommended; the mode-selecting f_max is omitted.
+    assert rec == {"n_fft": 2048, "hop_length": 512, "n_mels": 128, "f_min": 0.0, "power": 2.0}
+    assert "f_max" not in rec
     assert PLUGIN.extension_keys() == {}
 
 

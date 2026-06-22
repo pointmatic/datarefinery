@@ -48,6 +48,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   windows across splits. Complements check 9 (declared-somewhere) without
   overlapping it. The validator suite now runs **29** checks.
   `recipe-authoring.md` § Splits gains a *Clip-level labels* subsection.
+- **Spectral featurization — `log_mel_spectrogram` (Story J.s, R4).** New
+  Featurization-stage op (`audio_classification`) converts each window's
+  `sample_array` into a log-mel spectrogram `feature` of shape
+  `(n_mels, n_frames)` (librosa-native orientation, mel bins on axis 0) via
+  librosa. One output per input window — no record-count change. Fully
+  deterministic (pure function → worker-count invariant). Params `n_fft` /
+  `hop_length` / `n_mels` / `f_min` / `power` are required (no-implicit-defaults);
+  `f_max` is mode-selecting (absent ⇒ Nyquist). librosa is lazily imported and
+  gated behind the `[audio]` extra. Like `sample_array`, `feature` is an
+  in-pipeline array and is not serialized into the dataset JSONL (it feeds the
+  fit-on-train `audio_normalize` op landing in J.t). v1 ships log-mel only; MFCC
+  and other spectral representations are Future. Cross-repo: the MF
+  vendor-dependency-spec § Audio window records documents the `feature` field +
+  mel-axis orientation. `recipe-authoring.md` § Featurizations gains a
+  `log_mel_spectrogram` subsection.
 
 
 re-founds DataRefinery's cache identity on a **segmented** model with
