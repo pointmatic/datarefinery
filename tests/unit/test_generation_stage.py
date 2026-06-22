@@ -297,6 +297,9 @@ class _DropFieldPlugin:
     def is_stub(self) -> bool:
         return False
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
+
 
 def test_generation_record_missing_output_field_raises_materialize_error() -> None:
     plugin = _DropFieldPlugin()
@@ -360,6 +363,9 @@ class _ReplacingPlugin:
 
     def is_stub(self) -> bool:
         return False
+
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
 
 
 def test_replace_input_records_replaces_split_with_generated_records() -> None:

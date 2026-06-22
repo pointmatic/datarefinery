@@ -102,8 +102,47 @@ def test_segments_of_overlays_is_the_bare_variants_mapping() -> None:
     assert seg.segments_of(recipe)["overlays"] == {}
 
 
-def test_segments_of_extensions_is_empty_until_jn6() -> None:
+def test_segments_of_extensions_is_empty_when_none_declared() -> None:
     assert seg.segments_of(_recipe())["extensions"] == {}
+
+
+def test_extensions_field_lives_in_the_extensions_segment() -> None:
+    assert seg.RECIPE_FIELD_SEGMENTS["extensions"] == "extensions"
+
+
+def test_segments_of_extensions_is_the_bare_namespace_mapping() -> None:
+    # J.n.6: a declared extensions block contributes as its bare value (no
+    # {"extensions": {...}} wrapper), so an empty block collapses to {} →
+    # EMPTY_MARKER and a non-empty block enters the extensions segment alone.
+    recipe = _recipe(extensions={"audio_classification": {"experimental_vad": True}})
+    segs = seg.segments_of(recipe)
+    assert segs["extensions"] == {"audio_classification": {"experimental_vad": True}}
+    assert "extensions" not in segs["core"] and "extensions" not in segs["plugin"]
+
+
+def test_empty_extensions_does_not_move_identity_hash() -> None:
+    # Additive landing (Q5): an empty extensions block hashes identically to a
+    # recipe predating the mechanism — no existing cache breaks.
+    baseline = seg.recipe_identity_hash(_recipe())
+    assert seg.recipe_identity_hash(_recipe(extensions={})) == baseline
+
+
+def test_nonempty_extensions_moves_identity_hash() -> None:
+    baseline = seg.recipe_identity_hash(_recipe())
+    with_ext = seg.recipe_identity_hash(
+        _recipe(extensions={"audio_classification": {"experimental_vad": True}})
+    )
+    assert with_ext != baseline
+
+
+def test_extensions_only_perturbs_the_extensions_segment() -> None:
+    # Adding extensions must leave core + plugin segment digests byte-identical
+    # (segment isolation — a future per-segment pin test in J.n.7).
+    plain = seg.segments_of(_recipe())
+    with_ext = seg.segments_of(_recipe(extensions={"ns": {"k": 1}}))
+    assert seg.segment_digest(with_ext["core"]) == seg.segment_digest(plain["core"])
+    assert seg.segment_digest(with_ext["plugin"]) == seg.segment_digest(plain["plugin"])
+    assert seg.segment_digest(with_ext["extensions"]) != seg.segment_digest(plain["extensions"])
 
 
 # ---------------------------------------------------------------------------

@@ -1473,6 +1473,52 @@ def check_27_dtype_altering_transform_incompatible_with_aggressive(
     )
 
 
+def check_28_extension_keys_declared(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Story J.n.6: every ``extensions`` namespace/key must be plugin-declared.
+
+    The sanctioned ``extensions: {<namespace>: {<key>: <value>}}`` block (design
+    Q5) relaxes ``extra="forbid"`` inside a namespace, so pydantic alone cannot
+    catch a typo or an orphaned experimental knob. This check closes that gap:
+    the bound plugin enumerates the namespaces/keys it consumes via
+    :meth:`~datarefinery.plugins.base.Plugin.extension_keys`, and any
+    ``extensions`` namespace not declared — or any key not declared within a
+    declared namespace — is refused, naming the offender. An empty ``extensions``
+    block passes trivially without consulting the plugin (additive landing), so
+    recipes predating the mechanism are unaffected.
+
+    Extensions carry *declarative parameters* read by installed code; recipe-
+    activated code is out of scope (spike memo § 6 trust boundary).
+    """
+    descriptor = "extension_keys_declared"
+    if not recipe.extensions:
+        return _passed(28, descriptor)
+    declared = plugin.extension_keys()
+    issues: list[str] = []
+    for namespace, params in recipe.extensions.items():
+        if namespace not in declared:
+            issues.append(
+                f"extensions namespace {namespace!r} is not declared by the bound "
+                f"plugin {plugin.name!r} (declared namespaces: {sorted(declared)})"
+            )
+            continue
+        allowed = declared[namespace]
+        for key in params:
+            if key not in allowed:
+                issues.append(
+                    f"extensions[{namespace!r}] key {key!r} is not declared by plugin "
+                    f"{plugin.name!r} (declared keys: {sorted(allowed)})"
+                )
+    if not issues:
+        return _passed(28, descriptor)
+    return CheckResult(
+        check_id=28,
+        descriptor=descriptor,
+        status="fail",
+        location="extensions",
+        message="; ".join(issues),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1569,6 +1615,7 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         "dtype_altering_transform_incompatible_with_aggressive",
         check_27_dtype_altering_transform_incompatible_with_aggressive,
     ),
+    (28, "extension_keys_declared", check_28_extension_keys_declared),
 )
 
 

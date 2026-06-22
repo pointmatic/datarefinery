@@ -96,3 +96,17 @@ class Plugin(Protocol):
         with no recommended values. Replaces the removed ``ParameterSpec.default``.
         """
         ...
+
+    def extension_keys(self) -> dict[str, set[str]]:
+        """Extension namespaces + keys this plugin consumes (Story J.n.6).
+
+        Returns ``{<namespace>: {<key>, …}}`` enumerating every
+        ``recipe.extensions.<namespace>.<key>`` the plugin reads. The validator
+        (check 28) refuses any extensions namespace/key absent from the bound
+        plugin's declaration, so an experimental knob must be claimed by
+        installed code before a recipe may carry it. Returns ``{}`` when the
+        plugin consumes no extensions (the default for every built-in plugin).
+        Extensions are *declarative parameters* only — recipe-activated code is
+        out of scope (spike memo § 6 trust boundary).
+        """
+        ...

@@ -70,7 +70,9 @@ RECIPE_FIELD_SEGMENTS: dict[str, str] = {
     # overlays — the recipe's overlay definitions (Q2); contributed as the
     # bare mapping. Stripped to {} at hash time, so it never enters identity.
     "overlays": "overlays",
-    # extensions — the J.n.6 namespace; no Recipe field exists yet
+    # extensions — the J.n.6 namespace (design Q5); contributed as the bare
+    # namespace mapping, empty → EMPTY_MARKER (additive landing).
+    "extensions": "extensions",
 }
 
 #: Separator between per-segment digests in the stable join. ASCII Unit

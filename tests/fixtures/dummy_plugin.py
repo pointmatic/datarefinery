@@ -32,5 +32,8 @@ class _TestDummyPlugin:
         del section, op_name
         return {}
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
+
 
 PLUGIN = _TestDummyPlugin()

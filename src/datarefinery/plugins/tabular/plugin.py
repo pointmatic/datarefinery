@@ -139,6 +139,10 @@ class TabularPlugin:
         document intent until the ops are implemented."""
         return dict(_RECOMMENDED_PARAMS.get(op_name, {}))
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        """No extensions consumed (Story J.n.6)."""
+        return {}
+
 
 _RECOMMENDED_PARAMS: dict[str, dict[str, Any]] = {
     "filter_by_value": {"op": "eq"},

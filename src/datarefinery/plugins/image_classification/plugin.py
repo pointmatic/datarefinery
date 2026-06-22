@@ -378,6 +378,11 @@ class ImageClassificationPlugin:
         Empty for ops with no recommended values."""
         return dict(_RECOMMENDED_PARAMS.get(op_name, {}))
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        """No extensions consumed (Story J.n.6). The image plugin reads no
+        experimental ``extensions:`` parameters."""
+        return {}
+
 
 # Recommended starting values for every op param that was a code-supplied
 # default before the no-implicit-defaults rollout (Story J.n.4). These are

@@ -53,6 +53,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A CI guard (`tests/unit/test_no_implicit_defaults.py`) fails if any
   `ParameterSpec` reintroduces a `default`. `Plugin.recommended_params` is now
   part of the protocol's required-attribute set.
+- **Extensions namespace — sanctioned experimental-parameter escape hatch
+  (Story J.n.6).** New optional top-level `extensions: {<namespace>: {<key>:
+  <value>}}` recipe block where pydantic's `extra="forbid"` is relaxed *only
+  inside* a namespace; every other recipe surface stays strict. Plugins
+  enumerate the keys they consume via a new `Plugin.extension_keys() ->
+  dict[str, set[str]]` hook, and the validator's **new check 28** refuses any
+  `extensions` namespace/key the bound plugin does not declare (naming the
+  offender). **Additive — no invalidation:** an empty/absent `extensions`
+  block collapses to the empty-segment marker and contributes nothing to the
+  cache identity, so existing recipes hash exactly as before; only a non-empty
+  block enters canonical bytes. Extensions carry *declarative parameters* read
+  by installed code only — recipe-activated code is explicitly out of scope
+  (spike memo § 6 trust boundary). `Plugin.extension_keys` joins the protocol's
+  required-attribute set. Recipe guides updated (`recipe-authoring.md` §
+  Extensions, `plugin-authoring.md` § Declaring consumed extension keys).
 - **Plugin source subclasses — `AudioSource` (Story J.n.3).** `InputSource`
   is now the open base of a narrow discriminated union; `AudioSource` adds
   `target_sample_rate`. Selection is presence-based and `type` stays a free

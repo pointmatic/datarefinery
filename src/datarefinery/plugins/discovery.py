@@ -24,6 +24,7 @@ _REQUIRED_PLUGIN_ATTRS = (
     "operation_factory",
     "is_stub",
     "recommended_params",  # Story J.n.4: no-implicit-defaults recommended-value home
+    "extension_keys",  # Story J.n.6: extensions-namespace consume declaration
 )
 
 

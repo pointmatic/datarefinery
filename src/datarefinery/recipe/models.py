@@ -522,3 +522,15 @@ class Recipe(_Frozen):
     Visualizations: list[VisualizationOp] = Field(default_factory=list)
     Sinks: list[SinkOp] = Field(default_factory=list)
     overlays: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    #: Story J.n.6 (design Q5): the sanctioned escape hatch for experimental,
+    #: plugin-consumed parameters. Shape ``{<namespace>: {<key>: <value>}}``
+    #: where ``namespace`` is the consuming plugin/owner. ``extra="forbid"`` is
+    #: relaxed *only inside* a namespace (the inner mapping is a free
+    #: ``dict[str, Any]``); every other recipe surface stays strict. The
+    #: validator (check 28) refuses any namespace/key the bound plugin does not
+    #: declare via :meth:`~datarefinery.plugins.base.Plugin.extension_keys`. An
+    #: empty block collapses to the empty-segment marker, so the mechanism lands
+    #: additively (no existing cache breaks). Extensions carry *declarative
+    #: parameters* only — recipe-activated code is explicitly out of scope
+    #: (spike memo § 6 trust boundary).
+    extensions: dict[str, dict[str, Any]] = Field(default_factory=dict)

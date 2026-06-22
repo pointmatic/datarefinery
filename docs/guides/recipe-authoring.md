@@ -122,6 +122,7 @@ DataRefinery's interpreting code supplies **no** behavior-affecting value for an
 | `Splits` | yes | Train/val/test partitioning. |
 | `SampleData`, `InputContracts`, `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `OutputExpectations`, `Visualizations` | no | Optional pipeline stages and assertions, each defaulting to empty. |
 | `overlays` | no | Named overlays on any section (FR-14). |
+| `extensions` | no | Experimental, plugin-consumed parameters in a relaxed namespace (J.n.6). See [Extensions](#extensions). |
 
 The recipe is the single source of truth for pipeline semantics. CLI flags and environment variables control only **execution context** — cache root, log level, plugin path, workers — and never alter what the pipeline does. The one sanctioned exception is `--seed`, which is the documented ad-hoc-run knob and changes the cache identity (so a different instance is produced).
 
@@ -1149,6 +1150,28 @@ datarefinery --overlay light_aug --overlay big_train materialize recipe.yaml
 4. **Overlays are scoped to one recipe.** This keeps experiments discoverable in one file rather than across forked copies. If an experiment changes pipeline semantics in a way that no longer makes sense as an override (e.g. swapping the plugin), it is a different recipe.
 
 The applied overlay names are echoed in `manifest.overlays` and the report. The validator (check 12) rejects an overlay that references an undeclared section or key.
+
+## Extensions
+
+`extensions` is the sanctioned escape hatch for **experimental, plugin-consumed parameters** that don't yet warrant a first-class recipe section. Everywhere else in the recipe, an unrecognized key is a hard error (`extra="forbid"`); inside an `extensions` namespace, arbitrary keys are accepted so a plugin can read forward-looking config without a model change.
+
+```yaml
+extensions:
+  audio_classification:        # namespace — the consuming plugin / owner
+    experimental_vad: true     # arbitrary keys, read by installed plugin code
+    vad_aggressiveness: 2
+```
+
+The shape is always `extensions: { <namespace>: { <key>: <value> } }`. The namespace names the plugin (or owner) that consumes the keys; namespacing keeps two plugins from colliding on the same key name.
+
+How it behaves:
+
+1. **Relaxation is scoped to a namespace.** Arbitrary keys are accepted *inside* `extensions.<namespace>`; the rest of the recipe stays strict. A typo at the top level is still rejected.
+2. **Keys must be declared by an installed plugin.** Every `extensions.<namespace>.<key>` must be claimed by the recipe's bound plugin via its `extension_keys()` declaration. An undeclared namespace or key is refused by the validator (check 28), naming the offender — so a stray experimental knob can't silently ride along. See [plugin-authoring.md](plugin-authoring.md) for how a plugin declares the keys it consumes.
+3. **Identity is additive.** A non-empty `extensions` block enters the cache identity (it changes the materialized result), so editing it produces a distinct instance. An empty or absent block contributes nothing — recipes that predate the mechanism, or that declare no extensions, hash exactly as before (the `extensions` segment collapses to the empty-segment marker; see the cache-identity contract).
+4. **Declarative parameters only.** Extensions carry *data* read by installed code. They do **not** activate arbitrary code from the recipe — the recipe stays a declarative artifact. Recipe-driven code execution is a separate trust-boundary effort, explicitly out of scope here.
+
+Reach for `extensions` when a plugin needs to try a knob before it earns a real section; promote it to a first-class field once the design settles.
 
 ## Contracts and expectations
 

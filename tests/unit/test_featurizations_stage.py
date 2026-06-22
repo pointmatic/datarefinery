@@ -366,6 +366,9 @@ class _FeatPlugin:
     def is_stub(self) -> bool:
         return False
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
+
 
 def test_fit_on_train_featurizer_persists_and_applies_across_splits(
     tmp_path: Path,

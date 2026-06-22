@@ -580,7 +580,7 @@ Per spike memo § 4 and J.n.1 Q2: reconsider `variants` (FR-14) as first-class o
 
 ---
 
-### Story J.n.6: Extensions namespace + plugin extension-key declaration [Planned]
+### Story J.n.6: Extensions namespace + plugin extension-key declaration [Done]
 
 **Disposition: feature addition.** Part of the Recipe Architecture bundle.
 
@@ -590,14 +590,14 @@ Per spike memo § 4 and J.n.1 Q5: introduce the sanctioned `extensions:` namespa
 
 **Tasks:**
 
-- [ ] Add the `extensions:` block (or `x-*` keys) per J.n.1 Q5 syntax decision; relax `extra="forbid"` inside the namespace only.
-- [ ] Plugin extension-key declaration mechanism: plugins enumerate which extension keys they consume; the validator validates that every extension key in a recipe is declared by an installed plugin. Undeclared keys → refuse with a clear message naming the unknown key.
-- [ ] Identity: `extensions` segment contributes nothing when empty (pin-tested in J.n.7).
-- [ ] Unit + integration tests: empty extensions (cache identity unchanged from a no-extensions baseline); declared extension keys validate; undeclared keys refuse; relaxed `extra="forbid"` inside the namespace; strict elsewhere.
-- [ ] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) with the extensions namespace, including the spike memo § 6 trust-boundary callout: extensions are declarative parameters only; recipe-activated code is a separate effort.
-- [ ] DOC: update [`plugin-authoring.md`](../guides/plugin-authoring.md) to explain plugin extension-key declaration.
-- [ ] CHANGELOG entry: additive (no canonical-bytes perturbation for existing recipes — empty namespace marker contributes nothing).
-- [ ] CI parity.
+- [x] Add the `extensions:` block (or `x-*` keys) per J.n.1 Q5 syntax decision; relax `extra="forbid"` inside the namespace only. Per Q5: single top-level `extensions: dict[str, dict[str, Any]]` block ([models.py](../../src/datarefinery/recipe/models.py)); the inner namespace mapping is a free `dict[str, Any]`, so arbitrary keys are accepted *inside* a namespace while every other recipe surface stays strict (`_Frozen` `extra="forbid"`). Loader `KNOWN_TOP_LEVEL_KEYS` += `extensions` (no spurious unknown-key warning).
+- [x] Plugin extension-key declaration mechanism: plugins enumerate which extension keys they consume; the validator validates that every extension key in a recipe is declared by an installed plugin. Undeclared keys → refuse with a clear message naming the unknown key. New `Plugin.extension_keys() -> dict[str, set[str]]` (namespace → consumed keys) on the protocol ([base.py](../../src/datarefinery/plugins/base.py)) + all three built-ins (return `{}`) + `discovery._REQUIRED_PLUGIN_ATTRS`. New validator **check 28** ([validator.py](../../src/datarefinery/recipe/validator.py)) refuses any undeclared namespace or key against the recipe's bound plugin, naming the offender; empty `extensions` passes trivially without consulting the plugin.
+- [x] Identity: `extensions` segment contributes nothing when empty (pin-tested in J.n.7). `RECIPE_FIELD_SEGMENTS["extensions"] = "extensions"` ([segments.py](../../src/datarefinery/recipe/segments.py)); `segments_of` folds the bare namespace mapping, empty → `EMPTY_MARKER`. Verified additive: the pinned image-recipe identity in `test_segmented_identity.py` is unchanged.
+- [x] Unit + integration tests: empty extensions (cache identity unchanged from a no-extensions baseline); declared extension keys validate; undeclared keys refuse; relaxed `extra="forbid"` inside the namespace; strict elsewhere. [`tests/unit/test_extensions_namespace.py`](../../tests/unit/test_extensions_namespace.py) (11 tests: model relaxation/strictness, plugin declaration, check-28 pass/fail/multi-offender) + identity additivity tests appended to [`test_recipe_segmentation.py`](../../tests/unit/test_recipe_segmentation.py) (5) + [`tests/integration/test_extensions_namespace.py`](../../tests/integration/test_extensions_namespace.py) (5: loader round-trip, identity additivity end-to-end, declared-pass via discovered plugin, real-plugin refusal).
+- [x] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) with the extensions namespace, including the spike memo § 6 trust-boundary callout: extensions are declarative parameters only; recipe-activated code is a separate effort. Added `## Extensions` section + top-level-keys table row.
+- [x] DOC: update [`plugin-authoring.md`](../guides/plugin-authoring.md) to explain plugin extension-key declaration. Added `## Declaring consumed extension keys` section + protocol-table row + `extension_keys` in the protocol sketch and Hello walk-through.
+- [x] CHANGELOG entry: additive (no canonical-bytes perturbation for existing recipes — empty namespace marker contributes nothing). Added under the Phase J bundle.
+- [x] CI parity. `pyve test` (1410 pass), `mypy src tests` (clean, 223 files), `ruff check` + `ruff format --check` (clean). Check-count assertions bumped 27→28 in `test_validator.py`, `test_tabular_stub_smoke.py`, and three CLI-output integration tests; `extension_keys` added to all test fake plugins now typed against `Plugin`.
 
 **Out of Scope:**
 

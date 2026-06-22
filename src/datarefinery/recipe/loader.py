@@ -59,6 +59,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "Visualizations",
         "Sinks",
         "overlays",
+        "extensions",  # Story J.n.6: sanctioned experimental-parameter namespace
     }
 )
 

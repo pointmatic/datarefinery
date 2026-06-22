@@ -258,6 +258,9 @@ class _FailingPlugin:
     def is_stub(self) -> bool:
         return False
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
+
 
 def test_reporting_failure_raises_materialize_error(tmp_path: Path) -> None:
     op = _viz("bad", "any", "reporting")
@@ -302,6 +305,9 @@ class _BadReturnPlugin:
 
     def is_stub(self) -> bool:
         return False
+
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
 
 
 def test_reporting_op_returning_non_bytes_raises_materialize_error(

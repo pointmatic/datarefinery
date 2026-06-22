@@ -57,6 +57,9 @@ class _Plugin:
         del section, op_name
         return {}
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
+
     def operation_factory(self, section: str, op_name: str) -> object:
         del section, op_name
         return lambda record: record
@@ -152,8 +155,8 @@ def test_valid_recipe_passes_all_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 27
-    assert {r.check_id for r in report.results} == set(range(1, 28))
+    assert len(report.results) == 28
+    assert {r.check_id for r in report.results} == set(range(1, 29))
     assert all(r.status == "pass" for r in report.results)
 
 

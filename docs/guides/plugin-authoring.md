@@ -27,6 +27,7 @@ class Plugin(Protocol):
     def operation_factory(self, section: str, op_name: str) -> Operation: ...
     def is_stub(self) -> bool: ...
     def recommended_params(self, section: str, op_name: str) -> dict[str, Any]: ...
+    def extension_keys(self) -> dict[str, set[str]]: ...
 ```
 
 Required attributes:
@@ -40,6 +41,7 @@ Required attributes:
 | `operation_factory(section, op_name)` | callable | Returns the runtime handle for one operation. The pipeline runner calls this at materialize time. |
 | `is_stub()` | `bool` | `True` if the plugin declares schemas but does not implement operations; consumers gate materialize-time refusals on this. |
 | `recommended_params(section, op_name)` | callable → `dict` | Recommended starting values for an op's parameters (Story J.n.4) — the home for the values the scaffolder bakes into a scaffolded recipe, replacing the removed `ParameterSpec.default`. Return `{}` for an op with no recommendations. |
+| `extension_keys()` | callable → `dict[str, set[str]]` | The `extensions:` namespaces/keys this plugin consumes (Story J.n.6). Return `{<namespace>: {<key>, …}}`; the validator (check 28) refuses any `extensions` namespace/key your plugin does not declare. Return `{}` (the default for built-ins) if your plugin reads no extensions. See [Declaring consumed extension keys](#declaring-consumed-extension-keys). |
 
 The 13 canonical recipe sections (asserted by the plugin contract test
 suite in
@@ -86,6 +88,24 @@ Field-by-field:
 - **`fit_on_train`** — set to `True` for ops that compute statistics from the training split (normalize, standardize, encoders). Once `fit_on_train` is set, the recipe's `fit_source` must be exactly `"train"` (validator check 6). The pipeline writes the fitted output to `fitted_statistics/<op_name>/`.
 - **`applicable_splits`** — restricts which splits a recipe may target with this operation. Augmentations are typically declared `frozenset({"train"})` so the validator rejects any recipe that applies them to val/test (check 5). For ops that legitimately apply to every split, leave the default.
 - **`applicable_sections`** — required and non-empty. Names the recipe sections this operation may appear in. A normalize op declares `frozenset({"Transformations"})`; a histogram declares `frozenset({"Visualizations"})`. Operations may declare more than one section, but the runner dispatches per `(section, op_name)` pair via `operation_factory`.
+
+## Declaring consumed extension keys
+
+The recipe's `extensions:` block (see [recipe-authoring.md § Extensions](recipe-authoring.md#extensions)) is the sanctioned escape hatch for experimental, plugin-consumed parameters. Inside an `extensions` namespace, the recipe model relaxes its usual `extra="forbid"` strictness — so the validator can no longer catch a typo or an orphaned knob on its own. Your plugin closes that gap by declaring exactly which namespaces and keys it reads:
+
+```python
+class MyPlugin:
+    name = "audio_classification"
+    # … other protocol members …
+
+    def extension_keys(self) -> dict[str, set[str]]:
+        # namespace -> the keys this plugin consumes within it
+        return {"audio_classification": {"experimental_vad", "vad_aggressiveness"}}
+```
+
+The validator (check 28) refuses any `extensions.<namespace>.<key>` in a recipe that the bound plugin does not declare here, naming the offender — so an experimental parameter must be claimed by installed code before a recipe may carry it. By convention the namespace is your plugin's `name`; namespacing keeps two plugins from colliding on the same key. Return `{}` (the built-in default) when your plugin reads no extensions.
+
+**Scope.** Extensions carry *declarative parameters* your `operation_factory` handles (or other plugin code) read at runtime. They do **not** let a recipe activate arbitrary code — that is a separate trust-boundary effort, out of scope. Treat an extension key as experimental: once its design settles, promote it to a first-class `OperationSpec` parameter or recipe section and bump your plugin segment version.
 
 ## Operation handles
 
@@ -250,6 +270,10 @@ class HelloPlugin:
         # Recommended starting value the scaffolder emits for `echo._marker`.
         if (section, op_name) == ("Featurizations", "echo"):
             return {"_marker": "echo"}
+        return {}
+
+    def extension_keys(self) -> dict[str, set[str]]:
+        # Hello consumes no `extensions:` parameters.
         return {}
 
 

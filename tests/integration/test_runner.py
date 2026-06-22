@@ -341,6 +341,9 @@ class _FailingPlugin:
     def is_stub(self) -> bool:
         return False
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
+
 
 def test_visualization_failure_leaves_failed_marker(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"

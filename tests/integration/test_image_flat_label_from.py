@@ -95,7 +95,7 @@ def test_image_flat_label_from_validate_and_materialize(tmp_path: Path) -> None:
         ["--cache-root", str(cache_root), "validate", str(recipe_path)],
     )
     assert result.exit_code == 0, result.stdout
-    assert "27/27 checks passed" in result.stdout
+    assert "28/28 checks passed" in result.stdout
 
     # materialize
     result = runner.invoke(

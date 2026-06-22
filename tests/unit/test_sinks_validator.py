@@ -41,6 +41,9 @@ class _Plugin:
     def is_stub(self) -> bool:
         return False
 
+    def extension_keys(self) -> dict[str, set[str]]:
+        return {}
+
 
 def _base_dict() -> dict[str, Any]:
     return {
