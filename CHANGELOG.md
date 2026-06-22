@@ -26,6 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipe stays **flat** on disk — segmentation is an internal partition
   (Option 1), not an author-facing reshape — so no recipe edits are
   required; re-run `materialize` to rebuild instances.
+- **⚠️ No-implicit-defaults rollout (Story J.n.4).** Op parameters no longer
+  carry code-supplied defaults: `ParameterSpec.default` is removed, the ~25
+  default-value params across the bundled plugins became **`required`**, and
+  the interpreting code substitutes nothing for an omitted param. Canonical
+  bytes now contain *exactly what the author wrote*; a recipe omitting a
+  now-required param is a hard validation error (check 18). Recommended
+  starting values moved to a new `Plugin.recommended_params(section, op)` hook
+  (the scaffolder emits them into recipe text). Only `normalize.mean`/`std`
+  remain optional — mode-selecting (absent ⇒ fit-from-train). This **changes
+  canonical bytes** for recipes that relied on a default, so it rides the same
+  one-time pre-1.0 invalidation window as J.n.3 (a single re-materialization
+  event across the v0.22.0 release; no release sits between the two stories).
+  A CI guard (`tests/unit/test_no_implicit_defaults.py`) fails if any
+  `ParameterSpec` reintroduces a `default`. `Plugin.recommended_params` is now
+  part of the protocol's required-attribute set.
 - **Plugin source subclasses — `AudioSource` (Story J.n.3).** `InputSource`
   is now the open base of a narrow discriminated union; `AudioSource` adds
   `target_sample_rate`. Selection is presence-based and `type` stays a free

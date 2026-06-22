@@ -30,6 +30,10 @@ class _Plugin:
         )
         self.supported_operations: dict[str, OperationSpec] = {}
 
+    def recommended_params(self, section: str, op_name: str) -> dict[str, object]:
+        del section, op_name
+        return {}
+
     def operation_factory(self, section: str, op_name: str) -> object:
         del section, op_name
         return lambda r: r

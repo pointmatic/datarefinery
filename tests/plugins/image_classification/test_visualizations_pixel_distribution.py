@@ -75,15 +75,15 @@ def _is_png(data: bytes) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def test_params_defaults_bins_to_64() -> None:
-    p = PixelDistributionParams(splits=["train"])
-    assert p.bins == 64
-    assert p.splits == ["train"]
+def test_params_require_bins() -> None:
+    # No-implicit-defaults (J.n.4): bins is required (was a code default of 64).
+    with pytest.raises(ValidationError):
+        PixelDistributionParams(splits=["train"])  # type: ignore[call-arg]
 
 
 def test_params_rejects_empty_splits() -> None:
     with pytest.raises(ValidationError):
-        PixelDistributionParams(splits=[])
+        PixelDistributionParams(splits=[], bins=64)
 
 
 def test_params_accepts_custom_bins() -> None:
@@ -214,7 +214,7 @@ def test_reporting_writes_one_png_per_split(tmp_path: Path) -> None:
 
 
 def test_reporting_pixel_distribution_is_deterministic(tmp_path: Path) -> None:
-    op = _viz("px_dist", "pixel_distribution", "reporting", splits=["train"])
+    op = _viz("px_dist", "pixel_distribution", "reporting", splits=["train"], bins=64)
     a = apply_reporting_visualizations(
         _splits(), [op], plugin=IMAGE_PLUGIN, output_dir=tmp_path / "a", label_field="label"
     )
@@ -234,6 +234,7 @@ def test_exploration_render_returns_rendered_with_no_path() -> None:
         "px_dist",
         "pixel_distribution",
         "exploration",
+        bins=64,
         splits=["train", "val"],
     )
     rendered = render_visualization(_splits(), op, plugin=IMAGE_PLUGIN, label_field="label")
@@ -252,7 +253,7 @@ def test_exploration_render_returns_rendered_with_no_path() -> None:
 
 
 def test_rendered_pngs_decode_to_valid_image(tmp_path: Path) -> None:
-    op = _viz("px_dist", "pixel_distribution", "reporting", splits=["train"])
+    op = _viz("px_dist", "pixel_distribution", "reporting", splits=["train"], bins=64)
     result = apply_reporting_visualizations(
         _splits(),
         [op],

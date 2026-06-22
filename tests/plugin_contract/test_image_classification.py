@@ -107,7 +107,8 @@ def test_augmentation_ops_apply_to_train_only() -> None:
 def test_resize_parameter_schema_validates_fixture_params() -> None:
     spec = PLUGIN.supported_operations["resize"]
     required = {k for k, v in spec.parameters.items() if v.required}
-    fixture: dict[str, object] = {"size": 32}
+    # No-implicit-defaults (J.n.4): `method` is now required alongside `size`.
+    fixture: dict[str, object] = {"size": 32, "method": "bilinear"}
     for name in required:
         assert name in fixture, f"required param {name!r} missing from fixture"
 
@@ -116,10 +117,15 @@ def test_normalize_marked_fit_on_train() -> None:
     assert PLUGIN.supported_operations["normalize"].fit_on_train is True
 
 
-def test_label_from_path_default_source_is_parent_directory_name() -> None:
+def test_label_from_path_source_is_required_and_recommended() -> None:
+    # No-implicit-defaults (J.n.4): `source` is required (no ParameterSpec
+    # default); the recommended value moved to `recommended_params`.
     spec = PLUGIN.supported_operations["label_from_path"]
     assert "source" in spec.parameters
-    assert spec.parameters["source"].default == "parent_directory_name"
+    assert spec.parameters["source"].required is True
+    assert PLUGIN.recommended_params("Featurizations", "label_from_path") == {
+        "source": "parent_directory_name"
+    }
 
 
 def test_operation_factory_raises_not_implemented_for_unimplemented_ops() -> None:

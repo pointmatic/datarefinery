@@ -32,55 +32,61 @@ from datarefinery.recipe.models import AugmentationOp
 # ---------------------------------------------------------------------------
 
 
-def test_random_erasing_params_defaults() -> None:
-    p = RandomErasingParams()
-    assert p.p == 0.5
-    assert p.scale == (0.02, 0.33)
-    assert p.ratio == (0.3, 3.3)
+def _re(**over: object) -> dict[str, object]:
+    """Complete random_erasing params (others at their pre-J.n.4 defaults)."""
+    base: dict[str, object] = {"p": 0.5, "scale": (0.02, 0.33), "ratio": (0.3, 3.3)}
+    base.update(over)
+    return base
+
+
+def test_random_erasing_params_require_all_fields() -> None:
+    # No-implicit-defaults (J.n.4): p / scale / ratio are all required.
+    with pytest.raises(ValidationError):
+        RandomErasingParams()  # type: ignore[call-arg]
 
 
 def test_random_erasing_params_accepts_p_zero() -> None:
-    assert RandomErasingParams(p=0.0).p == 0.0
+    assert RandomErasingParams(**_re(p=0.0)).p == 0.0
 
 
 def test_random_erasing_params_accepts_p_one() -> None:
-    assert RandomErasingParams(p=1.0).p == 1.0
+    assert RandomErasingParams(**_re(p=1.0)).p == 1.0
 
 
 def test_random_erasing_params_rejects_p_outside_unit() -> None:
     with pytest.raises(ValidationError):
-        RandomErasingParams(p=-0.1)
+        RandomErasingParams(**_re(p=-0.1))
     with pytest.raises(ValidationError):
-        RandomErasingParams(p=1.1)
+        RandomErasingParams(**_re(p=1.1))
 
 
 def test_random_erasing_params_rejects_inverted_scale() -> None:
     with pytest.raises(ValidationError):
-        RandomErasingParams(scale=(0.5, 0.1))
+        RandomErasingParams(**_re(scale=(0.5, 0.1)))
 
 
 def test_random_erasing_params_rejects_inverted_ratio() -> None:
     with pytest.raises(ValidationError):
-        RandomErasingParams(ratio=(3.3, 0.3))
+        RandomErasingParams(**_re(ratio=(3.3, 0.3)))
 
 
 def test_random_erasing_params_rejects_non_positive_scale() -> None:
     with pytest.raises(ValidationError):
-        RandomErasingParams(scale=(0.0, 0.1))
+        RandomErasingParams(**_re(scale=(0.0, 0.1)))
 
 
 def test_random_erasing_params_rejects_non_positive_ratio() -> None:
     with pytest.raises(ValidationError):
-        RandomErasingParams(ratio=(0.0, 1.0))
+        RandomErasingParams(**_re(ratio=(0.0, 1.0)))
 
 
 def test_random_erasing_params_rejects_scale_above_one() -> None:
     with pytest.raises(ValidationError):
-        RandomErasingParams(scale=(0.1, 1.1))
+        RandomErasingParams(**_re(scale=(0.1, 1.1)))
 
 
 def test_random_erasing_params_is_frozen() -> None:
-    p = RandomErasingParams()
+    p = RandomErasingParams(**_re())
     with pytest.raises(ValidationError):
         p.p = 0.9  # type: ignore[misc]
 
@@ -100,7 +106,7 @@ def _record(rid: str, arr: np.ndarray, label: int = 0) -> dict[str, Any]:
 
 def test_realizer_p_zero_is_identity() -> None:
     arr = _rgb()
-    out = realize_random_erasing(_record("r", arr), seed=1, variant_index=0, params={"p": 0.0})
+    out = realize_random_erasing(_record("r", arr), seed=1, variant_index=0, params=_re(p=0.0))
     assert np.array_equal(out["image"], arr)
 
 
@@ -112,7 +118,7 @@ def test_realizer_p_one_modifies_image() -> None:
     # Run several seeds; at least one must produce a modified image.
     modified = 0
     for s in range(10):
-        out = realize_random_erasing(_record("r", arr), seed=s, variant_index=0, params={"p": 1.0})
+        out = realize_random_erasing(_record("r", arr), seed=s, variant_index=0, params=_re(p=1.0))
         if not np.array_equal(out["image"], arr):
             modified += 1
     assert modified >= 8, f"expected most seeds to erase; got {modified}/10"
@@ -141,8 +147,8 @@ def test_realizer_erased_region_pixels_are_uniform_mean() -> None:
 
 def test_realizer_same_seed_same_output() -> None:
     arr = _rgb()
-    a = realize_random_erasing(_record("r", arr), seed=42, variant_index=0, params={"p": 1.0})
-    b = realize_random_erasing(_record("r", arr), seed=42, variant_index=0, params={"p": 1.0})
+    a = realize_random_erasing(_record("r", arr), seed=42, variant_index=0, params=_re(p=1.0))
+    b = realize_random_erasing(_record("r", arr), seed=42, variant_index=0, params=_re(p=1.0))
     assert np.array_equal(a["image"], b["image"])
 
 
@@ -150,14 +156,14 @@ def test_realizer_preserves_label_and_other_fields() -> None:
     arr = _rgb()
     record = _record("r", arr, label=4)
     record["extra"] = "keep-me"
-    out = realize_random_erasing(record, seed=1, variant_index=0, params={"p": 1.0})
+    out = realize_random_erasing(record, seed=1, variant_index=0, params=_re(p=1.0))
     assert out["label"] == 4
     assert out["extra"] == "keep-me"
 
 
 def test_realizer_output_shape_and_dtype_match_input() -> None:
     arr = _rgb()
-    out = realize_random_erasing(_record("r", arr), seed=1, variant_index=0, params={"p": 1.0})
+    out = realize_random_erasing(_record("r", arr), seed=1, variant_index=0, params=_re(p=1.0))
     assert out["image"].shape == arr.shape
     assert out["image"].dtype == np.uint8
 
@@ -171,7 +177,7 @@ def _aggressive_op(p: float = 1.0, expansion: int = 4) -> AugmentationOp:
     return AugmentationOp(
         name="erase",
         op="random_erasing",
-        params={"p": p},
+        params=_re(p=p),
         splits=["train"],
         seed=1,
         materialization="aggressive",

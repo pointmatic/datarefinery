@@ -68,6 +68,38 @@ def test_scaffolded_recipe_loads_and_validates_clean(tmp_path: Path) -> None:
     assert report.passed, [r for r in report.failures]
 
 
+def test_scaffolded_recipe_writes_every_required_param_verbatim(tmp_path: Path) -> None:
+    # No-implicit-defaults (J.n.4): the scaffolder is the value-emitter. Every
+    # required param of every op it writes must appear explicitly in the recipe
+    # text — the interpreting code fills in nothing, so a missing canonical key
+    # would be a hard validation failure, not a silent default.
+    from datarefinery.plugins.image_classification import PLUGIN as IMAGE_PLUGIN
+
+    input_path = _build_image_folder(tmp_path / "data")
+    out = tmp_path / "recipe.yaml"
+    scaffold_image_classification(input_path, out)
+    recipe = load(out)
+
+    op_sections = (
+        "Filters",
+        "Generation",
+        "Transformations",
+        "Augmentations",
+        "Featurizations",
+        "Visualizations",
+        "Sinks",
+    )
+    checked = 0
+    for section in op_sections:
+        for op in getattr(recipe, section):
+            spec = IMAGE_PLUGIN.supported_operations[op.op]
+            required = {name for name, p in spec.parameters.items() if p.required}
+            missing = required - set(op.params)
+            assert not missing, f"{section}[{op.name!r}] omits required params {missing}"
+            checked += 1
+    assert checked > 0  # the scaffolder did write some ops
+
+
 def test_scaffolded_recipe_inspects_image_dims(tmp_path: Path) -> None:
     input_path = _build_image_folder(tmp_path / "data", size=24)
     out = tmp_path / "recipe.yaml"

@@ -61,7 +61,7 @@ class ResizeOp:
         size = params.get("size")
         if not isinstance(size, int) or size <= 0:
             raise PluginError(f"resize requires positive integer 'size' (got {size!r})")
-        method_name = str(params.get("method", "bilinear"))
+        method_name = str(params["method"])
         method = _RESAMPLE_METHODS.get(method_name)
         if method is None:
             raise PluginError(
@@ -207,7 +207,7 @@ class CastOp:
             target_dtype = np.dtype(dtype_param)
         except TypeError as exc:
             raise PluginError(f"cast 'dtype' is not a valid NumPy dtype: {dtype_param!r}") from exc
-        scale = float(params.get("scale", 1.0))
+        scale = float(params["scale"])
         return [_replace_image(r, _cast_one(r["image"], target_dtype, scale)) for r in records]
 
 

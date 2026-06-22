@@ -32,12 +32,18 @@ from datarefinery.recipe.models import AugmentationOp
 # ---------------------------------------------------------------------------
 
 
-def test_color_jitter_params_defaults_all_zero() -> None:
-    p = ColorJitterParams()
-    assert p.brightness == 0.0
-    assert p.contrast == 0.0
-    assert p.saturation == 0.0
-    assert p.hue == 0.0
+def _cj(**over: float) -> dict[str, float]:
+    """Complete color_jitter params (others at their pre-J.n.4 default 0.0)."""
+    base = {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0}
+    base.update(over)
+    return base
+
+
+def test_color_jitter_params_require_all_dimensions() -> None:
+    # No-implicit-defaults (J.n.4): every dimension is required; the code
+    # supplies nothing for an omitted one.
+    with pytest.raises(ValidationError):
+        ColorJitterParams()  # type: ignore[call-arg]
 
 
 def test_color_jitter_params_accepts_bcs_at_bounds() -> None:
@@ -51,27 +57,27 @@ def test_color_jitter_params_accepts_bcs_at_bounds() -> None:
 @pytest.mark.parametrize("field", ["brightness", "contrast", "saturation"])
 def test_color_jitter_params_rejects_bcs_negative(field: str) -> None:
     with pytest.raises(ValidationError):
-        ColorJitterParams(**{field: -0.1})
+        ColorJitterParams(**_cj(**{field: -0.1}))
 
 
 @pytest.mark.parametrize("field", ["brightness", "contrast", "saturation"])
 def test_color_jitter_params_rejects_bcs_above_one(field: str) -> None:
     with pytest.raises(ValidationError):
-        ColorJitterParams(**{field: 1.1})
+        ColorJitterParams(**_cj(**{field: 1.1}))
 
 
 def test_color_jitter_params_rejects_hue_negative() -> None:
     with pytest.raises(ValidationError):
-        ColorJitterParams(hue=-0.01)
+        ColorJitterParams(**_cj(hue=-0.01))
 
 
 def test_color_jitter_params_rejects_hue_above_half() -> None:
     with pytest.raises(ValidationError):
-        ColorJitterParams(hue=0.51)
+        ColorJitterParams(**_cj(hue=0.51))
 
 
 def test_color_jitter_params_is_frozen() -> None:
-    p = ColorJitterParams()
+    p = ColorJitterParams(**_cj())
     with pytest.raises(ValidationError):
         p.brightness = 0.5  # type: ignore[misc]
 
@@ -91,7 +97,7 @@ def _record(rid: str, arr: np.ndarray, label: int = 0) -> dict[str, Any]:
 
 def test_realizer_all_zero_params_is_identity() -> None:
     arr = _rgb()
-    out = realize_color_jitter(_record("r", arr), seed=1, variant_index=0, params={})
+    out = realize_color_jitter(_record("r", arr), seed=1, variant_index=0, params=_cj())
     assert np.array_equal(out["image"], arr)
 
 
@@ -101,7 +107,7 @@ def test_realizer_brightness_can_modify_image() -> None:
         _record("r", arr),
         seed=1,
         variant_index=0,
-        params={"brightness": 1.0},
+        params=_cj(brightness=1.0),
     )
     # With magnitude=1.0 and a seeded offset, the brightness factor is
     # very unlikely to be exactly 1.0 -> bytes should change.
@@ -120,7 +126,7 @@ def test_realizer_same_seed_same_output() -> None:
 
 def test_realizer_different_seed_yields_different_output() -> None:
     arr = _rgb()
-    params = {"brightness": 0.5}
+    params = _cj(brightness=0.5)
     a = realize_color_jitter(_record("r", arr), seed=1, variant_index=0, params=params)
     b = realize_color_jitter(_record("r", arr), seed=2, variant_index=0, params=params)
     assert not np.array_equal(a["image"], b["image"])
@@ -130,7 +136,7 @@ def test_realizer_preserves_label_and_other_fields() -> None:
     arr = _rgb()
     record = _record("r", arr, label=4)
     record["extra"] = "keep-me"
-    out = realize_color_jitter(record, seed=1, variant_index=0, params={"brightness": 0.5})
+    out = realize_color_jitter(record, seed=1, variant_index=0, params=_cj(brightness=0.5))
     assert out["label"] == 4
     assert out["extra"] == "keep-me"
 
@@ -140,7 +146,7 @@ def test_realizer_hue_is_noop_on_grayscale() -> None:
     On grayscale, the realizer must skip the hue path and leave the image
     untouched (no other dimension is enabled here)."""
     arr = np.random.default_rng(0).integers(0, 256, size=(8, 8), dtype=np.uint8)
-    out = realize_color_jitter(_record("r", arr), seed=1, variant_index=0, params={"hue": 0.5})
+    out = realize_color_jitter(_record("r", arr), seed=1, variant_index=0, params=_cj(hue=0.5))
     assert np.array_equal(out["image"], arr)
 
 

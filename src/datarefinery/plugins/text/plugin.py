@@ -45,7 +45,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "filter_by_label": OperationSpec(
             parameters={
                 "labels": ParameterSpec(type="list[str]", required=True),
-                "action": ParameterSpec(type="str", required=False, default="include"),
+                "action": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Filters"}),
         ),
@@ -84,14 +84,14 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "tokenize": OperationSpec(
             parameters={
                 "field": ParameterSpec(type="str", required=True),
-                "scheme": ParameterSpec(type="str", required=False, default="whitespace"),
+                "scheme": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Transformations"}),
         ),
         "remove_stopwords": OperationSpec(
             parameters={
                 "field": ParameterSpec(type="str", required=True),
-                "language": ParameterSpec(type="str", required=False, default="en"),
+                "language": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Transformations"}),
         ),
@@ -138,6 +138,18 @@ class TextPlugin:
 
     def is_stub(self) -> bool:
         return True
+
+    def recommended_params(self, section: str, op_name: str) -> dict[str, Any]:
+        """Recommended starting values (Story J.n.4); stub plugin, so these
+        document intent until the ops are implemented."""
+        return dict(_RECOMMENDED_PARAMS.get(op_name, {}))
+
+
+_RECOMMENDED_PARAMS: dict[str, dict[str, Any]] = {
+    "filter_by_label": {"action": "include"},
+    "tokenize": {"scheme": "whitespace"},
+    "remove_stopwords": {"language": "en"},
+}
 
 
 PLUGIN: Any = TextPlugin()

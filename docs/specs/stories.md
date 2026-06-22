@@ -513,7 +513,7 @@ Refactor `Recipe` from a flat pydantic model into a segmented one: `core`, `plug
 
 ---
 
-### Story J.n.4: No-implicit-defaults rollout [Planned]
+### Story J.n.4: No-implicit-defaults rollout [Done]
 
 **Disposition: feature addition (mass refactor + orthogonal mass change) + one-time pre-1.0 cache invalidation.** Part of the Recipe Architecture bundle.
 
@@ -521,21 +521,25 @@ Adopt the spike memo § 3 resolved stance #1: kill code-supplied defaults. The i
 
 **This is orthogonal to but coordinated with J.n.3** — both ship in the same pre-1.0 mass-invalidation window to keep the user-visible blast radius a single re-materialization event, not two.
 
+**Implementation decisions (developer-confirmed at the J.n.4 gate).**
+
+- **Break + re-author, no migration injection** (developer-chosen over Q7's "bootstrap injects old defaults"). Per spike § 3's pre-1.0 zero-support-window, a recipe omitting a now-required param fails validation with a clear "missing required param" message (check 18); fixtures/examples are updated to carry values explicitly. Keeps the loader plugin-agnostic (no frozen op-default table, no loader↔plugin coupling). The combined J.n.3+J.n.4 invalidation stays a single window (bundle releases once at J.n.9).
+- **Strict removal at both layers.** `ParameterSpec.default` field removed entirely (extra="forbid" turns any reintroduced `default=` into a construction error); code-supplied defaults removed at *both* the op-implementation `.get(key, fallback)` sites and the runtime param-model `Field(default=…)`. Required params are enforced at validate time (check 18) *and* at the param model (so an unvalidated path errors rather than silently substitutes).
+- **`recommended_params(section, op) -> dict` is the new home** for the removed recommended values (added to the `Plugin` protocol + `_REQUIRED_PLUGIN_ATTRS`; the scaffolder's curated starter values stay inline — they intentionally override op recommendations, e.g. `sample_grid.per_class: true`). This is also the substrate for the author-assist tooling discussed at the J.n.3 gate.
+
 **Tasks:**
 
-- [ ] Audit every `ParameterSpec(default=…)` in [`src/datarefinery/plugins/base.py`](../../src/datarefinery/plugins/base.py) and per-plugin op definitions; classify each as:
-  - **Default-value optionality** (absent ⇒ code fills in X): eliminate; the scaffolder emits the value explicitly.
-  - **Mode-selecting optionality** (absence is itself meaningful): keep; document the "absent ⇒ behavior" mapping in the plugin-segment contract.
-- [ ] Drop `default=` from every default-value-optionality param.
-- [ ] Re-express `required` per J.n.1 Q7: adding a `required` param to an existing op is now a plugin-segment-version bump (+ support window); adding a mode-selecting-optional param is free (sparse-hashing — absent keys contribute nothing).
-- [ ] Update the scaffolder ([`scaffolder/init.py`](../../src/datarefinery/scaffolder/init.py)) to emit recommended values explicitly into every scaffolded recipe section.
-- [ ] Update every fixture recipe AND every example recipe under [`docs/guides/`](../guides/) to carry values explicitly.
-- [ ] Unit test: scaffolder output validates AND materializes AND every value appears verbatim in the recipe text (no "missing" canonical key that the code fills in).
-- [ ] Pin test: a `default=` re-introduction anywhere in any `ParameterSpec` fails CI (guards regression).
-- [ ] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) to explain the no-implicit-defaults discipline (canonical bytes contain exactly what the author wrote; absence is mode-selecting, not value-filling).
-- [ ] DOC: update [`plugin-authoring.md`](../guides/plugin-authoring.md) to instruct plugin authors on declaring required-vs-mode-selecting params.
-- [ ] CHANGELOG entry: this lands in the same v0.22.0 release as J.n.3; the mass invalidation cost is enumerated once across both stories.
-- [ ] CI parity.
+- [x] Audit every `ParameterSpec(default=…)` in [`src/datarefinery/plugins/base.py`](../../src/datarefinery/plugins/base.py) and per-plugin op definitions; classify each as default-value (eliminate) or mode-selecting (keep). ~25 default-value params across image (~21) / text (3) / tabular (2) → required; only `normalize.mean`/`std` kept mode-selecting (already `required=False`, no default).
+- [x] Drop `default=` from every default-value-optionality param. Removed the `default` field from `ParameterSpec` and every call site; removed the matching `.get(...)` op-impl defaults and runtime `Field(default=…)`.
+- [x] Re-express `required` per J.n.1 Q7. Default-value params flipped to `required=True`.
+- [x] Update the scaffolder ([`scaffolder/init.py`](../../src/datarefinery/scaffolder/init.py)) to emit recommended values explicitly into every scaffolded recipe section. Already value-emitting; verified by a new test (every required param of every scaffolded op appears verbatim). `recommended_params` added as the plugin-owned value home.
+- [x] Update every fixture recipe AND every example recipe under [`docs/guides/`](../guides/) to carry values explicitly. No YAML fixtures (recipes built programmatically); `recipe-authoring.md` examples updated (categorical_encode Mode 1 `ordering`; filter_by_label prose). ~70 unit/integration tests updated to pass the now-required params explicitly.
+- [x] Unit test: scaffolder output validates AND materializes AND every value appears verbatim. Validates + verbatim in `test_scaffolder.py`; materialize end-to-end covered by the existing `test_golden_path_init_validate_materialize_status` (init→validate→materialize on the scaffolded recipe).
+- [x] Pin test: a `default=` re-introduction anywhere in any `ParameterSpec` fails CI. [`tests/unit/test_no_implicit_defaults.py`](../../tests/unit/test_no_implicit_defaults.py) (field-absence + construction-rejection + no-op-declares-a-default + recommended_params pins).
+- [x] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md). New "No implicit defaults" section + corrected op prose/examples.
+- [x] DOC: update [`plugin-authoring.md`](../guides/plugin-authoring.md). Required-vs-mode-selecting rule, `recommended_params` in the protocol table + hello-plugin example, seven-attribute conformance.
+- [x] CHANGELOG entry. Added under the [Unreleased] Recipe Architecture bundle section (same v0.22.0 window as J.n.3).
+- [x] CI parity. 1384 tests pass; mypy clean (220 files); ruff check + format clean.
 
 **Out of Scope:**
 

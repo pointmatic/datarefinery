@@ -24,5 +24,9 @@ class _TestDummyDupPlugin:
     def is_stub(self) -> bool:
         return False
 
+    def recommended_params(self, section: str, op_name: str) -> dict[str, object]:
+        del section, op_name
+        return {}
+
 
 PLUGIN = _TestDummyDupPlugin()

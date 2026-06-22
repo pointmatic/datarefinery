@@ -52,7 +52,7 @@ def test_resize_changes_image_shape(tmp_path: Path) -> None:
     op = TransformationOp(
         name="r",
         op="resize",
-        params={"size": 8},
+        params={"size": 8, "method": "bilinear"},
         splits=["train", "val", "test"],
     )
     fs = FittedStatistics(tmp_path)
@@ -63,7 +63,9 @@ def test_resize_changes_image_shape(tmp_path: Path) -> None:
 
 
 def test_resize_does_not_persist_fitted_stats(tmp_path: Path) -> None:
-    op = TransformationOp(name="r", op="resize", params={"size": 8}, splits=["train"])
+    op = TransformationOp(
+        name="r", op="resize", params={"size": 8, "method": "bilinear"}, splits=["train"]
+    )
     fs = FittedStatistics(tmp_path)
     apply_transformations(_splits(), [op], plugin=IMAGE_PLUGIN, fitted_stats=fs)
     assert not (tmp_path / "r").exists()
@@ -72,7 +74,9 @@ def test_resize_does_not_persist_fitted_stats(tmp_path: Path) -> None:
 def test_resize_invalid_size_raises() -> None:
     from datarefinery.core.errors import PluginError
 
-    op = TransformationOp(name="r", op="resize", params={"size": 0}, splits=["train"])
+    op = TransformationOp(
+        name="r", op="resize", params={"size": 0, "method": "bilinear"}, splits=["train"]
+    )
     with pytest.raises(PluginError, match="positive integer"):
         apply_transformations(
             {"train": [_record(0, 0)]},
@@ -248,7 +252,7 @@ def test_cast_changes_dtype_only_when_scale_default(tmp_path: Path) -> None:
     op = TransformationOp(
         name="c",
         op="cast",
-        params={"dtype": "float32"},
+        params={"dtype": "float32", "scale": 1.0},
         splits=["train", "val", "test"],
     )
     fs = FittedStatistics(tmp_path)
@@ -293,7 +297,7 @@ def test_cast_is_dtype_noop_when_input_already_target_dtype(tmp_path: Path) -> N
     op = TransformationOp(
         name="c",
         op="cast",
-        params={"dtype": "float32"},
+        params={"dtype": "float32", "scale": 1.0},
         splits=["train"],
     )
     fs = FittedStatistics(tmp_path)
@@ -310,7 +314,7 @@ def test_cast_does_not_persist_fitted_stats(tmp_path: Path) -> None:
     op = TransformationOp(
         name="c",
         op="cast",
-        params={"dtype": "float32"},
+        params={"dtype": "float32", "scale": 1.0},
         splits=["train"],
     )
     fs = FittedStatistics(tmp_path)
@@ -490,7 +494,9 @@ def test_fitted_values_is_empty_default() -> None:
 
 
 def test_input_split_lists_are_not_mutated(tmp_path: Path) -> None:
-    op = TransformationOp(name="r", op="resize", params={"size": 8}, splits=["train"])
+    op = TransformationOp(
+        name="r", op="resize", params={"size": 8, "method": "bilinear"}, splits=["train"]
+    )
     splits = _splits()
     original_train_image = splits["train"][0]["image"].copy()
     apply_transformations(

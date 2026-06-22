@@ -34,7 +34,7 @@ def filter_by_label(
             f"filter_by_label 'labels' must be a list/tuple (got {type(labels_param).__name__})"
         )
     label_set = set(labels_param)
-    action = params.get("action", "include")
+    action = params["action"]
     if action == "include":
         return [r for r in records if r.get(label_field) in label_set]
     if action == "exclude":

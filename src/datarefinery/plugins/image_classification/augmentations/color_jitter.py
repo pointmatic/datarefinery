@@ -40,10 +40,10 @@ class ColorJitterParams(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    brightness: float = Field(default=0.0, ge=0.0, le=1.0)
-    contrast: float = Field(default=0.0, ge=0.0, le=1.0)
-    saturation: float = Field(default=0.0, ge=0.0, le=1.0)
-    hue: float = Field(default=0.0, ge=0.0, le=0.5)
+    brightness: float = Field(ge=0.0, le=1.0)
+    contrast: float = Field(ge=0.0, le=1.0)
+    saturation: float = Field(ge=0.0, le=1.0)
+    hue: float = Field(ge=0.0, le=0.5)
 
 
 def realize_color_jitter(

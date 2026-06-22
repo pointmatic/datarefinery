@@ -23,6 +23,7 @@ _REQUIRED_PLUGIN_ATTRS = (
     "schema_version",
     "operation_factory",
     "is_stub",
+    "recommended_params",  # Story J.n.4: no-implicit-defaults recommended-value home
 )
 
 

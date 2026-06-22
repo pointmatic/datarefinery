@@ -37,35 +37,42 @@ from datarefinery.recipe.models import AugmentationOp
 # ---------------------------------------------------------------------------
 
 
+def _rc(**over: object) -> dict[str, object]:
+    """Complete random_crop params (padding fields at their pre-J.n.4 defaults)."""
+    base: dict[str, object] = {"padding": 0, "padding_mode": "reflect"}
+    base.update(over)
+    return base
+
+
 def test_random_crop_params_accepts_int_size() -> None:
-    p = RandomCropParams(size=32)
+    p = RandomCropParams(**_rc(size=32))
     assert p.size == 32
 
 
 def test_random_crop_params_accepts_tuple_size() -> None:
-    p = RandomCropParams(size=(28, 24))
+    p = RandomCropParams(**_rc(size=(28, 24)))
     assert p.size == (28, 24)
 
 
-def test_random_crop_params_defaults() -> None:
-    p = RandomCropParams(size=32)
-    assert p.padding == 0
-    assert p.padding_mode == "reflect"
+def test_random_crop_params_require_padding_fields() -> None:
+    # No-implicit-defaults (J.n.4): padding / padding_mode are now required.
+    with pytest.raises(ValidationError):
+        RandomCropParams(size=32)  # type: ignore[call-arg]
 
 
 def test_random_crop_params_rejects_zero_size() -> None:
     with pytest.raises(ValidationError):
-        RandomCropParams(size=0)
+        RandomCropParams(**_rc(size=0))
 
 
 def test_random_crop_params_rejects_negative_size() -> None:
     with pytest.raises(ValidationError):
-        RandomCropParams(size=-4)
+        RandomCropParams(**_rc(size=-4))
 
 
 def test_random_crop_params_rejects_negative_padding() -> None:
     with pytest.raises(ValidationError):
-        RandomCropParams(size=32, padding=-1)
+        RandomCropParams(**_rc(size=32, padding=-1))
 
 
 def test_random_crop_params_rejects_unknown_padding_mode() -> None:
@@ -80,7 +87,7 @@ def test_random_crop_params_accepts_each_padding_mode() -> None:
 
 
 def test_random_crop_params_is_frozen() -> None:
-    p = RandomCropParams(size=32)
+    p = RandomCropParams(**_rc(size=32))
     with pytest.raises(ValidationError):
         p.size = 16  # type: ignore[misc]
 
@@ -100,13 +107,13 @@ def _record(rid: str, arr: np.ndarray, label: int = 0) -> dict[str, Any]:
 
 def test_realizer_int_size_yields_square_crop() -> None:
     arr = _arr(16, 16)
-    out = realize_random_crop(_record("r", arr), seed=1, variant_index=0, params={"size": 8})
+    out = realize_random_crop(_record("r", arr), seed=1, variant_index=0, params=_rc(size=8))
     assert out["image"].shape == (8, 8, 3)
 
 
 def test_realizer_tuple_size_yields_rectangular_crop() -> None:
     arr = _arr(16, 16)
-    out = realize_random_crop(_record("r", arr), seed=1, variant_index=0, params={"size": (4, 6)})
+    out = realize_random_crop(_record("r", arr), seed=1, variant_index=0, params=_rc(size=(4, 6)))
     assert out["image"].shape == (4, 6, 3)
 
 
@@ -128,10 +135,10 @@ def test_realizer_zero_padding_no_randomness_when_size_equals_input() -> None:
     crop position; the seed cannot affect the output."""
     arr = _arr(8, 8)
     out_a = realize_random_crop(
-        _record("r", arr), seed=1, variant_index=0, params={"size": 8, "padding": 0}
+        _record("r", arr), seed=1, variant_index=0, params=_rc(size=8, padding=0)
     )
     out_b = realize_random_crop(
-        _record("r", arr), seed=999, variant_index=0, params={"size": 8, "padding": 0}
+        _record("r", arr), seed=999, variant_index=0, params=_rc(size=8, padding=0)
     )
     assert np.array_equal(out_a["image"], out_b["image"])
     assert np.array_equal(out_a["image"], arr)
@@ -139,8 +146,8 @@ def test_realizer_zero_padding_no_randomness_when_size_equals_input() -> None:
 
 def test_realizer_same_seed_same_crop_coords() -> None:
     arr = _arr(16, 16)
-    a = realize_random_crop(_record("r", arr), seed=42, variant_index=0, params={"size": 8})
-    b = realize_random_crop(_record("r", arr), seed=42, variant_index=0, params={"size": 8})
+    a = realize_random_crop(_record("r", arr), seed=42, variant_index=0, params=_rc(size=8))
+    b = realize_random_crop(_record("r", arr), seed=42, variant_index=0, params=_rc(size=8))
     assert np.array_equal(a["image"], b["image"])
 
 
@@ -148,7 +155,7 @@ def test_realizer_different_seeds_can_pick_different_crops() -> None:
     arr = _arr(16, 16)
     seen: set[bytes] = set()
     for s in range(20):
-        out = realize_random_crop(_record("r", arr), seed=s, variant_index=0, params={"size": 4})
+        out = realize_random_crop(_record("r", arr), seed=s, variant_index=0, params=_rc(size=4))
         seen.add(np.ascontiguousarray(out["image"]).tobytes())
     # 20 different seeds should yield more than one distinct crop in a 16x16 -> 4x4 space.
     assert len(seen) > 1
@@ -158,7 +165,7 @@ def test_realizer_preserves_label_and_other_fields() -> None:
     arr = _arr(16, 16)
     record = _record("r", arr, label=4)
     record["extra"] = "keep-me"
-    out = realize_random_crop(record, seed=1, variant_index=0, params={"size": 8})
+    out = realize_random_crop(record, seed=1, variant_index=0, params=_rc(size=8))
     assert out["label"] == 4
     assert out["extra"] == "keep-me"
 

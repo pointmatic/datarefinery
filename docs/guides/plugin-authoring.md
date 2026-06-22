@@ -26,6 +26,7 @@ class Plugin(Protocol):
 
     def operation_factory(self, section: str, op_name: str) -> Operation: ...
     def is_stub(self) -> bool: ...
+    def recommended_params(self, section: str, op_name: str) -> dict[str, Any]: ...
 ```
 
 Required attributes:
@@ -38,6 +39,7 @@ Required attributes:
 | `schema_version` | `int` | The plugin's schema version. Bumped when the operation set, parameter schema, or supported-section list changes in a way recipes need to opt into. |
 | `operation_factory(section, op_name)` | callable | Returns the runtime handle for one operation. The pipeline runner calls this at materialize time. |
 | `is_stub()` | `bool` | `True` if the plugin declares schemas but does not implement operations; consumers gate materialize-time refusals on this. |
+| `recommended_params(section, op_name)` | callable → `dict` | Recommended starting values for an op's parameters (Story J.n.4) — the home for the values the scaffolder bakes into a scaffolded recipe, replacing the removed `ParameterSpec.default`. Return `{}` for an op with no recommendations. |
 
 The 13 canonical recipe sections (asserted by the plugin contract test
 suite in
@@ -61,8 +63,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ParameterSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     type: str                    # e.g. "int", "float", "str", "bool", "list[int]"
-    required: bool = True
-    default: object | None = None
+    required: bool = True        # no `default` field — see "No implicit defaults" below
     description: str | None = None
 
 class OperationSpec(BaseModel):
@@ -75,7 +76,13 @@ class OperationSpec(BaseModel):
 
 Field-by-field:
 
-- **`parameters`** — per-parameter type, required-ness, and default. The validator (check 18) refuses a recipe op whose `params` references an unknown key, omits a required key, or supplies a value whose Python type does not match `ParameterSpec.type`. Keep parameter names stable across plugin versions; renaming one is a breaking change for every recipe that uses it.
+- **`parameters`** — per-parameter type and required-ness. The validator (check 18) refuses a recipe op whose `params` references an unknown key, omits a required key, or supplies a value whose Python type does not match `ParameterSpec.type`. Keep parameter names stable across plugin versions; renaming one is a breaking change for every recipe that uses it.
+
+  **No implicit defaults (the required-vs-mode-selecting rule).** `ParameterSpec` has no `default` field — the interpreting code must never substitute a value for an omitted param. Classify every parameter as exactly one of:
+  - **Required** (`required=True`) — the author must write a value. This is the default classification. The recommended starting value lives in your plugin's `recommended_params(section, op)` (below), which the scaffolder emits into recipe text. Adding a *new* required param to an existing op is **breaking** (existing recipes omit it) → bump your plugin segment version.
+  - **Mode-selecting optional** (`required=False`) — only when *absence is itself the documented behavior* (e.g. `normalize.mean`/`std` absent ⇒ "fit from train"), never as a stand-in for a value the code would otherwise fill in. The "absent ⇒ behavior" mapping is part of your versioned contract. Adding a mode-selecting optional is **free** (non-adopting recipes are untouched; sparse hashing).
+
+  This dissolves the silent-default trapdoor: with no implicit defaults there are no omitting recipes, so a code change can never move a recipe's outcome without changing its canonical bytes. (Story J.n.4; the regression guard `tests/unit/test_no_implicit_defaults.py` fails CI if any `ParameterSpec` reintroduces a `default`.)
 - **`fit_on_train`** — set to `True` for ops that compute statistics from the training split (normalize, standardize, encoders). Once `fit_on_train` is set, the recipe's `fit_source` must be exactly `"train"` (validator check 6). The pipeline writes the fitted output to `fitted_statistics/<op_name>/`.
 - **`applicable_splits`** — restricts which splits a recipe may target with this operation. Augmentations are typically declared `frozenset({"train"})` so the validator rejects any recipe that applies them to val/test (check 5). For ops that legitimately apply to every split, leave the default.
 - **`applicable_sections`** — required and non-empty. Names the recipe sections this operation may appear in. A normalize op declares `frozenset({"Transformations"})`; a histogram declares `frozenset({"Visualizations"})`. Operations may declare more than one section, but the runner dispatches per `(section, op_name)` pair via `operation_factory`.
@@ -133,7 +140,7 @@ datarefinery --plugin-path /path/to/my_plugin.py check
 ### Discovery rules
 
 - Plugin names must be globally unique across all discovery sources. Duplicates raise `PluginError("duplicate plugin name: ...")` at discovery time.
-- Every discovered object is checked for the six required attributes; missing any of them raises `PluginError("... does not satisfy the Plugin protocol")`.
+- Every discovered object is checked for the seven required attributes; missing any of them raises `PluginError("... does not satisfy the Plugin protocol")`.
 - `datarefinery check` lists every discovered plugin with its `schema_version` and stub/active status — use it to confirm your plugin is loading before invoking `validate` or `materialize`.
 
 ## Stub vs. real plugins
@@ -221,9 +228,9 @@ class HelloPlugin:
         self.supported_operations: dict[str, OperationSpec] = {
             "echo": OperationSpec(
                 parameters={
-                    "_marker": ParameterSpec(
-                        type="str", required=False, default="echo"
-                    ),
+                    # Required (the default classification) — no implicit
+                    # default; the recommended value lives in recommended_params.
+                    "_marker": ParameterSpec(type="str", required=True),
                 },
                 applicable_sections=frozenset({"Featurizations"}),
             ),
@@ -238,6 +245,12 @@ class HelloPlugin:
 
     def is_stub(self) -> bool:
         return False
+
+    def recommended_params(self, section: str, op_name: str) -> dict[str, Any]:
+        # Recommended starting value the scaffolder emits for `echo._marker`.
+        if (section, op_name) == ("Featurizations", "echo"):
+            return {"_marker": "echo"}
+        return {}
 
 
 PLUGIN: Any = HelloPlugin()
@@ -305,7 +318,7 @@ To turn either stub into a working plugin, copy it into your own package, flip `
 
 The plugin contract has three stability tiers:
 
-- **`Plugin` protocol** — the six required attributes. Changes here are coordinated across DataRefinery and every plugin.
+- **`Plugin` protocol** — the seven required attributes. Changes here are coordinated across DataRefinery and every plugin.
 - **`OperationSpec` / `ParameterSpec` shape** — adding fields is backwards-compatible; removing or renaming is breaking.
 - **A specific plugin's `supported_operations`** — adding ops is backwards-compatible for that plugin's own recipes; renaming parameters or changing required-ness breaks recipes that reference them. Bump `schema_version` when this happens.
 

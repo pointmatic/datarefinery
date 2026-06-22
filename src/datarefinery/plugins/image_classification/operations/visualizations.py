@@ -122,8 +122,8 @@ class SampleGridOp:
         recipe: Any = None,
     ) -> bytes:
         del recipe
-        n = int(params.get("n", 16))
-        per_class = bool(params.get("per_class", False))
+        n = int(params["n"])
+        per_class = bool(params["per_class"])
         all_records = [r for recs in splits.values() for r in recs]
         if not all_records:
             return _encode_png(_blank(64, 64))

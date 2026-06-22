@@ -93,7 +93,11 @@ def test_imagecorruptions_stamp_value_matches_per_record_seed() -> None:
         seed=42,
         inputs=["image"],
         output_schema=_output_schema(),
-        params={"corruption_types": ["gaussian_noise"], "severities": [1]},
+        params={
+            "corruption_types": ["gaussian_noise"],
+            "severities": [1],
+            "preserve_original": False,
+        },
         label_field=None,
         op_name="apply",
     )
@@ -111,7 +115,11 @@ def test_imagecorruptions_stamp_is_deterministic_across_runs() -> None:
         seed=42,
         inputs=["image"],
         output_schema=_output_schema(),
-        params={"corruption_types": ["gaussian_noise"], "severities": [1]},
+        params={
+            "corruption_types": ["gaussian_noise"],
+            "severities": [1],
+            "preserve_original": False,
+        },
         label_field=None,
         op_name="apply",
     )
@@ -131,7 +139,11 @@ def test_imagecorruptions_op_name_required_no_default() -> None:
             seed=42,
             inputs=["image"],
             output_schema=_output_schema(),
-            params={"corruption_types": ["gaussian_noise"], "severities": [1]},
+            params={
+                "corruption_types": ["gaussian_noise"],
+                "severities": [1],
+                "preserve_original": False,
+            },
             label_field=None,
         )
 

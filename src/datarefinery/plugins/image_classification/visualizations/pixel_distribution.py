@@ -40,7 +40,7 @@ class PixelDistributionParams(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    bins: int = Field(default=64, gt=0)
+    bins: int = Field(gt=0)
     splits: list[str]
 
     @field_validator("splits")

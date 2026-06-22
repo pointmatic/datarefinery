@@ -44,6 +44,7 @@ def test_label_from_path_derives_from_parent_directory_name(
         inputs=["path"],
         output_field="label",
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train", "val"],
     )
     splits = {
@@ -106,6 +107,7 @@ def test_label_from_path_missing_input_field_raises(tmp_path: Path) -> None:
         inputs=["path"],
         output_field="label",
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train"],
     )
     with pytest.raises(PluginError, match="missing input field"):
@@ -123,6 +125,7 @@ def test_label_from_path_requires_at_least_one_input(tmp_path: Path) -> None:
         inputs=[],
         output_field="label",
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train"],
     )
     with pytest.raises(PluginError, match="at least one input"):
@@ -201,6 +204,7 @@ def test_featurization_is_deterministic(tmp_path: Path) -> None:
         inputs=["path"],
         output_field="label",
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train"],
     )
     splits1 = {"train": [_path_record(f"/x/c{i % 2}/img_{i}.jpg") for i in range(8)]}
@@ -220,6 +224,7 @@ def test_apply_to_multiple_splits_uses_same_op(tmp_path: Path) -> None:
         inputs=["path"],
         output_field="label",
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train", "val", "test"],
     )
     splits = {
@@ -248,6 +253,7 @@ def test_collision_with_existing_field_raises_materialize_error(
         inputs=["path"],
         output_field="label",  # already present
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train"],
     )
     splits: dict[str, list[Mapping[str, Any]]] = {
@@ -347,6 +353,10 @@ class _FeatPlugin:
             ),
         }
 
+    def recommended_params(self, section: str, op_name: str) -> dict[str, object]:
+        del section, op_name
+        return {}
+
     def operation_factory(self, section: str, op_name: str) -> Any:
         del section
         if op_name == "mean_feat":
@@ -433,6 +443,7 @@ def test_undeclared_split_raises(tmp_path: Path) -> None:
         inputs=["path"],
         output_field="label",
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train", "wat"],
     )
     with pytest.raises(MaterializeError, match="undeclared split"):
@@ -459,6 +470,7 @@ def test_input_split_lists_are_not_mutated(tmp_path: Path) -> None:
         inputs=["path"],
         output_field="label",
         op="label_from_path",
+        params={"source": "parent_directory_name"},
         splits=["train"],
     )
     train = [_path_record("/x/c0/y.jpg")]
@@ -489,7 +501,11 @@ def test_categorical_encode_with_recipe_vocabulary_path(tmp_path: Path) -> None:
         inputs=["label"],
         output_field="label_id",
         op="categorical_encode",
-        params={"vocabulary": ["airplane", "automobile", "bird"], "output_dtype": "int32"},
+        params={
+            "vocabulary": ["airplane", "automobile", "bird"],
+            "ordering": "alphabetical",
+            "output_dtype": "int32",
+        },
         fit_source="train",
         splits=["train", "val"],
     )
@@ -512,7 +528,7 @@ def test_categorical_encode_output_dtype_is_honored(tmp_path: Path) -> None:
         inputs=["label"],
         output_field="label_id",
         op="categorical_encode",
-        params={"vocabulary": ["a", "b"], "output_dtype": "int64"},
+        params={"vocabulary": ["a", "b"], "ordering": "alphabetical", "output_dtype": "int64"},
         fit_source="train",
         splits=["train"],
     )
@@ -538,6 +554,7 @@ def test_categorical_encode_fit_on_train_persists_alphabetical_vocabulary(
         inputs=["label"],
         output_field="label_id",
         op="categorical_encode",
+        params={"ordering": "alphabetical", "output_dtype": "int32"},
         fit_source="train",
         splits=["train", "val", "test"],
     )
@@ -566,7 +583,7 @@ def test_categorical_encode_first_seen_ordering(tmp_path: Path) -> None:
         inputs=["label"],
         output_field="label_id",
         op="categorical_encode",
-        params={"ordering": "first_seen"},
+        params={"ordering": "first_seen", "output_dtype": "int32"},
         fit_source="train",
         splits=["train"],
     )
@@ -592,7 +609,11 @@ def test_categorical_encode_unknown_label_reports_missing(tmp_path: Path) -> Non
         inputs=["label"],
         output_field="label_id",
         op="categorical_encode",
-        params={"vocabulary": ["airplane", "automobile"]},
+        params={
+            "vocabulary": ["airplane", "automobile"],
+            "ordering": "alphabetical",
+            "output_dtype": "int32",
+        },
         fit_source="train",
         splits=["train"],
     )
@@ -611,7 +632,7 @@ def test_categorical_encode_rejects_unknown_ordering(tmp_path: Path) -> None:
         inputs=["label"],
         output_field="label_id",
         op="categorical_encode",
-        params={"ordering": "rabbit"},
+        params={"ordering": "rabbit", "output_dtype": "int32"},
         fit_source="train",
         splits=["train"],
     )

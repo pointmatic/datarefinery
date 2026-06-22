@@ -66,12 +66,14 @@ def test_filter_by_label_exclude_drops_named_classes() -> None:
     assert all(r["label"] != "c1" for r in result.records)
 
 
-def test_filter_by_label_default_action_is_include() -> None:
+def test_filter_by_label_requires_action() -> None:
+    # No-implicit-defaults (J.n.4): `action` is required; the op no longer
+    # substitutes "include" for an omitted action.
     op = FilterOp(name="keep", op="filter_by_label", params={"labels": ["c0"]})
-    result = apply_pre_split_filters(
-        _records(6, classes=2), [op], plugin=IMAGE_PLUGIN, label_field="label"
-    )
-    assert all(r["label"] == "c0" for r in result.records)
+    with pytest.raises(KeyError):
+        apply_pre_split_filters(
+            _records(6, classes=2), [op], plugin=IMAGE_PLUGIN, label_field="label"
+        )
 
 
 def test_filter_by_label_unknown_action_raises_plugin_error() -> None:
@@ -222,7 +224,7 @@ def test_pre_split_skips_post_only_filters() -> None:
     post_only = FilterOp(
         name="post",
         op="filter_by_label",
-        params={"labels": ["c0"]},
+        params={"labels": ["c0"], "action": "include"},
         stages=["post_split"],
         splits=["train"],
     )
@@ -240,7 +242,7 @@ def test_post_split_applies_only_to_named_splits() -> None:
     op = FilterOp(
         name="train_only",
         op="filter_by_label",
-        params={"labels": ["c0"]},
+        params={"labels": ["c0"], "action": "include"},
         stages=["post_split"],
         splits=["train"],
     )
@@ -258,7 +260,7 @@ def test_post_split_filter_with_no_splits_listed_does_nothing() -> None:
     op = FilterOp(
         name="orphan",
         op="filter_by_label",
-        params={"labels": ["c0"]},
+        params={"labels": ["c0"], "action": "include"},
         stages=["post_split"],
         splits=[],  # no splits named -> no application
     )
@@ -271,7 +273,7 @@ def test_filter_with_both_stages_runs_in_both() -> None:
     op = FilterOp(
         name="both",
         op="filter_by_label",
-        params={"labels": ["c0"]},
+        params={"labels": ["c0"], "action": "include"},
         stages=["pre_split", "post_split"],
         splits=["train"],
     )
@@ -351,7 +353,9 @@ def test_filter_op_requires_op_field_at_model_layer() -> None:
 
 def test_filters_run_in_declared_order() -> None:
     """Earlier filters' output feeds later filters."""
-    keep_c0 = FilterOp(name="keep_c0", op="filter_by_label", params={"labels": ["c0"]})
+    keep_c0 = FilterOp(
+        name="keep_c0", op="filter_by_label", params={"labels": ["c0"], "action": "include"}
+    )
     halve = FilterOp(name="halve", op="random_sample", params={"fraction": 0.5}, seed=13)
     result = apply_pre_split_filters(
         _records(20, classes=2),

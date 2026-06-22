@@ -392,34 +392,44 @@ def test_generation_stage_concatenates_corrupted_records_into_split() -> None:
 
 def test_unknown_corruption_name_rejected() -> None:
     with pytest.raises(ValidationError, match="unknown corruption_types"):
-        ImageCorruptionsApplyParams(corruption_types=["bogus"], severities=[1])
+        ImageCorruptionsApplyParams(
+            corruption_types=["bogus"], severities=[1], preserve_original=False
+        )
 
 
 def test_duplicate_corruption_types_rejected() -> None:
     with pytest.raises(ValidationError, match="corruption_types contains duplicates"):
         ImageCorruptionsApplyParams(
-            corruption_types=["gaussian_noise", "gaussian_noise"], severities=[1]
+            corruption_types=["gaussian_noise", "gaussian_noise"],
+            severities=[1],
+            preserve_original=False,
         )
 
 
 def test_severity_out_of_range_rejected() -> None:
     with pytest.raises(ValidationError, match=r"\[1, 5\]"):
-        ImageCorruptionsApplyParams(corruption_types=["gaussian_noise"], severities=[6])
+        ImageCorruptionsApplyParams(
+            corruption_types=["gaussian_noise"], severities=[6], preserve_original=False
+        )
 
 
 def test_duplicate_severities_rejected() -> None:
     with pytest.raises(ValidationError, match="severities contains duplicates"):
-        ImageCorruptionsApplyParams(corruption_types=["gaussian_noise"], severities=[3, 3])
+        ImageCorruptionsApplyParams(
+            corruption_types=["gaussian_noise"], severities=[3, 3], preserve_original=False
+        )
 
 
 def test_empty_corruption_types_rejected() -> None:
     with pytest.raises(ValidationError):
-        ImageCorruptionsApplyParams(corruption_types=[], severities=[1])
+        ImageCorruptionsApplyParams(corruption_types=[], severities=[1], preserve_original=False)
 
 
 def test_empty_severities_rejected() -> None:
     with pytest.raises(ValidationError):
-        ImageCorruptionsApplyParams(corruption_types=["gaussian_noise"], severities=[])
+        ImageCorruptionsApplyParams(
+            corruption_types=["gaussian_noise"], severities=[], preserve_original=False
+        )
 
 
 # --- G13 (Story I.u): tag_fields dict-rename form ---
@@ -429,6 +439,7 @@ def test_tag_fields_dict_form_accepts_canonical_values() -> None:
     parsed = ImageCorruptionsApplyParams(
         corruption_types=["gaussian_noise"],
         severities=[1],
+        preserve_original=False,
         tag_fields={"corruption_kind": "corruption", "lvl": "severity", "src": "source_path"},
     )
     assert parsed.tag_fields == {
@@ -443,6 +454,7 @@ def test_tag_fields_dict_form_rejects_unknown_canonical_value() -> None:
         ImageCorruptionsApplyParams(
             corruption_types=["gaussian_noise"],
             severities=[1],
+            preserve_original=False,
             tag_fields={"a": "corruption", "b": "bogus"},
         )
 
@@ -452,6 +464,7 @@ def test_tag_fields_dict_form_rejects_duplicate_canonical_values() -> None:
         ImageCorruptionsApplyParams(
             corruption_types=["gaussian_noise"],
             severities=[1],
+            preserve_original=False,
             tag_fields={"a": "corruption", "b": "corruption"},
         )
 

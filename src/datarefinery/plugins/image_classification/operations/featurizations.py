@@ -67,7 +67,7 @@ class LabelFromPathOp:
                 "the path (e.g., 'path' or 'filename')"
             )
         path_field = inputs[0]
-        source = str(params.get("source", "parent_directory_name"))
+        source = str(params["source"])
         derive = _PATH_SOURCES.get(source)
         if derive is None:
             raise PluginError(
@@ -182,7 +182,7 @@ class CategoricalEncodeOp:
         if not inputs:
             raise PluginError("categorical_encode requires at least one input field")
         source = inputs[0]
-        ordering = str(params.get("ordering", "alphabetical"))
+        ordering = str(params["ordering"])
         if ordering not in _CATEGORICAL_ORDERINGS:
             raise PluginError(
                 f"categorical_encode 'ordering' must be one of "
@@ -209,7 +209,7 @@ class CategoricalEncodeOp:
         if not inputs:
             raise PluginError("categorical_encode requires at least one input field")
         source = inputs[0]
-        output_dtype = np.dtype(str(params.get("output_dtype", "int32")))
+        output_dtype = np.dtype(str(params["output_dtype"]))
         if "vocabulary" in params:
             vocab = list(params["vocabulary"])
         elif "vocabulary" in fitted.vectors:

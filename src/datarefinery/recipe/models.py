@@ -291,7 +291,7 @@ class ImageCorruptionsApplyParams(_Frozen):
 
     corruption_types: list[str] = Field(min_length=1)
     severities: list[int] = Field(min_length=1)
-    preserve_original: bool = False
+    preserve_original: bool  # no-implicit-defaults (J.n.4): required, no substitution
     tag_fields: list[str] | dict[str, str] = Field(
         default_factory=lambda: ["corruption", "severity", "source_path"]
     )

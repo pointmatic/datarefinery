@@ -61,6 +61,10 @@ class _FailingPlugin:
         self.supported_operations = IMAGE_PLUGIN.supported_operations
         self._fail_op = fail_op
 
+    def recommended_params(self, section: str, op_name: str) -> dict[str, object]:
+        del section, op_name
+        return {}
+
     def operation_factory(self, section: str, op_name: str) -> Any:
         if op_name == self._fail_op:
             raise RuntimeError(f"forced failure in {op_name}")

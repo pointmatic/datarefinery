@@ -60,6 +60,7 @@ _SIBLING_RECIPE_YAML = textwrap.dedent(
         inputs: [label]
         output_field: label_id
         op: categorical_encode
+        params: {ordering: alphabetical, output_dtype: int32}
         fit_source: train
         splits: [train, val, test]
     """
@@ -131,10 +132,12 @@ def test_categorical_encode_imports_vocabulary_via_stats_from_instance(
         output_field="label_id",
         op="categorical_encode",
         params={
+            "ordering": "alphabetical",
+            "output_dtype": "int32",
             "stats_from_instance": {
                 "recipe": str(sibling_path),
                 "op_id": "lbl_id",
-            }
+            },
         },
         splits=["train", "val"],
     )

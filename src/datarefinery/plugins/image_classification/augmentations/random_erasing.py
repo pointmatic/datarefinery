@@ -34,9 +34,9 @@ class RandomErasingParams(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    p: float = Field(default=0.5, ge=0.0, le=1.0)
-    scale: tuple[float, float] = Field(default=(0.02, 0.33))
-    ratio: tuple[float, float] = Field(default=(0.3, 3.3))
+    p: float = Field(ge=0.0, le=1.0)
+    scale: tuple[float, float]
+    ratio: tuple[float, float]
 
     @model_validator(mode="after")
     def _validate_ranges(self) -> RandomErasingParams:

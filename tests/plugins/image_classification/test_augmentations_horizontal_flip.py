@@ -40,8 +40,10 @@ from datarefinery.recipe.models import AugmentationOp
 # ---------------------------------------------------------------------------
 
 
-def test_horizontal_flip_params_default_p_is_half() -> None:
-    assert HorizontalFlipParams().p == 0.5
+def test_horizontal_flip_params_require_p() -> None:
+    # No-implicit-defaults (J.n.4): p is required; the code supplies no default.
+    with pytest.raises(ValidationError):
+        HorizontalFlipParams()  # type: ignore[call-arg]
 
 
 def test_horizontal_flip_params_accepts_p_zero() -> None:
@@ -63,7 +65,7 @@ def test_horizontal_flip_params_rejects_p_above_one() -> None:
 
 
 def test_horizontal_flip_params_is_frozen() -> None:
-    params = HorizontalFlipParams()
+    params = HorizontalFlipParams(p=0.5)
     with pytest.raises(ValidationError):
         params.p = 0.9  # type: ignore[misc]
 
@@ -123,11 +125,12 @@ def test_realizer_different_seed_can_differ() -> None:
     assert any(outputs) and not all(outputs)
 
 
-def test_realizer_default_p_used_when_params_empty() -> None:
+def test_realizer_rejects_empty_params() -> None:
+    # No-implicit-defaults (J.n.4): an omitted required `p` is an error, not a
+    # silent 0.5 substitution.
     arr = _checker_image()
-    a = realize_horizontal_flip(_record("r", arr), seed=42, variant_index=0, params={})
-    b = realize_horizontal_flip(_record("r", arr), seed=42, variant_index=0, params={"p": 0.5})
-    assert np.array_equal(a["image"], b["image"])
+    with pytest.raises(ValidationError):
+        realize_horizontal_flip(_record("r", arr), seed=42, variant_index=0, params={})
 
 
 # ---------------------------------------------------------------------------

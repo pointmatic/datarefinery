@@ -20,13 +20,25 @@ Operation = Any
 
 
 class ParameterSpec(BaseModel):
-    """One parameter declared by an `OperationSpec`."""
+    """One parameter declared by an `OperationSpec`.
+
+    **No-implicit-defaults (Story J.n.4).** A parameter is either
+    ``required=True`` (the author MUST write a value; the scaffolder emits a
+    recommended one via :meth:`Plugin.recommended_params`) or a
+    **mode-selecting optional** (``required=False``, where *absence is itself
+    the documented behavior* — e.g. ``normalize`` with no ``mean``/``std`` ⇒
+    "fit from train"). There is deliberately **no** ``default`` field: the
+    interpreting code never substitutes a value for an omitted param, so a
+    code change can never silently move outcomes for an omitting recipe (the
+    `project-essentials.md` silent-default-shift nightmare). The "default
+    belongs to the tool that writes the recipe, never to the code that reads
+    it."
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     type: str  # e.g., "int", "float", "str", "bool", "list[int]"
     required: bool = True
-    default: object | None = None
     description: str | None = None
 
 
@@ -73,3 +85,14 @@ class Plugin(Protocol):
     def operation_factory(self, section: str, op_name: str) -> Operation: ...
 
     def is_stub(self) -> bool: ...
+
+    def recommended_params(self, section: str, op_name: str) -> dict[str, Any]:
+        """Recommended starting values for an op's parameters (Story J.n.4).
+
+        The home for the values the `init` scaffolder bakes explicitly into a
+        scaffolded recipe (and the substrate for author-assist tooling). The
+        plugin — the domain owner — recommends; the scaffolder emits them into
+        recipe text so they land in canonical bytes. Returns ``{}`` for an op
+        with no recommended values. Replaces the removed ``ParameterSpec.default``.
+        """
+        ...

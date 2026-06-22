@@ -63,13 +63,19 @@ def test_parameter_spec_rejects_extra_fields() -> None:
 
 
 def test_parameter_spec_round_trip_in_operation_spec() -> None:
+    # No-implicit-defaults (J.n.4): ParameterSpec has no `default`; a param is
+    # required or mode-selecting optional.
     spec = OperationSpec(
-        parameters={"size": ParameterSpec(type="int", default=224)},
+        parameters={
+            "size": ParameterSpec(type="int", required=True),
+            "method": ParameterSpec(type="str", required=False),
+        },
         applicable_sections=frozenset({"Transformations"}),
         fit_on_train=True,
     )
     assert spec.parameters["size"].type == "int"
-    assert spec.parameters["size"].default == 224
+    assert spec.parameters["size"].required is True
+    assert spec.parameters["method"].required is False
     assert spec.fit_on_train is True
 
 

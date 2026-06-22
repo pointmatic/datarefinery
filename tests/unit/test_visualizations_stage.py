@@ -64,7 +64,7 @@ def _is_png(data: bytes) -> bool:
 def test_reporting_writes_png_per_op(tmp_path: Path) -> None:
     ops = [
         _viz("hist", "class_distribution_histogram", "reporting"),
-        _viz("grid", "sample_grid", "reporting", n=4),
+        _viz("grid", "sample_grid", "reporting", n=4, per_class=False),
         _viz("means", "mean_image_per_class", "reporting"),
     ]
     out_dir = tmp_path / "report" / "visualizations"
@@ -137,7 +137,7 @@ def test_class_distribution_histogram_is_deterministic(tmp_path: Path) -> None:
 
 
 def test_sample_grid_is_deterministic(tmp_path: Path) -> None:
-    op = _viz("grid", "sample_grid", "reporting", n=4)
+    op = _viz("grid", "sample_grid", "reporting", n=4, per_class=False)
     a = apply_reporting_visualizations(
         _splits(), [op], plugin=IMAGE_PLUGIN, output_dir=tmp_path / "a", label_field="label"
     )
@@ -190,7 +190,7 @@ def test_sample_grid_per_class_picks_first_n_per_class(tmp_path: Path) -> None:
 
 
 def test_sample_grid_with_no_records_returns_blank(tmp_path: Path) -> None:
-    op = _viz("grid", "sample_grid", "reporting", n=4)
+    op = _viz("grid", "sample_grid", "reporting", n=4, per_class=False)
     result = apply_reporting_visualizations(
         {"train": []},
         [op],
@@ -234,6 +234,10 @@ class _FailingPlugin:
     def __init__(self) -> None:
         self.supported_operations: dict[str, Any] = {}
 
+    def recommended_params(self, section: str, op_name: str) -> dict[str, object]:
+        del section, op_name
+        return {}
+
     def operation_factory(self, section: str, op_name: str) -> Any:
         del section, op_name
 
@@ -274,6 +278,10 @@ class _BadReturnPlugin:
 
     def __init__(self) -> None:
         self.supported_operations: dict[str, Any] = {}
+
+    def recommended_params(self, section: str, op_name: str) -> dict[str, object]:
+        del section, op_name
+        return {}
 
     def operation_factory(self, section: str, op_name: str) -> Any:
         del section, op_name

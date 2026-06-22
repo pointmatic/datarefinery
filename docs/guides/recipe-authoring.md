@@ -100,6 +100,15 @@ datarefinery --cache-root ./cache --variant no_augment materialize reference-rec
 
 The two materializations produce two different instances; the variant overlay changes the canonical recipe bytes and therefore the cache identity.
 
+## No implicit defaults
+
+DataRefinery's interpreting code supplies **no** behavior-affecting value for an omitted operation parameter. The recipe text is the *complete* description of behavior — canonical bytes contain exactly what you wrote, and nothing the code fills in behind your back. Every op parameter is one of two kinds:
+
+- **Required** — you must write a value. Omitting it is a hard validation error (validator check 18), naming the missing param. The `init` scaffolder emits a recommended starting value explicitly into the recipe text, so a scaffolded recipe is always complete. Examples: `resize.method`, `cast.scale`, `filter_by_label.action`, `color_jitter.{brightness,contrast,saturation,hue}`, `random_crop.{padding,padding_mode}`, `categorical_encode.{ordering,output_dtype}`, `sample_grid.{n,per_class}`.
+- **Mode-selecting optional** — *absence is itself the documented behavior*, not a substituted value. The only ones today are `normalize.mean` / `normalize.std`: omitting them means "fit the statistics from the train split" (the fit-on-train path). The "absent ⇒ behavior" mapping is part of the versioned plugin contract; changing what absence means is a behavior change that bumps the plugin segment version.
+
+**Why.** A code-supplied default is a silent trapdoor: a recipe that omits a param has *the same canonical bytes* before and after a code change to that default, so two runs of the "same" recipe could produce different output with no recipe change and no cache-identity change — breaking reproducibility invisibly. Requiring the value closes the trapdoor. *The default belongs to the tool that writes the recipe (the scaffolder), never to the code that reads it.* (Story J.n.4; the regression guard is `tests/unit/test_no_implicit_defaults.py`.)
+
 ## Top-level keys
 
 | Field | Required | Purpose |
@@ -426,7 +435,7 @@ A `FilterOp` carries:
 
 **Image-classification Filters.**
 
-`filter_by_label` (no fit, no seed) — keep or drop records whose label is in `labels`. `action: include` keeps matches; `action: exclude` drops them (default: `include`). Requires `Labels.field` to be set.
+`filter_by_label` (no fit, no seed) — keep or drop records whose label is in `labels`. `action: include` keeps matches; `action: exclude` drops them. `action` is **required** (no implicit default — see [No implicit defaults](#no-implicit-defaults)); the scaffolder emits `include`. Requires `Labels.field` to be set.
 
 ```yaml
 Filters:
@@ -791,6 +800,7 @@ Featurizations:
     op: categorical_encode
     params:
       vocabulary: [airplane, automobile, bird, cat, deer, dog, frog, horse, ship, truck]
+      ordering: alphabetical   # required even with an explicit vocabulary (no implicit defaults)
       output_dtype: int32
     fit_source: train
     splits: [train, val, test]

@@ -27,7 +27,7 @@ class HorizontalFlipParams(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    p: float = Field(default=0.5, ge=0.0, le=1.0)
+    p: float = Field(ge=0.0, le=1.0)
 
 
 def realize_horizontal_flip(

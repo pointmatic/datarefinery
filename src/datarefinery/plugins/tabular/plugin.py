@@ -45,7 +45,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "filter_by_value": OperationSpec(
             parameters={
                 "field": ParameterSpec(type="str", required=True),
-                "op": ParameterSpec(type="str", required=False, default="eq"),
+                "op": ParameterSpec(type="str", required=True),
                 "value": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Filters"}),
@@ -101,7 +101,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         # ----- Featurizations (FR-12, FR-22) -----
         "polynomial_features": OperationSpec(
             parameters={
-                "degree": ParameterSpec(type="int", required=False, default=2),
+                "degree": ParameterSpec(type="int", required=True),
             },
             applicable_sections=frozenset({"Featurizations"}),
         ),
@@ -133,6 +133,17 @@ class TabularPlugin:
 
     def is_stub(self) -> bool:
         return True
+
+    def recommended_params(self, section: str, op_name: str) -> dict[str, Any]:
+        """Recommended starting values (Story J.n.4); stub plugin, so these
+        document intent until the ops are implemented."""
+        return dict(_RECOMMENDED_PARAMS.get(op_name, {}))
+
+
+_RECOMMENDED_PARAMS: dict[str, dict[str, Any]] = {
+    "filter_by_value": {"op": "eq"},
+    "polynomial_features": {"degree": 2},
+}
 
 
 PLUGIN: Any = TabularPlugin()

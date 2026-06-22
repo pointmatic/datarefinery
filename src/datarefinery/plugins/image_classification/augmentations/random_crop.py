@@ -37,8 +37,8 @@ class RandomCropParams(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     size: int | tuple[int, int] = Field(...)
-    padding: int = Field(default=0, ge=0)
-    padding_mode: PaddingMode = "reflect"
+    padding: int = Field(ge=0)
+    padding_mode: PaddingMode
 
     @model_validator(mode="after")
     def _validate_size(self) -> RandomCropParams:

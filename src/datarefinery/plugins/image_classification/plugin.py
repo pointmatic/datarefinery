@@ -149,7 +149,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "filter_by_label": OperationSpec(
             parameters={
                 "labels": ParameterSpec(type="list[str]", required=True),
-                "action": ParameterSpec(type="str", required=False, default="include"),
+                "action": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Filters"}),
         ),
@@ -194,7 +194,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
             parameters={
                 "corruption_types": ParameterSpec(type="list[str]", required=True),
                 "severities": ParameterSpec(type="list[int]", required=True),
-                "preserve_original": ParameterSpec(type="bool", required=False, default=False),
+                "preserve_original": ParameterSpec(type="bool", required=True),
                 "tag_fields": ParameterSpec(type="list[str]", required=False),
             },
             applicable_sections=frozenset({"Generation"}),
@@ -203,7 +203,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "resize": OperationSpec(
             parameters={
                 "size": ParameterSpec(type="int", required=True),
-                "method": ParameterSpec(type="str", required=False, default="bilinear"),
+                "method": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Transformations"}),
             # Geometry change; not recoverable from persisted stats. Story J.g.
@@ -229,18 +229,14 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "cast": OperationSpec(
             parameters={
                 "dtype": ParameterSpec(type="str", required=True),
-                "scale": ParameterSpec(type="float", required=False, default=1.0),
+                "scale": ParameterSpec(type="float", required=True),
             },
             applicable_sections=frozenset({"Transformations"}),
         ),
         # ----- Featurizations (FR-12, FR-22) -----
         "label_from_path": OperationSpec(
             parameters={
-                "source": ParameterSpec(
-                    type="str",
-                    required=False,
-                    default="parent_directory_name",
-                ),
+                "source": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Featurizations"}),
         ),
@@ -250,8 +246,8 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "categorical_encode": OperationSpec(
             parameters={
                 "vocabulary": ParameterSpec(type="list[str]", required=False),
-                "ordering": ParameterSpec(type="str", required=False, default="alphabetical"),
-                "output_dtype": ParameterSpec(type="str", required=False, default="int32"),
+                "ordering": ParameterSpec(type="str", required=True),
+                "output_dtype": ParameterSpec(type="str", required=True),
                 "stats_from_instance": ParameterSpec(type="StatsFromInstanceSpec", required=False),
             },
             fit_on_train=True,
@@ -264,38 +260,34 @@ def _supported_operations() -> dict[str, OperationSpec]:
         "random_crop": OperationSpec(
             parameters={
                 "size": ParameterSpec(type="int", required=True),
-                "padding": ParameterSpec(type="int", required=False, default=0),
-                "padding_mode": ParameterSpec(type="str", required=False, default="reflect"),
+                "padding": ParameterSpec(type="int", required=True),
+                "padding_mode": ParameterSpec(type="str", required=True),
             },
             applicable_sections=frozenset({"Augmentations"}),
             applicable_splits=frozenset({"train"}),
         ),
         "horizontal_flip": OperationSpec(
             parameters={
-                "p": ParameterSpec(type="float", required=False, default=0.5),
+                "p": ParameterSpec(type="float", required=True),
             },
             applicable_sections=frozenset({"Augmentations"}),
             applicable_splits=frozenset({"train"}),
         ),
         "color_jitter": OperationSpec(
             parameters={
-                "brightness": ParameterSpec(type="float", required=False, default=0.0),
-                "contrast": ParameterSpec(type="float", required=False, default=0.0),
-                "saturation": ParameterSpec(type="float", required=False, default=0.0),
-                "hue": ParameterSpec(type="float", required=False, default=0.0),
+                "brightness": ParameterSpec(type="float", required=True),
+                "contrast": ParameterSpec(type="float", required=True),
+                "saturation": ParameterSpec(type="float", required=True),
+                "hue": ParameterSpec(type="float", required=True),
             },
             applicable_sections=frozenset({"Augmentations"}),
             applicable_splits=frozenset({"train"}),
         ),
         "random_erasing": OperationSpec(
             parameters={
-                "p": ParameterSpec(type="float", required=False, default=0.5),
-                "scale": ParameterSpec(
-                    type="tuple[float, float]", required=False, default=(0.02, 0.33)
-                ),
-                "ratio": ParameterSpec(
-                    type="tuple[float, float]", required=False, default=(0.3, 3.3)
-                ),
+                "p": ParameterSpec(type="float", required=True),
+                "scale": ParameterSpec(type="tuple[float, float]", required=True),
+                "ratio": ParameterSpec(type="tuple[float, float]", required=True),
             },
             applicable_sections=frozenset({"Augmentations"}),
             applicable_splits=frozenset({"train"}),
@@ -309,8 +301,8 @@ def _supported_operations() -> dict[str, OperationSpec]:
         ),
         "sample_grid": OperationSpec(
             parameters={
-                "n": ParameterSpec(type="int", required=False, default=16),
-                "per_class": ParameterSpec(type="bool", required=False, default=False),
+                "n": ParameterSpec(type="int", required=True),
+                "per_class": ParameterSpec(type="bool", required=True),
             },
             applicable_sections=frozenset({"Visualizations"}),
         ),
@@ -319,7 +311,7 @@ def _supported_operations() -> dict[str, OperationSpec]:
         ),
         "pixel_distribution": OperationSpec(
             parameters={
-                "bins": ParameterSpec(type="int", required=False, default=64),
+                "bins": ParameterSpec(type="int", required=True),
                 "splits": ParameterSpec(type="list[str]", required=True),
             },
             applicable_sections=frozenset({"Visualizations"}),
@@ -379,6 +371,32 @@ class ImageClassificationPlugin:
 
     def is_stub(self) -> bool:
         return False
+
+    def recommended_params(self, section: str, op_name: str) -> dict[str, Any]:
+        """Recommended starting values the scaffolder bakes into recipe text
+        (Story J.n.4 — the home for the removed ``ParameterSpec.default`` values).
+        Empty for ops with no recommended values."""
+        return dict(_RECOMMENDED_PARAMS.get(op_name, {}))
+
+
+# Recommended starting values for every op param that was a code-supplied
+# default before the no-implicit-defaults rollout (Story J.n.4). These are
+# *recommendations the recipe-writing tool emits explicitly* — never values
+# the interpreting code substitutes for an omitted param. Keyed by op name.
+_RECOMMENDED_PARAMS: dict[str, dict[str, Any]] = {
+    "filter_by_label": {"action": "include"},
+    "imagecorruptions_apply": {"preserve_original": False},
+    "resize": {"method": "bilinear"},
+    "cast": {"scale": 1.0},
+    "label_from_path": {"source": "parent_directory_name"},
+    "categorical_encode": {"ordering": "alphabetical", "output_dtype": "int32"},
+    "random_crop": {"padding": 0, "padding_mode": "reflect"},
+    "horizontal_flip": {"p": 0.5},
+    "color_jitter": {"brightness": 0.0, "contrast": 0.0, "saturation": 0.0, "hue": 0.0},
+    "random_erasing": {"p": 0.5, "scale": [0.02, 0.33], "ratio": [0.3, 3.3]},
+    "sample_grid": {"n": 16, "per_class": False},
+    "pixel_distribution": {"bins": 64},
+}
 
 
 PLUGIN: Any = ImageClassificationPlugin()

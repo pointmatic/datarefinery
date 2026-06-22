@@ -77,7 +77,7 @@ def _recipe() -> Recipe:
                 {
                     "name": "r",
                     "op": "resize",
-                    "params": {"size": 8},
+                    "params": {"size": 8, "method": "bilinear"},
                     "splits": ["train", "val", "test"],
                 }
             ],
