@@ -90,9 +90,9 @@ def test_validate_missing_recipe_path_is_usage_error(tmp_path: Path) -> None:
 
 def test_validate_with_variant_overlay(tmp_path: Path) -> None:
     payload = _clean_recipe_dict()
-    payload["variants"] = {
+    payload["overlays"] = {
         "no_aug": {"Augmentations": []},
     }
     path = _write(tmp_path, payload)
-    result = runner.invoke(app, ["--variant", "no_aug", "validate", str(path)])
+    result = runner.invoke(app, ["--overlay", "no_aug", "validate", str(path)])
     assert result.exit_code == 0

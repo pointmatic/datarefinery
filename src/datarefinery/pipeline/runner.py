@@ -140,13 +140,13 @@ class PipelineRunner:
         config: RuntimeConfig,
         seed: int,
         *,
-        variant: str | None = None,
+        overlays: list[str] | None = None,
     ) -> None:
         self.recipe = recipe
         self.plugin = plugin
         self.config = config
         self.seed = seed
-        self.variant = variant
+        self.overlays = list(overlays or [])
 
     def run(
         self,
@@ -532,7 +532,7 @@ class PipelineRunner:
                 recipe_hash=cache_key.recipe_hash,
                 input_hash=cache_key.input_hash,
                 seed=cache_key.seed,
-                variant=self.variant,
+                overlays=self.overlays,
                 created_at=datetime.now(UTC),
                 elapsed_seconds=elapsed,
                 record_counts={name: len(records) for name, records in split_map.items()},
@@ -636,7 +636,7 @@ class PipelineRunner:
             recipe_hash=cache_key.recipe_hash,
             input_hash=cache_key.input_hash,
             seed=cache_key.seed,
-            variant=self.variant,
+            overlays=self.overlays,
             created_at=datetime.now(UTC),
             elapsed_seconds=elapsed,
             is_partial=True,

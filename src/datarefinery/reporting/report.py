@@ -53,8 +53,8 @@ def render_report_md(
     lines.append(f"- Recipe hash: `{manifest.recipe_hash}`")
     lines.append(f"- Input hash: `{manifest.input_hash}`")
     lines.append(f"- Seed: `{manifest.seed}`")
-    if manifest.variant is not None:
-        lines.append(f"- Variant: `{manifest.variant}`")
+    if manifest.overlays:
+        lines.append(f"- Overlays: `{', '.join(manifest.overlays)}`")
     lines.append(f"- Created at: `{manifest.created_at.isoformat()}`")
     lines.append(f"- Elapsed: `{manifest.elapsed_seconds:.3f}s`")
     if manifest.is_partial:

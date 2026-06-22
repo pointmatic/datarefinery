@@ -67,8 +67,9 @@ RECIPE_FIELD_SEGMENTS: dict[str, str] = {
     "Featurizations": "plugin",
     "Visualizations": "plugin",
     "Sinks": "plugin",
-    # overlays — variants reborn (Q2); contributed as the bare mapping
-    "variants": "overlays",
+    # overlays — the recipe's overlay definitions (Q2); contributed as the
+    # bare mapping. Stripped to {} at hash time, so it never enters identity.
+    "overlays": "overlays",
     # extensions — the J.n.6 namespace; no Recipe field exists yet
 }
 
@@ -163,9 +164,10 @@ def segments_of(recipe: Recipe) -> dict[str, Any]:
     (per :data:`RECIPE_FIELD_SEGMENTS`); ``overlays`` and ``extensions`` are
     single-namespace segments contributed as their *bare* mapping value, so an
     empty/stripped namespace collapses to ``{}`` → :data:`EMPTY_MARKER`
-    (additivity, Q3/Q5). At hash time ``variants`` is always stripped to ``{}``
-    by :func:`~datarefinery.recipe.variants.apply_variant`, so ``overlays`` is
-    empty for every v1 recipe — overlay *definitions* never enter identity.
+    (additivity, Q3/Q5). At hash time ``overlays`` is always stripped to ``{}``
+    by :func:`~datarefinery.recipe.overlays.apply_overlays`, so the ``overlays``
+    segment is empty for every recipe — overlay *definitions* never enter
+    identity.
     """
     dump = recipe.model_dump(mode="json")
     core: dict[str, Any] = {}
@@ -180,7 +182,7 @@ def segments_of(recipe: Recipe) -> dict[str, Any]:
     return {
         "core": core,
         "plugin": plugin,
-        "overlays": dump.get("variants") or {},
+        "overlays": dump.get("overlays") or {},
         "extensions": dump.get("extensions") or {},
     }
 

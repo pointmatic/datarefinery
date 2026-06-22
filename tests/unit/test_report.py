@@ -76,7 +76,7 @@ def _manifest(recipe: Recipe, *, warnings: list[ManifestWarning] | None = None) 
         recipe_hash=rh,
         input_hash="a" * 64,
         seed=7,
-        variant=None,
+        overlays=[],
         created_at=datetime(2026, 5, 8, 12, 0, 0, tzinfo=UTC),
         elapsed_seconds=1.23,
         record_counts={"train": 6, "val": 2, "test": 2},

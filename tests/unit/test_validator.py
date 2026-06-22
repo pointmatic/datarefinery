@@ -670,7 +670,7 @@ def test_check_11_passes_for_post_pipeline_regardless_of_sections() -> None:
 
 def test_check_12_fails_when_variant_targets_unknown_section() -> None:
     bad = _base_dict()
-    bad["variants"] = {
+    bad["overlays"] = {
         "weird": {"FakeSection": {"x": 1}},
     }
     report = validate(_build(bad), _Plugin())
@@ -681,7 +681,7 @@ def test_check_12_fails_when_variant_targets_unknown_section() -> None:
 
 def test_check_12_passes_for_known_section_overrides() -> None:
     ok = _base_dict()
-    ok["variants"] = {
+    ok["overlays"] = {
         "no_aug": {"Augmentations": []},
         "extra_seed": {"seed": 99},
     }
@@ -726,7 +726,7 @@ def test_multi_violation_recipe_spans_checks_1_through_13() -> None:
             "splits": [],
         }
     ]  # check 10
-    bad["variants"] = {"v": {"FakeSection": {}}}  # check 12
+    bad["overlays"] = {"v": {"FakeSection": {}}}  # check 12
     bad["Labels"]["field"] = "label_alt"  # check 13
     report = validate(_build(bad), _Plugin())
     failed_ids = {r.check_id for r in report.failures}
@@ -1110,7 +1110,7 @@ def test_multi_violation_recipe_spans_every_check_1_through_18() -> None:
             "splits": [],
         }
     ]  # check 10
-    bad["variants"] = {"v": {"FakeSection": {}}}  # check 12
+    bad["overlays"] = {"v": {"FakeSection": {}}}  # check 12
     bad["Labels"]["field"] = "label_alt"  # check 13
     bad["Generation"] = [
         {

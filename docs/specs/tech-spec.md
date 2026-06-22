@@ -107,7 +107,7 @@ src/datarefinery/
     loader.py                # FR-1 load + schema-version gate
     validator.py             # FR-2 enumerated checks 1–23
     canonical.py             # JSON-canonical bytes for cache identity (FR-4)
-    variants.py              # FR-14 variant overlay
+    overlays.py              # FR-14 recipe overlays (J.n.5; was variants.py)
   cache/
     __init__.py
     identity.py              # SHA-256 over canonical recipe + raw inputs + seed
@@ -225,7 +225,7 @@ class DataRefinery:
         cls,
         recipe_path: pathlib.Path,
         config: RuntimeConfig | None = None,
-        variant: str | None = None,
+        overlays: Sequence[str] | None = None,
         seed: int | None = None,
     ) -> "DataRefinery": ...
 
@@ -251,10 +251,10 @@ def materialize(
     recipe_path: pathlib.Path,
     *,
     config: RuntimeConfig | None = None,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
     seed: int | None = None,
 ) -> Instance:
-    return DataRefinery.from_recipe(recipe_path, config, variant, seed).materialize()
+    return DataRefinery.from_recipe(recipe_path, config, overlays, seed).materialize()
 ```
 
 ### `Instance` (core/instance.py)
@@ -345,13 +345,13 @@ The segmented hasher composes the recipe hash from independent per-segment diges
 
 **Authoritative since J.n.3.** Identity switched from the flat `sha256(to_canonical_bytes)` to `recipe_identity_hash` (the segmented join). That combiner change is a canonical-form algorithm change, so it rode a `schema_version` **2→3** bump (loader `(2, 3)` bootstrap migration; v3 = the segmented-canonical era). This was the **one-time pre-1.0 cache-invalidation event** — every existing instance re-materializes once; prohibitive post-1.0 (design § 8). The `test_canonical_hash_pin` gate now pins the segmented identity; a representative image/audio pin pair (`tests/integration/test_segmented_identity.py`) locks Finding A — `AudioSource.target_sample_rate` never enters an image recipe's canonical bytes.
 
-### `recipe.variants` (FR-14)
+### `recipe.overlays` (FR-14)
 
 ```python
-def apply_variant(recipe: Recipe, variant_name: str | None) -> Recipe: ...
+def apply_overlays(recipe: Recipe, names: Sequence[str] | None) -> Recipe: ...
 ```
 
-Variants are applied **before** canonicalization, so `cache_key` reflects the selected variant.
+Overlays (Story J.n.5; the former `variants`) are applied **before** canonicalization in selection order, last-writer-wins per section, so `cache_key` reflects the resolved recipe. Overlay *definitions* are stripped before hashing (`overlays={}`), so they never enter identity. The applied names are recorded in `manifest.overlays`.
 
 ### `recipe.seeds` (G11 — Story I.n)
 
@@ -697,7 +697,7 @@ class Manifest(pydantic.BaseModel):
     recipe_hash: str                   # full SHA-256 hex
     input_hash: str                    # full SHA-256 hex
     seed: int
-    variant: str | None
+    overlays: list[str]                # manifest v2 (J.n.5); was `variant: str | None`
     created_at: datetime.datetime
     elapsed_seconds: float
     is_partial: bool

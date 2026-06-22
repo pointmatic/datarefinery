@@ -214,7 +214,7 @@ def check_06_fit_on_train_uses_train_split(recipe: Recipe, plugin: Plugin) -> Ch
     )
 
 
-_VALID_VARIANT_OVERRIDE_KEYS: frozenset[str] = frozenset(
+_VALID_OVERLAY_OVERRIDE_KEYS: frozenset[str] = frozenset(
     {
         "schema_version",
         "plugin",
@@ -467,14 +467,14 @@ _VIZ_STAGE_REQUIRES_SECTION: dict[str, str] = {
 }
 
 
-def check_12_variants_reference_declared_sections(recipe: Recipe, plugin: Plugin) -> CheckResult:
+def check_12_overlays_reference_declared_sections(recipe: Recipe, plugin: Plugin) -> CheckResult:
     del plugin
-    descriptor = "variants_reference_declared_sections"
+    descriptor = "overlays_reference_declared_sections"
     issues: list[str] = []
-    for variant_name, overlay in recipe.variants.items():
+    for overlay_name, overlay in recipe.overlays.items():
         for key in overlay:
-            if key not in _VALID_VARIANT_OVERRIDE_KEYS:
-                issues.append(f"variant {variant_name!r} overrides unknown section {key!r}")
+            if key not in _VALID_OVERLAY_OVERRIDE_KEYS:
+                issues.append(f"overlay {overlay_name!r} overrides unknown section {key!r}")
     if not issues:
         return _passed(12, descriptor)
     return CheckResult(
@@ -1507,8 +1507,8 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
     (11, "visualization_well_formed", check_11_visualization_well_formed),
     (
         12,
-        "variants_reference_declared_sections",
-        check_12_variants_reference_declared_sections,
+        "overlays_reference_declared_sections",
+        check_12_overlays_reference_declared_sections,
     ),
     (13, "labels_resolvable", check_13_labels_resolvable),
     (

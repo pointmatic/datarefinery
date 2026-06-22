@@ -180,7 +180,7 @@ def test_runner_writes_well_formed_manifest(tmp_path: Path) -> None:
     m = read_manifest(manifest_path(result.instance_dir))
     assert m.plugin == "image_classification"
     assert m.seed == 7
-    assert m.schema_version == 1
+    assert m.schema_version == 2  # J.n.5: manifest v2 (variant → overlays)
     assert set(m.record_counts.keys()) == {"train", "val", "test"}
     assert sum(m.record_counts.values()) == 10
     assert m.is_partial is False

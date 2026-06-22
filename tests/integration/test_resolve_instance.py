@@ -5,7 +5,7 @@
 The blessed instance-locator: a top-level facade over
 DataRefinery.from_recipe(...).status() so a consumer never reimplements
 the cache-key math. Covers miss/hit, delegation equivalence, and
-seed/variant flow-through.
+seed/overlays flow-through.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ Labels:
 Splits:
   ratios: {{train: 0.6, val: 0.2, test: 0.2}}
   seed: 11
-variants:
+overlays:
   alt:
     seed: 42
 """
@@ -114,11 +114,11 @@ def test_resolve_instance_seed_flows_through(tmp_path: Path) -> None:
     assert overridden.instance_path != default.instance_path
 
 
-def test_resolve_instance_variant_flows_through(tmp_path: Path) -> None:
+def test_resolve_instance_overlays_flow_through(tmp_path: Path) -> None:
     recipe_path, cache_root = _scaffold(tmp_path)
     base = resolve_instance(recipe_path, cache_root=cache_root)
-    alt = resolve_instance(recipe_path, cache_root=cache_root, variant="alt")
-    # The variant overlay perturbs the recipe → different cache identity.
+    alt = resolve_instance(recipe_path, cache_root=cache_root, overlays=["alt"])
+    # The applied overlay perturbs the recipe → different cache identity.
     assert alt.cache_key != base.cache_key
 
 

@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recipe stays **flat** on disk — segmentation is an internal partition
   (Option 1), not an author-facing reshape — so no recipe edits are
   required; re-run `materialize` to rebuild instances.
+- **Overlays — `variants` reborn as composable overlays (Story J.n.5).** The
+  FR-14 `variants:` recipe section is renamed to **`overlays:`**, and selection
+  generalizes from a single `--variant` to a repeatable **`--overlay`** (applied
+  in order, last-writer-wins per section). Identity still hashes the *resolved*
+  recipe with overlay definitions stripped, so the rename is **hash-neutral** —
+  it rides the J.n.3 `schema_version` 2→3 bootstrap (which now also performs the
+  `variants`→`overlays` key rename) with no additional invalidation. Library:
+  `DataRefinery.from_recipe(overlays=[...])`, `resolve_instance(overlays=[...])`,
+  `materialize(overlays=[...])`, and the `DataRefinery.overlays` property replace
+  their `variant` forms. **Manifest schema → v2:** `manifest.variant: str | None`
+  becomes `manifest.overlays: list[str]` (the ordered applied names; empty when
+  none). Cross-repo contract updated in the MF/NbF vendor-dependency-specs.
 - **⚠️ No-implicit-defaults rollout (Story J.n.4).** Op parameters no longer
   carry code-supplied defaults: `ParameterSpec.default` is removed, the ~25
   default-value params across the bundled plugins became **`required`**, and

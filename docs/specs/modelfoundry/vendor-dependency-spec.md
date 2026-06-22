@@ -148,13 +148,13 @@ The `manifest.json` at the instance root is the authoritative metadata document.
 
 | Field                  | Type                       | Meaning |
 |------------------------|----------------------------|---------|
-| `schema_version`       | `int`                      | Manifest schema version; separate from recipe `schema_version`. Currently `1`. |
+| `schema_version`       | `int`                      | Manifest schema version; separate from recipe `schema_version`. Currently `2` (v2, Story J.n.5, renamed `variant` → `overlays`). |
 | `plugin`               | `str`                      | Plugin name (e.g., `"image_classification"`). |
 | `plugin_version`       | `str`                      | Plugin schema version, as string. |
 | `recipe_hash`          | `str` (64-hex)             | Canonical recipe bytes' SHA-256 (full digest). |
 | `input_hash`           | `str` (64-hex)             | Per-source input content hash. |
 | `seed`                 | `int`                      | The seed used by this materialization (CLI `--seed` overrides the recipe's `seed`). |
-| `variant`              | `str | null`               | Selected variant name (FR-14), or `null`. |
+| `overlays`             | `list[str]`                | Ordered list of applied overlay names (FR-14); empty `[]` when none selected. **Renamed from `variant: str \| null` in manifest v2 (Story J.n.5)** — overlays are now a repeatable, ordered selection. |
 | `record_counts`        | `dict[str, int]`           | Per-split post-pipeline record count. **For aggressive splits, this is the post-augmentation count** (i.e. includes variant multiplication). |
 | `created_at`           | `datetime` (UTC ISO 8601)  | Wall-clock timestamp of the run. |
 | `elapsed_seconds`      | `float`                    | Total run wall time. |
@@ -385,9 +385,9 @@ report = DataRefinery.from_recipe("recipe.yaml", config=cfg, variant=v, seed=s).
 | Field | Where | Current value | Source of truth |
 |---|---|---|---|
 | `recipe.schema_version` | `recipe.json` (top-level) | `3` | `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION` |
-| `manifest.schema_version` | `manifest.json` (top-level) | `1` | `datarefinery.pipeline.manifest.MANIFEST_SCHEMA_VERSION` |
+| `manifest.schema_version` | `manifest.json` (top-level) | `2` | `datarefinery.pipeline.manifest.MANIFEST_SCHEMA_VERSION` |
 
-`recipe.schema_version` versions the **recipe shape** (the loader migrates v1→v2→v3 on read); `manifest.schema_version` versions the **manifest document format** and advances on its own, unrelated cadence. A consumer binding against the recipe-schema coordination logic below MUST read `recipe.schema_version` — reading `manifest.schema_version` (currently `1`) where the recipe version (currently `3`) is meant is a silent off-by-one that will mis-route the migration check. *(F5, pinned in Round 3 — see header.)*
+`recipe.schema_version` versions the **recipe shape** (the loader migrates v1→v2→v3 on read); `manifest.schema_version` versions the **manifest document format** and advances on its own, unrelated cadence (now `2` after the Story J.n.5 `variant`→`overlays` rename). A consumer binding against the recipe-schema coordination logic below MUST read `recipe.schema_version` — reading `manifest.schema_version` (currently `2`) where the recipe version (currently `3`) is meant is a silent off-by-one that will mis-route the migration check. *(F5, pinned in Round 3 — see header.)*
 
 As of the current DataRefinery release the supported set is **`{1, 2, 3}`** with **`LATEST_SCHEMA_VERSION = 3`** (importable as `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION`). DataRefinery's loader applies the registered `(1, 2)` then `(2, 3)` migration chain before validation, so a consumer using `Instance.load` always sees the **v3-shaped** recipe regardless of the on-disk recipe's authored version. The v3 bootstrap is version-stamp-only (no field reshape — see § Cache-identity contract "Schema v2 → v3"), so the v3 recipe shape is field-identical to v2; the substantive v3 change is the segmented `recipe_hash`. A consumer that still pins its tracked set to `{1, 2}` MUST update to include `3` before binding v3 instances, or it will hard-error per the rule below.
 

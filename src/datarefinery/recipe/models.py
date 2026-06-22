@@ -521,4 +521,4 @@ class Recipe(_Frozen):
     OutputExpectations: list[Expectation] = Field(default_factory=list)
     Visualizations: list[VisualizationOp] = Field(default_factory=list)
     Sinks: list[SinkOp] = Field(default_factory=list)
-    variants: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    overlays: dict[str, dict[str, Any]] = Field(default_factory=dict)

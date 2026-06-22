@@ -35,8 +35,8 @@ from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import Manifest, write_manifest
 from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import load as load_recipe
+from datarefinery.recipe.overlays import apply_overlays
 from datarefinery.recipe.segments import recipe_identity_hash
-from datarefinery.recipe.variants import apply_variant
 
 _RECIPE_YAML = textwrap.dedent(
     """\
@@ -316,7 +316,7 @@ _RECIPE_YAML_WITH_VARIANTS = textwrap.dedent(
         params: {}
         fit_source: train
         splits: [train, val, test]
-    variants:
+    overlays:
       no_norm:
         Transformations: []
     """
@@ -327,7 +327,7 @@ def _recipe_hash_stripped(recipe_path: Path) -> str:
     """Canonical recipe hash with variants stripped, mirroring the
     materialize path at ``core/datarefinery.py:92-93``.
     """
-    recipe = apply_variant(load_recipe(recipe_path), None)
+    recipe = apply_overlays(load_recipe(recipe_path), None)
     return recipe_identity_hash(recipe)
 
 
@@ -372,7 +372,7 @@ def _build_promoted_instance_materialize_path(
 
 
 def test_resolver_finds_instance_when_sibling_declares_variants(tmp_path: Path) -> None:
-    """G19 reproduction: a sibling recipe declaring ``variants:`` and a
+    """G19 reproduction: a sibling recipe declaring ``overlays:`` and a
     promoted instance written under the materialize-path (stripped)
     hash. The resolver must strip variants before hashing the sibling,
     matching the materialize path, or the shard lookup fails.
@@ -395,15 +395,15 @@ def test_resolver_finds_instance_when_sibling_declares_variants(tmp_path: Path) 
     assert stats.get_vector("norm", "mean").to_pydict() == {"value": [7.0, 8.0, 9.0]}
 
 
-def test_apply_variant_none_preserves_canonical_hash_when_no_variants_declared(
+def test_apply_overlays_none_preserves_canonical_hash_when_no_overlays_declared(
     tmp_path: Path,
 ) -> None:
     """No-variant regression for the G19 fix: a recipe with no declared
     variants must hash identically with or without the
-    ``apply_variant(..., None)`` strip. Guards against the fix silently
+    ``apply_overlays(..., None)`` strip. Guards against the fix silently
     invalidating sibling-stats lookups for existing recipes.
     """
     recipe_path = _write_recipe(tmp_path / "train_recipe.yaml")
     raw = load_recipe(recipe_path)
-    stripped = apply_variant(raw, None)
+    stripped = apply_overlays(raw, None)
     assert to_canonical_bytes(raw) == to_canonical_bytes(stripped)

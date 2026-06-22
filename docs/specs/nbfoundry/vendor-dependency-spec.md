@@ -46,15 +46,15 @@ class DataRefinery:
         cls,
         recipe_path: Path,
         config: RuntimeConfig | None = None,
-        variant: str | None = None,
+        overlays: Sequence[str] | None = None,
         seed: int | None = None,
     ) -> DataRefinery: ...
 
     # Read-only state
-    recipe: Recipe                          # property; variant-overlaid
+    recipe: Recipe                          # property; overlay-resolved
     plugin: Plugin                          # property
     seed: int                               # property; resolved
-    variant: str | None                     # property
+    overlays: list[str]                     # property
     config: RuntimeConfig                   # property
     last_run: RunnerResult | None           # property; None until materialize()
 
@@ -83,7 +83,7 @@ class DataRefinery:
     def check(config: RuntimeConfig | None = None) -> CheckReport: ...
 ```
 
-**Construction.** `from_recipe(path)` loads + validates the recipe exactly once (validation report memoized; subsequent `.validate()` calls return it without re-running). Variant overlay is applied *before* validation, so what `.validate()` reports is what `.materialize()` will execute. Passing `config=None` resolves a `RuntimeConfig` with defaults from environment variables.
+**Construction.** `from_recipe(path)` loads + validates the recipe exactly once (validation report memoized; subsequent `.validate()` calls return it without re-running). Overlays are applied *before* validation, so what `.validate()` reports is what `.materialize()` will execute. Passing `config=None` resolves a `RuntimeConfig` with defaults from environment variables.
 
 **`materialize()`.** Inflates the recipe's `Input` sources from disk by default; library callers MAY pass `raw_records` + `raw_input_hashes` to bypass disk loading. Returns a loaded `Instance`. Sets `self.last_run` to the `RunnerResult` (which exposes `.cache_hit: bool`).
 
@@ -117,7 +117,7 @@ def materialize(
     recipe_path: Path,
     *,
     config: RuntimeConfig | None = None,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
     seed: int | None = None,
 ) -> Instance: ...
 ```
@@ -132,7 +132,7 @@ def resolve_instance(
     *,
     cache_root: Path | str | None = None,
     seed: int | None = None,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
 ) -> StatusReport: ...
 ```
 
@@ -191,7 +191,7 @@ Resolved on the typer root callback ([`cli/app.py`](../../../src/datarefinery/cl
 | `--plugin-path` | `DATAREFINERY_PLUGIN_PATH` (PATH-style) | Extra plugin discovery directory; repeatable. |
 | `--workers` | `DATAREFINERY_WORKERS` | Process-pool worker count. |
 | `--seed` | — | Override the recipe-declared seed (changes cache identity). |
-| `--variant` | — | Recipe variant overlay applied before validation. |
+| `--overlay` | — | Recipe overlay applied before validation. Repeatable (ordered, last-writer-wins per section). |
 | `--no-color` | — | Disable ANSI color in `rich` output. **Wired and honored.** |
 | `--quiet` / `-q` | — | **Forward-declared (Phase J).** Accepted into context but no command consults the value today (F4 from J.b spike). |
 | `--verbose` / `-v` | — | **Forward-declared (Phase J).** Same status as `--quiet`. |

@@ -78,7 +78,7 @@ def export_sinks(
     config: RuntimeConfig,
     seed: int,
     sink_names: Sequence[str] | None = None,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
     raw_input_hashes: Mapping[str, str] | None = None,
     raw_records: Sequence[Mapping[str, Any]] | None = None,
 ) -> ExportResult:
@@ -96,8 +96,8 @@ def export_sinks(
     against. When both are ``None`` the per-plugin disk loader inflates
     the recipe's ``Input`` sources from disk (the CLI path).
     """
-    del variant  # cache-key lookup uses the recipe as supplied; the
-    # variant has already been overlaid by the caller (`DataRefinery`).
+    del overlays  # cache-key lookup uses the recipe as supplied; overlays
+    # have already been resolved by the caller (`DataRefinery`).
 
     if not recipe.Sinks:
         raise MaterializeError("datarefinery export: recipe declares no Sinks; nothing to do.")

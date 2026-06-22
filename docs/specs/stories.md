@@ -548,24 +548,31 @@ Adopt the spike memo § 3 resolved stance #1: kill code-supplied defaults. The i
 
 ---
 
-### Story J.n.5: Overlays mechanism — `variants` as first-class composable overlays [Planned]
+### Story J.n.5: Overlays mechanism — `variants` as first-class composable overlays [Done]
 
 **Disposition: feature addition.** Part of the Recipe Architecture bundle.
 
 Per spike memo § 4 and J.n.1 Q2: reconsider `variants` (FR-14) as first-class orthogonal overlays with independent identity. Today variants collapse into the base before hashing; under the new model each overlay hashes independently, their composition is order-stable, and recipes with no overlays carry an empty `overlays` segment contributing nothing to canonical bytes (pin-tested in J.n.7).
 
+**Implementation notes.**
+
+- **Verified the isolation property already held** (J.n.1 Q2): unused/other overlay definitions are stripped before hashing, so the genuine gap was only *composability* (single-select → ordered-multi) and *naming*. So this story is a **rename + generalize**, not new identity machinery.
+- **`variants` → `overlays`** (recipe section, `recipe/variants.py` → `recipe/overlays.py`, `apply_variant(name)` → `apply_overlays(names)`), selection generalized to the repeatable `--overlay` (ordered, last-writer-wins per section). Library: `from_recipe(overlays=…)`, `resolve_instance(overlays=…)`, `materialize(overlays=…)`, `DataRefinery.overlays` property.
+- **Hash-neutral rename folded into the J.n.3 `v2_to_v3` bootstrap** (no v4): overlay definitions are stripped before hashing, so `variants:`→`overlays:` doesn't move the resolved hash — it rides the single v0.22.0 invalidation window. (Confirmed: the J.n.3 canonical-hash pin is unchanged.)
+- **`manifest.variant: str | None` → `manifest.overlays: list[str]`; MANIFEST_SCHEMA_VERSION 1 → 2.** Pre-1.0 break: old (v1) manifests don't parse against the v2 model, but the bundle's cache invalidation re-materializes every instance, so no v1 manifest survives — consistent with the J.n.4 break-and-re-author stance; no manifest migration shipped.
+
 **Tasks:**
 
-- [ ] Refactor `variants` into the segmented `overlays` representation per J.n.1 Q2 decisions (additive vs. override semantics; ordering/conflict rules; typed-vs-open-bag).
-- [ ] Update loader / runner / validator to apply overlays in declared order with independent per-overlay identity.
-- [ ] Migration for existing variant-using recipes per J.n.1 Q4 migration mechanics: the migrated recipe's canonical bytes must match the old variant-using recipe's bytes (one-time event coordinated with J.n.3 to keep the mass invalidation a single window).
-- [ ] Pin test: a recipe with no overlays hashes identically before/after the overlays mechanism is introduced (proves additivity).
-- [ ] Unit tests: overlay composition ordering; conflict resolution; independent identity per overlay (a change to one overlay does not move another's hash).
-- [ ] Integration test: a multi-overlay recipe materializes deterministically; the report's overlay echo names every applied overlay.
-- [ ] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) § Variants → Overlays; document composition rules.
-- [ ] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § Recipe-side contract: rename `variant` → `overlays` semantics. Update `manifest.variant` field semantics (or rename) per J.n.1 Q2 decision. Carry parallel diffs in [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md). Full doc sweep is J.n.8; local diffs land here.
-- [ ] CHANGELOG entry.
-- [ ] CI parity.
+- [x] Refactor `variants` into the segmented `overlays` representation per J.n.1 Q2 decisions (ordering/conflict rules; open override-bag). `recipe/overlays.py` `apply_overlays(recipe, names)` — ordered, last-writer-wins per section.
+- [x] Update loader / runner / validator to apply overlays in declared order with independent per-overlay identity. Loader `KNOWN_TOP_LEVEL_KEYS`, `segments.py` partition, runner/manifest, validator check 12 (`overlays_reference_declared_sections`), CLI `--overlay`, `core/datarefinery.py` facade + module functions, `sibling_stats`, `export`.
+- [x] Migration for existing variant-using recipes: the migrated recipe's canonical bytes match the old variant-using recipe's bytes. `v2_to_v3` renames `variants`→`overlays` (hash-neutral; single window).
+- [x] Pin test: a recipe with no overlays hashes identically before/after. Proven by the unchanged J.n.3 canonical-hash pin + `test_no_overlays_selected_hashes_like_no_overlays_defined` (additivity) in [`test_overlays.py`](../../tests/unit/test_overlays.py).
+- [x] Unit tests: overlay composition ordering; conflict resolution (last-writer-wins, order-dependent identity); independent identity per overlay. [`test_overlays.py`](../../tests/unit/test_overlays.py) (14 tests).
+- [x] Integration test: a multi-overlay recipe materializes deterministically; the report's overlay echo names every applied overlay. [`test_overlays_materialize.py`](../../tests/integration/test_overlays_materialize.py).
+- [x] DOC: update [`recipe-authoring.md`](../guides/recipe-authoring.md) § Variants → Overlays; document composition rules. Also updated `tech-spec.md` (`recipe.overlays`, Manifest v2).
+- [x] **Cross-repo coordination.** [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) (`manifest.overlays`, manifest schema → v2, schema-version coordination) + [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) (library/CLI overlay signatures). Full sweep is J.n.8.
+- [x] CHANGELOG entry. Added under the [Unreleased] Recipe Architecture bundle section.
+- [x] CI parity. 1391 tests pass; mypy clean (221 files); ruff check + format clean.
 
 **Out of Scope:**
 

@@ -749,12 +749,12 @@ def test_flatten_rejects_zero_inputs(tmp_path: Path) -> None:
         )
 
 
-def test_flatten_variant_overlay_round_trips_through_apply_variant() -> None:
+def test_flatten_overlay_round_trips_through_apply_overlays() -> None:
     """A variant that introduces a `flatten` Featurization must parse
-    and apply cleanly via `apply_variant`, producing a valid Recipe.
+    and apply cleanly via `apply_overlays`, producing a valid Recipe.
     """
     from datarefinery.recipe.models import Recipe
-    from datarefinery.recipe.variants import apply_variant
+    from datarefinery.recipe.overlays import apply_overlays
 
     recipe = Recipe.model_validate(
         {
@@ -771,7 +771,7 @@ def test_flatten_variant_overlay_round_trips_through_apply_variant() -> None:
             },
             "Labels": {"field": "label", "source": {"kind": "direct"}},
             "Splits": {"ratios": {"train": 0.6, "val": 0.2, "test": 0.2}, "seed": 11},
-            "variants": {
+            "overlays": {
                 "mlp_flat": {
                     "Featurizations": [
                         {
@@ -786,13 +786,13 @@ def test_flatten_variant_overlay_round_trips_through_apply_variant() -> None:
             },
         }
     )
-    selected = apply_variant(recipe, "mlp_flat")
+    selected = apply_overlays(recipe, ["mlp_flat"])
     assert len(selected.Featurizations) == 1
     feat = selected.Featurizations[0]
     assert feat.op == "flatten"
     assert feat.inputs == ["image"]
     assert feat.output_field == "image_flat"
-    # `apply_variant(None)` strips variants but leaves base unchanged.
-    base = apply_variant(recipe, None)
-    assert base.variants == {}
+    # `apply_overlays(None)` strips overlays but leaves base unchanged.
+    base = apply_overlays(recipe, None)
+    assert base.overlays == {}
     assert base.Featurizations == []

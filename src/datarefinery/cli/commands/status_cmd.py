@@ -44,7 +44,7 @@ def status(
     """Summarize a materialized instance (FR-19)."""
     state = ctx.obj or {}
     config = state.get("config")
-    variant = state.get("variant")
+    overlays = state.get("overlays") or []
     seed = state.get("seed")
     no_color = state.get("no_color", False)
 
@@ -53,7 +53,7 @@ def status(
     if target.is_dir():
         _render_instance_path(console, target)
     elif target.is_file():
-        _render_recipe_path(console, target, config=config, variant=variant, seed=seed)
+        _render_recipe_path(console, target, config=config, overlays=overlays, seed=seed)
     else:
         raise MaterializeError(f"status: {target!s} is neither a directory nor a regular file")
 
@@ -81,13 +81,13 @@ def _render_recipe_path(
     recipe_path: Path,
     *,
     config: object,
-    variant: str | None,
+    overlays: list[str],
     seed: int | None,
 ) -> None:
     dr = DataRefinery.from_recipe(
         recipe_path,
         config=config,  # type: ignore[arg-type]
-        variant=variant,
+        overlays=overlays,
         seed=seed,
     )
     report: StatusReport = dr.status()
@@ -135,8 +135,8 @@ def _summary_table(*, cache_label: str, instance_path: Path, manifest: Manifest)
     table.add_row("Recipe hash", manifest.recipe_hash)
     table.add_row("Input hash", manifest.input_hash)
     table.add_row("Seed", str(manifest.seed))
-    if manifest.variant is not None:
-        table.add_row("Variant", manifest.variant)
+    if manifest.overlays:
+        table.add_row("Overlays", ", ".join(manifest.overlays))
     table.add_row("Created at", manifest.created_at.isoformat())
     table.add_row("Elapsed", f"{manifest.elapsed_seconds:.3f}s")
     if manifest.is_partial:

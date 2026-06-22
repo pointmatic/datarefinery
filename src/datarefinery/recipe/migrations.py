@@ -230,10 +230,22 @@ def v2_to_v3(recipe_dict: dict[str, Any]) -> dict[str, Any]:
     segmentation is an internal partition, not an author-facing reshape — so
     this whole-recipe migration performs **no field redistribution**. (Default
     injection for the no-implicit-defaults rollout is Q7 / Story J.n.4, not
-    here.) The only on-disk change is the version stamp; the identity shift is
-    carried entirely by the new combiner. Idempotent on already-v3 input.
+    here.) Two changes land:
+
+    1. **Version stamp** to 3; the identity shift is carried by the new combiner.
+    2. **`variants:` → `overlays:`** (Story J.n.5): the FR-14 overlay section is
+       renamed. This is hash-neutral — the overlay section is always stripped to
+       ``{}`` before hashing (see :func:`...overlays.apply_overlays`), so a
+       migrated recipe's canonical bytes match the pre-rename recipe's. Both
+       stories ride the single v0.22.0 invalidation window.
+
+    Idempotent on already-v3 input.
     """
     out = dict(recipe_dict)
+    if "variants" in out:
+        # Rename only if not already migrated; a hand-merged `overlays` wins.
+        out.setdefault("overlays", out["variants"])
+        del out["variants"]
     out["schema_version"] = 3
     return out
 

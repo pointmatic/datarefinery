@@ -59,7 +59,7 @@ def test_minimal_recipe_validates() -> None:
     # Optional collections default to empty.
     assert recipe.Filters == []
     assert recipe.Augmentations == []
-    assert recipe.variants == {}
+    assert recipe.overlays == {}
 
 
 def test_round_trip_via_model_dump() -> None:

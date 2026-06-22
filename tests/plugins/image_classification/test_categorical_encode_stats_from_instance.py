@@ -32,8 +32,8 @@ from datarefinery.pipeline.stages.featurizations import apply_featurizations
 from datarefinery.plugins.image_classification import PLUGIN as IMAGE_PLUGIN
 from datarefinery.recipe.loader import load as load_recipe
 from datarefinery.recipe.models import FeaturizationOp
+from datarefinery.recipe.overlays import apply_overlays
 from datarefinery.recipe.segments import recipe_identity_hash
-from datarefinery.recipe.variants import apply_variant
 
 _SIBLING_RECIPE_YAML = textwrap.dedent(
     """\
@@ -73,7 +73,7 @@ def _write_sibling_recipe(path: Path) -> Path:
 
 
 def _sibling_recipe_hash(recipe_path: Path) -> str:
-    recipe = apply_variant(load_recipe(recipe_path), None)
+    recipe = apply_overlays(load_recipe(recipe_path), None)
     return recipe_identity_hash(recipe)
 
 

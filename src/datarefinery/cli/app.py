@@ -102,9 +102,13 @@ def main(
             help="Override the recipe-declared seed (changes cache identity).",
         ),
     ] = None,
-    variant: Annotated[
-        str | None,
-        typer.Option("--variant", help="Recipe variant to apply before canonicalization."),
+    overlay: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--overlay",
+            help="Recipe overlay to apply before canonicalization. Repeatable; "
+            "overlays apply in the given order, last-writer-wins per section.",
+        ),
     ] = None,
     no_color: Annotated[
         bool,
@@ -130,7 +134,7 @@ def main(
     state = ctx.ensure_object(dict)
     state["config"] = config
     state["seed"] = seed
-    state["variant"] = variant
+    state["overlays"] = overlay or []
     state["no_color"] = no_color
     state["quiet"] = quiet
     state["verbose"] = verbose

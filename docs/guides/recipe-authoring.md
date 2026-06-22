@@ -11,7 +11,7 @@ For a working quickstart, see the [project README](../../README.md#quickstart).
 
 ## Reference recipe
 
-Every snippet in this guide slots into the reference recipe below. It is a complete, materializable `image_classification` recipe — the same shape that `datarefinery init --input <image_folder>` produces, expanded with a fit-on-train normalize transformation, an `image_classification` augmentation, an `InputContract`, an `OutputExpectation`, and a `variants` block. Substitute your own input path under `Input.sources[0].path`.
+Every snippet in this guide slots into the reference recipe below. It is a complete, materializable `image_classification` recipe — the same shape that `datarefinery init --input <image_folder>` produces, expanded with a fit-on-train normalize transformation, an `image_classification` augmentation, an `InputContract`, an `OutputExpectation`, and an `overlays` block. Substitute your own input path under `Input.sources[0].path`.
 
 ```yaml
 # reference-recipe.yaml
@@ -83,7 +83,7 @@ Visualizations:
     stage: post_pipeline
     mode: reporting
 
-variants:
+overlays:
   no_augment:
     Augmentations: []
 ```
@@ -93,12 +93,12 @@ Materialize it:
 ```bash
 datarefinery validate reference-recipe.yaml
 datarefinery --cache-root ./cache materialize reference-recipe.yaml
-datarefinery --cache-root ./cache --variant no_augment materialize reference-recipe.yaml
+datarefinery --cache-root ./cache --overlay no_augment materialize reference-recipe.yaml
 ```
 
-`--variant` is a global option, placed before the verb.
+`--overlay` is a global option, placed before the verb. It is repeatable — overlays apply in order, last-writer-wins per section.
 
-The two materializations produce two different instances; the variant overlay changes the canonical recipe bytes and therefore the cache identity.
+The two materializations produce two different instances; the applied overlay changes the canonical recipe bytes and therefore the cache identity.
 
 ## No implicit defaults
 
@@ -121,7 +121,7 @@ DataRefinery's interpreting code supplies **no** behavior-affecting value for an
 | `Labels` | yes | Where labels come from. |
 | `Splits` | yes | Train/val/test partitioning. |
 | `SampleData`, `InputContracts`, `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `OutputExpectations`, `Visualizations` | no | Optional pipeline stages and assertions, each defaulting to empty. |
-| `variants` | no | Named overlays on any section. |
+| `overlays` | no | Named overlays on any section (FR-14). |
 
 The recipe is the single source of truth for pipeline semantics. CLI flags and environment variables control only **execution context** — cache root, log level, plugin path, workers — and never alter what the pipeline does. The one sanctioned exception is `--seed`, which is the documented ad-hoc-run knob and changes the cache identity (so a different instance is produced).
 
@@ -687,7 +687,7 @@ Transformations:
 
 The validator rejects a fit-on-train op whose `fit_source` is not `train` (check 6).
 
-**FR-TRANS-1 across variants.** A fit-on-train Transformation may import its fitted statistics from a sibling materialized instance via `stats_from_instance: { recipe: <path>, op_id: <op_name> }` instead of fitting locally. The resolver locates the sibling by hashing its **no-variant canonical form** — i.e., the recipe with its `variants:` block stripped, matching what the materialize path itself uses to compute cache identity. As a result, `stats_from_instance` always resolves to the sibling's no-variant canonical instance regardless of which variants the sibling declares. Pinning a specific sibling variant's statistics is not supported in v1 (tracked in `stories.md § Future`).
+**FR-TRANS-1 across variants.** A fit-on-train Transformation may import its fitted statistics from a sibling materialized instance via `stats_from_instance: { recipe: <path>, op_id: <op_name> }` instead of fitting locally. The resolver locates the sibling by hashing its **no-overlay canonical form** — i.e., the recipe with its `overlays:` block stripped, matching what the materialize path itself uses to compute cache identity. As a result, `stats_from_instance` always resolves to the sibling's no-overlay canonical instance regardless of which overlays the sibling declares. Pinning a specific sibling variant's statistics is not supported in v1 (tracked in `stories.md § Future`).
 
 **Image-classification Transformations.**
 
@@ -752,7 +752,7 @@ Augmentations:
 
 **Constraint: aggressive mode requires uint8 image bytes (validator check 27, Story J.i).** The aggressive realizer rebuilds each variant image via `PIL.Image.fromarray`, which requires uint8. A dtype-altering `Transformations` op that leaves the image non-uint8 — today `normalize` and `mean_subtract` (both emit float64) — therefore **cannot share a split with an aggressive Augmentation**; the recipe is refused at validate time. (`resize` is uint8-preserving, so `resize` + aggressive is fine — only dtype-altering ops collide.) If you want both, keep the float normalization **consumer-side** (the default, recommended path — see [Fit-on-train discipline](#fit-on-train-discipline) and the consumer-applied normalization contract), or use lazy-mode augmentation so the augmented samples are realized at training time after the consumer applies normalization.
 
-To disable augmentation for a comparison run, use a variant — see [Variants](#variants).
+To disable augmentation for a comparison run, use an overlay — see [Overlays](#overlays).
 
 The four image-classification augmentation ops — `random_crop`, `horizontal_flip`, `color_jitter`, `random_erasing` — are documented under § FR-11 of `features.md`, and the full cross-repo contract is in [`docs/specs/modelfoundry/dependency-spec.md`](../specs/modelfoundry/dependency-spec.md).
 
@@ -1060,12 +1060,12 @@ The dispatch table will expand as more ops adopt the per-record-seed contract.
 
 **When to prefer `materialize` over `export`.** When the recipe is *new* (no cached instance yet), or when the cached recipe and the new recipe differ in anything other than the `Sinks` section, or when a sink targets a non-reconstructable stage. Materialize is the safe default; export is an optimization for the "add a sink, keep the cache" workflow.
 
-### `variants`
+### `overlays`
 
-Named overlays on any section, applied **before** canonicalization and hashing so the cache identity reflects the selected variant.
+Named overlays on any section, applied **before** canonicalization and hashing so the cache identity reflects the selected overlays.
 
 ```yaml
-variants:
+overlays:
   no_augment:
     Augmentations: []
   big_train:
@@ -1075,13 +1075,13 @@ variants:
       stratify_by: label
 ```
 
-Select at materialize time (`--variant` is a global option, placed before the verb):
+Select at materialize time (`--overlay` is a global option, repeatable, placed before the verb):
 
 ```bash
-datarefinery --cache-root ./cache --variant no_augment materialize reference-recipe.yaml
+datarefinery --cache-root ./cache --overlay no_augment materialize reference-recipe.yaml
 ```
 
-Variants are how you express experiment knobs (different augmentation policies, different split ratios, different class-balance strategies) without forking the recipe or routing flags around the recipe surface. See [Variants](#variants-1) below for the design rationale.
+Overlays are how you express experiment knobs (different augmentation policies, different split ratios, different class-balance strategies) without forking the recipe or routing flags around the recipe surface. See [Overlays](#overlays-1) below for the design rationale.
 
 ## Fit-on-train discipline
 
@@ -1113,42 +1113,42 @@ fitted_statistics/
 
 These files are written in structured format (parquet for numeric stats); the v1 contract is "no opaque pickles." Operations that do not need fitting omit `fit_source` entirely.
 
-## Variants
+## Overlays
 
-Variants are named overlays that produce different materializations from one recipe. A typical recipe has a default behavior and a few named experiments:
+Overlays are named, composable section-overrides that produce different materializations from one recipe. (Pre-J.n.5 these were `variants:`; the section and the `--overlay` selector are the generalization.) A typical recipe has a default behavior and a few named experiments:
 
 ```yaml
-variants:
+overlays:
   no_augment:
     Augmentations: []
   light_aug:
     Augmentations:
       - name: hflip
         op: horizontal_flip
-        params: { p: 0.5, seed: 42 }
+        params: { p: 0.5 }
         splits: [train]
         seed: 42
-  heavy_aug:
-    Augmentations:
-      - name: hflip
-        op: horizontal_flip
-        params: { p: 0.5, seed: 42 }
-        splits: [train]
-        seed: 42
-      - name: crop
-        op: random_crop
-        params: { size: 8, seed: 43 }
-        splits: [train]
-        seed: 43
+  big_train:
+    Splits:
+      ratios: { train: 0.9, val: 0.05, test: 0.05 }
+      seed: 11
+      stratify_by: label
 ```
 
-Three things follow from this design:
+Select one or more at materialize time; `--overlay` is repeatable:
 
-1. **Variants are part of the cache identity.** The overlay is applied before canonicalization, so two variant selections produce two different cached instances. Re-running with the same variant selection is a cache hit; switching variants is a cache miss the first time and a hit thereafter.
-2. **Variants can override any section.** Use them to vary augmentation policy, split ratios, class-balance strategy, filters, generation, or any combination — not just `Augmentations`.
-3. **Variants are scoped to one recipe.** This keeps experiments discoverable inside one file rather than across forked copies. If the experiment changes the pipeline semantics in a way that no longer makes sense as an overlay (e.g. swapping the plugin), it is a different recipe.
+```bash
+datarefinery --overlay light_aug --overlay big_train materialize recipe.yaml
+```
 
-The validator (check 12) rejects a variant that references an undeclared section or key.
+**Composition rules.**
+
+1. **Ordered, last-writer-wins per section.** Selected overlays apply left to right; each overlay replaces a target section *wholesale* (no deep merge within a section). When two selected overlays touch the same section, the later one in the list wins — so `--overlay a --overlay b` and `--overlay b --overlay a` can resolve to different recipes (and different instances) when `a` and `b` conflict.
+2. **Overlays are part of cache identity, but only as resolved.** The overlay is applied before canonicalization, so a selection produces a distinct cached instance. *Definitions* don't enter identity: adding or editing an unused overlay does not invalidate other selections, and a recipe with no overlays selected hashes identically whether or not overlay definitions exist (the `overlays` segment contributes nothing — see the cache-identity contract).
+3. **Overlays can override any section** — augmentation policy, split ratios, class-balance strategy, filters, generation, or any combination, not just `Augmentations`.
+4. **Overlays are scoped to one recipe.** This keeps experiments discoverable in one file rather than across forked copies. If an experiment changes pipeline semantics in a way that no longer makes sense as an override (e.g. swapping the plugin), it is a different recipe.
+
+The applied overlay names are echoed in `manifest.overlays` and the report. The validator (check 12) rejects an overlay that references an undeclared section or key.
 
 ## Contracts and expectations
 
@@ -1263,10 +1263,10 @@ Class imbalance shows up in almost every classification dataset. The v1 recipe s
 
 When in doubt, prefer `Splits.class_balance`. Filters are a heavier hammer — they delete information from the instance, so the same recipe cannot be re-used to study the un-balanced distribution without authoring a variant that disables the filter.
 
-Use a variant if you want to experiment with both:
+Use an overlay if you want to experiment with both:
 
 ```yaml
-variants:
+overlays:
   no_balance:
     Splits:
       ratios: { train: 0.7, val: 0.15, test: 0.15 }

@@ -64,7 +64,7 @@ def materialize(
     """Run the pipeline end-to-end (FR-3)."""
     state = ctx.obj or {}
     config = state.get("config")
-    variant = state.get("variant")
+    overlays = state.get("overlays") or []
     seed = state.get("seed")
     no_color = state.get("no_color", False)
 
@@ -73,7 +73,7 @@ def materialize(
             f"--stage={stop_after!r} not recognized. Valid stages: {list(STAGE_NAMES)}"
         )
 
-    dr = DataRefinery.from_recipe(recipe, config=config, variant=variant, seed=seed)
+    dr = DataRefinery.from_recipe(recipe, config=config, overlays=overlays, seed=seed)
 
     console = Console(no_color=no_color)
     instance = _run_with_progress(dr, console=console, stop_after=stop_after)
@@ -140,8 +140,8 @@ def _print_summary(
     table.add_row("Recipe hash", manifest.recipe_hash)
     table.add_row("Input hash", manifest.input_hash)
     table.add_row("Seed", str(manifest.seed))
-    if manifest.variant is not None:
-        table.add_row("Variant", manifest.variant)
+    if manifest.overlays:
+        table.add_row("Overlays", ", ".join(manifest.overlays))
     table.add_row("Elapsed", f"{manifest.elapsed_seconds:.3f}s")
     if manifest.completed_through is not None:
         table.add_row("Completed through", manifest.completed_through)

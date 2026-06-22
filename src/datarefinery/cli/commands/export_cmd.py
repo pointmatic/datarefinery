@@ -53,11 +53,11 @@ def export(
     """
     state = ctx.obj or {}
     config = state.get("config")
-    variant = state.get("variant")
+    overlays = state.get("overlays") or []
     seed = state.get("seed")
     no_color = state.get("no_color", False)
 
-    dr = DataRefinery.from_recipe(recipe, config=config, variant=variant, seed=seed)
+    dr = DataRefinery.from_recipe(recipe, config=config, overlays=overlays, seed=seed)
 
     result = dr.export(sink_names=sink if sink else None)
 

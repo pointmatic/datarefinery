@@ -61,14 +61,14 @@ def inspect(
     """Read-only views over a materialized instance (FR-20)."""
     state = ctx.obj or {}
     config = state.get("config")
-    variant = state.get("variant")
+    overlays = state.get("overlays") or []
     seed = state.get("seed")
     no_color = state.get("no_color", False)
 
     if out is not None and view is None:
         raise MaterializeError("inspect: --out requires --view (it has no meaning in list mode)")
 
-    inspection = _resolve_inspection(target, config=config, variant=variant, seed=seed, view=view)
+    inspection = _resolve_inspection(target, config=config, overlays=overlays, seed=seed, view=view)
 
     console = Console(no_color=no_color)
     if inspection.rendered is not None and out is not None:
@@ -94,7 +94,7 @@ def _resolve_inspection(
     target: Path,
     *,
     config: object,
-    variant: str | None,
+    overlays: list[str],
     seed: int | None,
     view: str | None,
 ) -> InspectionView:
@@ -132,7 +132,7 @@ def _resolve_inspection(
     dr = DataRefinery.from_recipe(
         target,
         config=config,  # type: ignore[arg-type]
-        variant=variant,
+        overlays=overlays,
         seed=seed,
     )
     return dr.inspect(view=view)

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """FR-2 ``datarefinery validate`` — recipe-validation CLI verb.
 
-Loads the recipe (applying any requested variant overlay), runs every
+Loads the recipe (applying any requested overlays), runs every
 registered FR-2 check, and renders the 18-entry :class:`ValidationReport`
 as a `rich` table (id, status, location, message). Exits 0 if every
 check passes (warnings allowed), exits 1 if any check failed.
@@ -44,9 +44,9 @@ def validate(
     """Run schema + enumerated checks (FR-2) on a recipe."""
     state = ctx.obj or {}
     config = state.get("config")
-    variant = state.get("variant")
+    overlays = state.get("overlays") or []
 
-    dr = DataRefinery.from_recipe(recipe, config=config, variant=variant)
+    dr = DataRefinery.from_recipe(recipe, config=config, overlays=overlays)
     report = dr.validate()
 
     console = Console(no_color=state.get("no_color", False))

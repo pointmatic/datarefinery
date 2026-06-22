@@ -79,8 +79,8 @@ def test_structural_sections_live_in_core() -> None:
         assert seg.RECIPE_FIELD_SEGMENTS[section] == "core"
 
 
-def test_variants_live_in_the_overlays_segment() -> None:
-    assert seg.RECIPE_FIELD_SEGMENTS["variants"] == "overlays"
+def test_overlays_field_lives_in_the_overlays_segment() -> None:
+    assert seg.RECIPE_FIELD_SEGMENTS["overlays"] == "overlays"
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ def test_segments_of_routes_input_to_core_and_filters_to_plugin() -> None:
 
 def test_segments_of_overlays_is_the_bare_variants_mapping() -> None:
     # At hash time variants are always stripped to {}, so overlays is empty →
-    # the bare value, not a {"variants": {}} wrapper (additivity, Q3/Q5).
+    # the bare value, not a {"overlays": {}} wrapper (additivity, Q3/Q5).
     recipe = _recipe()
     assert seg.segments_of(recipe)["overlays"] == {}
 

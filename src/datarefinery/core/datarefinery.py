@@ -41,9 +41,9 @@ from datarefinery.plugins.base import Plugin
 from datarefinery.plugins.discovery import discover_plugins
 from datarefinery.recipe.loader import load as load_recipe
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.overlays import apply_overlays
 from datarefinery.recipe.validator import ValidationReport
 from datarefinery.recipe.validator import validate as validate_recipe
-from datarefinery.recipe.variants import apply_variant
 
 Record = Mapping[str, Any]
 
@@ -58,14 +58,14 @@ class DataRefinery:
         config: RuntimeConfig,
         seed: int,
         *,
-        variant: str | None,
+        overlays: Sequence[str] | None,
         validation_report: ValidationReport,
     ) -> None:
         self._recipe = recipe
         self._plugin = plugin
         self._config = config
         self._seed = seed
-        self._variant = variant
+        self._overlays = list(overlays or [])
         self._validation_report = validation_report
         self._last_run: RunnerResult | None = None
 
@@ -78,19 +78,19 @@ class DataRefinery:
         cls,
         recipe_path: Path,
         config: RuntimeConfig | None = None,
-        variant: str | None = None,
+        overlays: Sequence[str] | None = None,
         seed: int | None = None,
     ) -> DataRefinery:
         """Load + validate a recipe and return a ready-to-run instance.
 
         Validation runs exactly once during construction; the report is
-        memoized and returned by :meth:`validate`. Variant overlay
-        (FR-14) is applied *before* validation so what we validate is
-        what :meth:`materialize` will execute.
+        memoized and returned by :meth:`validate`. Overlays (FR-14) are
+        applied *before* validation so what we validate is what
+        :meth:`materialize` will execute.
         """
         config = config if config is not None else RuntimeConfig()
         recipe = load_recipe(Path(recipe_path))
-        recipe = apply_variant(recipe, variant)
+        recipe = apply_overlays(recipe, overlays)
 
         plugin = _discover_plugin(recipe.plugin, config.plugin_path)
         report = validate_recipe(recipe, plugin)
@@ -102,7 +102,7 @@ class DataRefinery:
             plugin=plugin,
             config=config,
             seed=resolved_seed,
-            variant=variant,
+            overlays=overlays,
             validation_report=report,
         )
 
@@ -112,7 +112,7 @@ class DataRefinery:
 
     @property
     def recipe(self) -> Recipe:
-        """The variant-overlaid, validated recipe."""
+        """The overlay-resolved, validated recipe."""
         return self._recipe
 
     @property
@@ -125,8 +125,8 @@ class DataRefinery:
         return self._seed
 
     @property
-    def variant(self) -> str | None:
-        return self._variant
+    def overlays(self) -> list[str]:
+        return list(self._overlays)
 
     @property
     def config(self) -> RuntimeConfig:
@@ -191,7 +191,7 @@ class DataRefinery:
             plugin=self._plugin,
             config=self._config,
             seed=self._seed,
-            variant=self._variant,
+            overlays=self._overlays,
         )
         result: RunnerResult = runner.run(
             tmp_dir(self._config.cache_root, make_run_id()),
@@ -252,7 +252,7 @@ class DataRefinery:
             config=self._config,
             seed=self._seed,
             sink_names=sink_names,
-            variant=self._variant,
+            overlays=self._overlays,
             raw_input_hashes=raw_input_hashes,
             raw_records=raw_records,
         )
@@ -313,12 +313,12 @@ def materialize(
     recipe_path: Path,
     *,
     config: RuntimeConfig | None = None,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
     seed: int | None = None,
 ) -> Instance:
     """One-shot top-level convenience matching the tech-spec signature.
 
-    Loads the recipe, applies the requested variant, runs FR-2
+    Loads the recipe, applies the requested overlays, runs FR-2
     validation, inflates the recipe's input sources from disk, and
     materializes the pipeline. Library callers who want to provide
     pre-loaded records bypass this and call
@@ -326,7 +326,7 @@ def materialize(
     raw_input_hashes=...)`` directly.
     """
     return DataRefinery.from_recipe(
-        Path(recipe_path), config=config, variant=variant, seed=seed
+        Path(recipe_path), config=config, overlays=overlays, seed=seed
     ).materialize()
 
 
@@ -335,12 +335,12 @@ def resolve_instance(
     *,
     cache_root: Path | str | None = None,
     seed: int | None = None,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
 ) -> StatusReport:
     """Locate the materialized instance for a recipe — the blessed resolver.
 
     Top-level convenience that composes
-    ``DataRefinery.from_recipe(recipe_path, config, variant, seed).status()``
+    ``DataRefinery.from_recipe(recipe_path, config, overlays, seed).status()``
     so a consumer need not build a full handle just to ask "where is my
     instance?". It returns the same :class:`StatusReport` ``status()``
     returns — ``cache_status`` (``"hit"`` / ``"miss"`` / ``"corrupt"``),
@@ -367,7 +367,7 @@ def resolve_instance(
     """
     config = RuntimeConfig(cache_root=Path(cache_root)) if cache_root is not None else None
     return DataRefinery.from_recipe(
-        Path(recipe_path), config=config, variant=variant, seed=seed
+        Path(recipe_path), config=config, overlays=overlays, seed=seed
     ).status()
 
 

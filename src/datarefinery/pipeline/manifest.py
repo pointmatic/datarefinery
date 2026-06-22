@@ -3,14 +3,16 @@
 """FR-3.7 manifest: per-instance summary written at promotion time.
 
 The manifest is a frozen, pydantic-validated record of (recipe identity,
-inputs identity, seed, variant, build-time stats, per-split record
+inputs identity, seed, applied overlays, build-time stats, per-split record
 counts, accumulated warnings). It is the entry point downstream tools
 use to interpret a materialized instance: full recipe and input hashes
 live here (cache directory paths only carry the 16-char shard).
 
 ``Manifest.schema_version`` is a separate counter from the recipe
 schema version - per the tech-spec, the manifest format can evolve
-independently of the recipe schema.
+independently of the recipe schema. **v2 (Story J.n.5):** ``variant: str |
+None`` was renamed/generalized to ``overlays: list[str]`` (the ordered list of
+applied overlay names; empty when none selected).
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-MANIFEST_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 2
 
 
 class ManifestWarning(BaseModel):
@@ -82,7 +84,7 @@ class Manifest(BaseModel):
     recipe_hash: str  # full SHA-256 hex
     input_hash: str  # full SHA-256 hex
     seed: int
-    variant: str | None = None
+    overlays: list[str] = Field(default_factory=list)
     created_at: datetime
     elapsed_seconds: float
     is_partial: bool = False
