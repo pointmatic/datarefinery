@@ -630,7 +630,7 @@ Replace the single global `schema_version` with per-segment versions and per-seg
 
 ---
 
-### Story J.n.8: Cross-repo coordination — vendor-dependency-spec + project-essentials updates [Planned]
+### Story J.n.8: Cross-repo coordination — vendor-dependency-spec + project-essentials updates [Done]
 
 **Disposition: cross-repo contract authoring.** Part of the Recipe Architecture bundle.
 
@@ -638,17 +638,17 @@ Per spike memo § 10: the horizontal segmented-identity mechanism + no-implicit-
 
 **Tasks:**
 
-- [ ] Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md):
-  - § Cache-identity contract: replace flat `model_dump` canonical-bytes description with segmented model; document per-segment versioning + migration registry; cite the spike memo as the architectural rationale; remove the "Schema v1 → v2" subsection (superseded by segmented identity) — replace with a "Segmented identity v1" subsection.
-  - § Recipe-side contract: describe segment-scoped recipe shape; document where each field lives (core / plugin / overlays / extensions).
-  - § Schema-version coordination policy: re-express in per-segment terms; consumers track per-segment supported-version sets.
-- [ ] Update [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) parallel sections (mirror the MF doc's structure; same per-segment coordination policy).
-- [ ] Update [`project-essentials.md`](project-essentials.md) § "Cache identity is the reproducibility contract" — replace flat-model description with segmented identity; rewrite the "every pydantic field default participates in canonical bytes" warning to reflect the no-implicit-defaults discipline (the warning's framing no longer applies — defaults live in the scaffolder, not the code).
-- [ ] Add new [`project-essentials.md`](project-essentials.md) entry: **"No implicit defaults — the interpreting code supplies no behavior-affecting value."** Scaffolder emits recommended values into recipe text; required-vs-optional is the bump-vs-free rule; pre-1.0 support window = zero by default per spike memo § 3 resolved stance #3. Why / How-to-apply per project-essentials template.
-- [ ] Extend [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" — the "three surfaces" framing extends to call out segmented recipe identity; name the segments individually (`core`, `plugin:<name>`, `overlays`, `extensions`) as separately-bumping contract surfaces.
-- [ ] **ModelFoundry coordination.** Confirm MF's wholesale adoption of horizontal mechanism + no-implicit-defaults per spike memo § 10. Vertical axis stays MF-owned (DR may adopt a minimal cut later per J.n.1 Q8).
-- [ ] CHANGELOG entry: cross-repo contract change; segmented identity adopted as cross-tool-family standard.
-- [ ] CI parity (doc-only; no code change — code lands in J.n.2–J.n.7).
+- [x] Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md):
+  - § Cache-identity contract: segmented model already landed in J.n.3; **added** a "Per-segment versioning + migration registry (Story J.n.7)" subsection citing the spike memo as the cross-tool-family architectural rationale. **Deviation from task wording:** did **not** delete the "Schema v1 → v2" subsection — it documents real consumer-binding field reshapes (FilterOp/GenerationOp/assertion names), not identity, so it is not "superseded by segmented identity"; deleting it would strand the consumers this story exists to protect. Reframed around segmented identity instead. Flagged at the gate.
+  - § Recipe-side contract: **added** a "Segment-scoped recipe shape" subsection with a field→segment table (core / plugin / overlays / extensions) + the `extensions` namespace (J.n.6) + no-implicit-defaults (J.n.4) notes.
+  - § Schema-version coordination policy: **added** a "Per-segment coordination" paragraph — flat `recipe.schema_version` stays the consumer-facing counter (no on-disk segment-version block); consumers MAY read `current_segment_versions()` for granularity but bind to the flat counter.
+- [x] Update [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) parallel sections: expanded the "Schema v2 → v3" entry with per-segment versioning + extensions + no-implicit-defaults bullets (binding-neutral for NbF; only matters to cells that *read* recipe internals), pointing to the MF spec for full detail.
+- [x] Update [`project-essentials.md`](project-essentials.md) § "Cache identity is the reproducibility contract" — replaced the flat `model_dump` / "every pydantic field default is in canonical bytes" framing with segmented identity + per-segment versioning; rewrote the warning to scope it to structural/algorithm/output-byte changes and note no-implicit-defaults removed the op-param silent-default layer.
+- [x] Add new [`project-essentials.md`](project-essentials.md) entry: **"No implicit defaults — the interpreting code supplies no behavior-affecting value."** Required-vs-mode-selecting rule; recommended values → scaffolder; cross-tool-family standard; zero pre-1.0 support window; Why / How-to-apply per template + a refuse-this-tempting-move example.
+- [x] Extend [`project-essentials.md`](project-essentials.md) § "Recipe / manifest / report shape changes need a cross-repo coordination check" — surface #1 (Recipe model) now names the four segments (`core`, `plugin:<name>`, `overlays`, `extensions`) as separately-bumping contract surfaces, with the Finding-A / additive-extensions / flat-on-disk caveats.
+- [~] **ModelFoundry coordination.** Confirm MF's wholesale adoption of horizontal mechanism + no-implicit-defaults per spike memo § 10. **Developer-owned** (cross-repo, not executable from this repo) — mirrors the J.n.1 cross-tool-family coordination task. The DR-side specs now pin the standard; MF/NbF adopt in their own repos. Vertical axis stays MF-owned (DR may adopt a minimal cut later per J.n.1 Q8).
+- [x] CHANGELOG entry: cross-repo contract change; segmented identity + per-segment versioning + no-implicit-defaults adopted as cross-tool-family standard.
+- [x] CI parity (doc-only; no code change). `pyve test` (1430 pass), `mypy` clean, `ruff check`/`format` clean — confirmed unchanged (docs don't affect them).
 
 **Out of Scope:**
 

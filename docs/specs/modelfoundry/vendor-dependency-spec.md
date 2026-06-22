@@ -26,7 +26,22 @@ Out of scope here: ModelFoundry's training-time APIs (those live in ModelFoundry
 
 A recipe is a YAML document validated by `Recipe.model_validate(...)` in `src/datarefinery/recipe/models.py`. The full schema is documented in `tech-spec.md` § Data Models; this section calls out the augmentation surface (Story H.p–H.r.2) that ModelFoundry consumes directly.
 
-**Every top-level recipe section persists in `recipe.json`, declared or not.** The persisted `recipe.json` is the canonical `model_dump(mode="json")` of the full `Recipe` model, so **all** top-level sections are present whether or not the author wrote them — an undeclared section materializes as its model default: `[]` for list sections (`InputContracts`, `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `OutputExpectations`, `Visualizations`, `Sinks`), `null` for optional object sections (`SampleData`), and the section's own default object where one exists. Consumers SHOULD treat an empty-list / `null` section as "not declared" rather than inferring a special meaning. This is the same mechanism that makes every field default part of the cache identity — see [`project-essentials.md`](../project-essentials.md) § "Cache identity is the reproducibility contract". *(F6, pinned in Round 3 — see header.)*
+**Every top-level recipe section persists in `recipe.json`, declared or not.** The persisted `recipe.json` is the canonical `model_dump(mode="json")` of the full `Recipe` model, so **all** top-level sections are present whether or not the author wrote them — an undeclared section materializes as its model default: `[]` for list sections (`InputContracts`, `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `OutputExpectations`, `Visualizations`, `Sinks`), `null` for optional object sections (`SampleData`), and the section's own default object where one exists. Consumers SHOULD treat an empty-list / `null` section as "not declared" rather than inferring a special meaning. *(F6, pinned in Round 3 — see header.)*
+
+### Segment-scoped recipe shape (Phase J Recipe Architecture bundle, v0.22.0)
+
+The recipe stays **flat on disk** — the v0.22.0 bundle did **not** reshape `recipe.json` (Option 1: segmentation is an *internal* partition that drives hashing, per-segment versioning, and validation dispatch, not author-facing nesting). Consumers binding to recipe-model fields need no structural change. But the bundle binds every field to exactly one of **four identity segments**, and that mapping is now a cross-repo contract surface (it governs which changes invalidate which caches — see § Cache-identity contract):
+
+| Segment | Fields | Notes |
+|---|---|---|
+| `core` | `schema_version`, `plugin`, `seed`, `Input`, `Output`, `Labels`, `SampleData`, `InputContracts`, `Splits`, `OutputExpectations` | The structural sections + identity/version stamps. |
+| `plugin` | `Filters`, `Generation`, `Transformations`, `Augmentations`, `Featurizations`, `Visualizations`, `Sinks` | The op-list sections whose op vocabulary the plugin defines. Versioned per plugin family (`plugin:image` / `plugin:audio`) so an audio-surface change never moves an image recipe's identity (Finding A). |
+| `overlays` | `overlays` | Overlay *definitions*; always stripped to `{}` before hashing, so they never enter identity (see § Cache-identity contract). |
+| `extensions` | `extensions` | The J.n.6 experimental-parameter namespace (below). |
+
+**`extensions` namespace (Story J.n.6).** A new optional top-level `extensions: {<namespace>: {<key>: <value>}}` block carries experimental, plugin-consumed parameters; pydantic's `extra="forbid"` is relaxed *only inside* a namespace. It enters cache identity only when non-empty (an empty/absent block hashes to the empty-segment marker — additive, no invalidation). Plugins declare which keys they consume; DataRefinery's validator refuses any undeclared namespace/key. Extensions are **declarative parameters only** — they do not activate code. ModelFoundry consumers generally ignore `extensions` unless a shared plugin defines keys MF also reads.
+
+**No implicit defaults (Story J.n.4).** Op `ParameterSpec`s no longer carry code-supplied defaults: a parameter is either `required` (the author/scaffolder writes a value) or a **mode-selecting optional** (absence is itself the documented behavior, e.g. `normalize` with no `mean`/`std` ⇒ fit-from-train). The canonical `recipe.json` therefore contains *exactly what the author wrote* for op params — there is no longer a "code-supplied default silently in the bytes" layer for op parameters. Recommended starting values live in the scaffolder (`Plugin.recommended_params`), emitted into recipe text. (Structural section defaults — empty-list sections, `SampleData: null` — are unchanged; the no-defaults rule is about op `params`.)
 
 ### `Augmentations` section
 
@@ -348,6 +363,18 @@ Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SC
 - **The recipe shape on disk is UNCHANGED.** Segmentation is an internal partition (Option 1), not an author-facing reshape — `recipe.json` stays flat with the same top-level sections and field names. Consumers binding to recipe-model fields need **no** changes for v3; the loader migrates v1/v2 recipes to v3 by stamping `schema_version: 3` (no field redistribution). Only `recipe_hash` (and therefore the instance path) changes — and consumers must not bind to that directly anyway (use the resolver).
 - **`AudioSource` discriminated-union member (forward-looking).** `InputSource` is now the open base of a narrow union; an audio source carries `target_sample_rate: int` (selected presence-based; `type` stays a free `str`). Image sources are unaffected and structurally cannot carry audio-only fields. The audio plugin proper lands in a later Subphase-J-1 story; consumers binding only to image recipes see no change.
 
+### Per-segment versioning + migration registry (Story J.n.7)
+
+The segmented identity above is governed by **per-segment versions — there is no global umbrella counter.** Each segment evolves on its own version axis (`core`, `plugin:image`, `plugin:audio`, `overlays`, `extensions`); a bump to one segment invalidates only that segment's scope. The architectural rationale is the DataRefinery Phase-J recipe-architecture spike memo (`docs/specs/phase-j-recipe-architecture-spike.md` in the DR repo) — the **cross-tool-family standard** ModelFoundry adopts wholesale.
+
+Mechanics relevant to consumers:
+
+- **The flat `recipe.schema_version` stays the on-disk era marker.** DataRefinery keeps the recipe flat (Option 1), so there is **no on-disk `segment_versions` block** — per-segment versions live as DataRefinery build constants plus a structural era-detection table (`recipe.segments.SCHEMA_ERA_SEGMENT_VERSIONS`) keyed by the flat `schema_version`. Consumers continue to read the single flat `recipe.schema_version` (currently `3`); they do **not** need to parse a per-segment version block.
+- **Per-segment migrations run on DataRefinery's read path.** A `(segment, from, to)`-keyed registry (`recipe.segments.SEGMENT_MIGRATIONS`) brings each segment up to the current build version when a recipe is loaded; the cached `recipe.json` always reflects the latest segmented shape. Today the registry is empty (no segment has bumped past v1) and the dispatch is an exact pass-through. When a segment first bumps, DataRefinery ships the migration with it.
+- **Pin-test discipline guarantees scoped invalidation.** DataRefinery pins each segment's digest in CI (`tests/unit/test_segment_pin_hashes.py`); an unexpected move of any single segment's digest is a blocking failure forcing a conscious per-segment bump + migration. This is the enforcement behind the cross-repo promise that an audio-plugin change cannot silently invalidate an image recipe's cache (and vice-versa).
+
+The consumer takeaway is unchanged and reinforced: **`recipe_hash` is DataRefinery's to compute — never replicate it**; bind to the resolver's `instance_path` / `cache_key`.
+
 ## Resolving a materialized instance
 
 The previous section documents the cache-key derivation for **understanding and audit only**. Consumers MUST NOT reimplement it. DataRefinery exposes one blessed resolver; use whichever entry point fits.
@@ -397,6 +424,8 @@ ModelFoundry SHOULD track DataRefinery's current `SUPPORTED_SCHEMA_VERSIONS` set
 - If the recipe's `schema_version` is **lower** than ModelFoundry's lowest known → ModelFoundry's choice (typically a forward-migration in DataRefinery's `recipe.loader.migrations` already handled the shape; ModelFoundry can rely on the loader-emitted shape).
 
 ModelFoundry adopting a newer DataRefinery `schema_version` requires updating ModelFoundry's tracked set and re-running its own contract tests against the new manifest/recipe shapes.
+
+**Per-segment coordination (Story J.n.7).** Under the segmented architecture the *finer-grained* unit of evolution is the **per-segment version** (`core`, `plugin:image`, `plugin:audio`, `overlays`, `extensions`), not the flat counter. Because DataRefinery keeps the recipe flat (no on-disk segment-version block), the flat `recipe.schema_version` remains the **consumer-facing coordination counter** — a consumer tracks the flat `SUPPORTED_SCHEMA_VERSIONS` set exactly as above, and any per-segment bump that changes the recipe shape DataRefinery surfaces by also advancing the flat era marker. A consumer that wants segment-level granularity (e.g. "I only care about `plugin:audio` changes") MAY read DataRefinery's `recipe.segments.current_segment_versions()` / `SCHEMA_ERA_SEGMENT_VERSIONS`, but the **binding contract is still the flat `recipe.schema_version`**: track it, hard-error on an unknown-higher version, and re-run contract tests on adoption. The same per-segment standard applies symmetrically to ModelFoundry's own recipe model (MF adopts the horizontal mechanism wholesale; its vertical stage-reuse axis stays MF-owned).
 
 ## Forward-compatibility expectations
 

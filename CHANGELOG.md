@@ -86,6 +86,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   digests are pinned to the empty-segment marker (the J.n.5/J.n.6 additivity
   gate). Subsumes the former Future "Default-change discipline tooling" item.
   `tech-spec.md` § Cache Identity updated.
+- **Cross-repo contract: segmented identity adopted as the cross-tool-family
+  standard (Story J.n.8, doc-only).** The vendor-dependency-specs and
+  `project-essentials.md` now pin the Phase J Recipe Architecture bundle —
+  segmented cache identity, per-segment versioning + migration registry, the
+  `extensions` namespace, and the no-implicit-defaults discipline — as the
+  shared standard ModelFoundry adopts wholesale (NbFoundry mirrors per its
+  CLI/library binding). `modelfoundry/vendor-dependency-spec.md` gains a
+  segment-scoped recipe-shape table and per-segment versioning/coordination
+  subsections; `nbfoundry/vendor-dependency-spec.md` expands its v2→v3 entry;
+  `project-essentials.md` replaces the flat-`model_dump` cache-identity framing
+  with the segmented model, adds a "No implicit defaults" entry, and names the
+  four segments as separately-bumping cross-repo contract surfaces. No code or
+  recipe/manifest shape change.
 - **Plugin source subclasses — `AudioSource` (Story J.n.3).** `InputSource`
   is now the open base of a narrow discriminated union; `AudioSource` adds
   `target_sample_rate`. Selection is presence-based and `type` stays a free
