@@ -26,6 +26,7 @@ Scope notes for v1:
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -99,6 +100,8 @@ from datarefinery.reporting.report import (
 
 Record = Mapping[str, Any]
 ProgressCallback = Callable[[str], None]
+
+_log = logging.getLogger(__name__)
 
 #: Stage names accepted by the ``stop_after`` partial-run option, in
 #: execution order. The runner refuses any other value with
@@ -176,6 +179,21 @@ class PipelineRunner:
 
         cache_key = compute_cache_key(self.recipe, raw_input_hashes, self.seed)
         final_dir = instance_dir(self.config.cache_root, cache_key)
+
+        # Story J.n.2 dormant shadow path: compute the (non-authoritative)
+        # segmented recipe hash and log it for transition verification. The
+        # flat `cache_key` above stays authoritative; the segmented hash is
+        # intentionally different (the uniform-wrapping combiner is J.n.3's
+        # one-time invalidation). No cache-identity effect.
+        if self.config.shadow_segmented_identity:
+            from datarefinery.recipe.segments import shadow_recipe_hash
+
+            shadow = shadow_recipe_hash(self.recipe.model_dump(mode="json"))
+            _log.debug(
+                "shadow segmented recipe_hash=%s (authoritative flat recipe_hash=%s)",
+                shadow,
+                cache_key.recipe_hash,
+            )
 
         if manifest_path(final_dir).exists() and stop_after is None:
             return RunnerResult(

@@ -324,6 +324,23 @@ Why this is sufficient: the pydantic model is the recipe's *meaning* — default
 
 **Subtlety to enforce in code review:** any change to a pydantic field default that affects semantics silently invalidates every existing cache. Pre-production, that's tolerable (features.md already says upgrades may invalidate). Post-production, default changes that affect semantics MUST go through a `schema_version` bump with a migration in `recipe.loader`. A unit test pins the canonical hash for a representative fixture recipe; bumping the test value requires a deliberate review.
 
+> **Being superseded — segmented identity (Phase-J Recipe Architecture bundle).** The flat `model_dump` canonical form above is being replaced by *segmented* canonical bytes per [`phase-j-recipe-architecture-design.md`](phase-j-recipe-architecture-design.md). The "field-default silently invalidates every cache" subtlety is dissolved by the **no-implicit-defaults** rollout (J.n.4) + sparse hashing; see the new module below.
+
+### `recipe.segments` (Story J.n.2 — dormant infrastructure)
+
+```python
+SEGMENT_ORDER = ("core", "plugin", "overlays", "extensions")
+EMPTY_MARKER: bytes              # fixed 32-byte stand-in for an empty/absent segment
+segment_digest(value) -> bytes   # SHA-256 of sorted-compact JSON, or EMPTY_MARKER if empty
+join_stable(digests) -> bytes    # b"\x1f".join(digests) — the stable canonical join
+segmented_recipe_hash(segments) -> str   # SHA-256(join(per-segment digests in SEGMENT_ORDER))
+prefix_hash(digests, upto) -> str        # cumulative-prefix hook for the deferred vertical axis (Q8)
+```
+
+The segmented hasher composes the recipe hash from independent per-segment digests, so an empty segment contributes a fixed nothing (additive) and a change to one segment cannot move another's digest (scoped invalidation — design Q1/Q3). Per-segment version constants (`CORE_SCHEMA_VERSION`, `PLUGIN_IMAGE_SCHEMA_VERSION`, `PLUGIN_AUDIO_SCHEMA_VERSION`, `OVERLAYS_SCHEMA_VERSION`, `EXTENSIONS_SCHEMA_VERSION`) and a `(segment, from, to)`-keyed `SEGMENT_MIGRATIONS` skeleton accompany it (design Q4; populated by J.n.7).
+
+**Dormant in J.n.2.** The flat `to_canonical_bytes` hasher remains authoritative; the segmented hash is *intentionally* not equal to the flat hash (the uniform-wrapping combiner is J.n.3's one-time invalidation). When `RuntimeConfig.shadow_segmented_identity` is set, the runner computes `shadow_recipe_hash(recipe.model_dump(mode="json"))` (a degenerate single-`core` wrapping) and logs it without affecting the cache key. J.n.3 distributes fields into real segments and flips the segmented hasher to authoritative.
+
 ### `recipe.variants` (FR-14)
 
 ```python

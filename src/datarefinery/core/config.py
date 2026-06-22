@@ -33,6 +33,12 @@ class RuntimeConfig(BaseModel):
     log_target: str | None = None
     plugin_path: tuple[Path, ...] = ()
     workers: int = 1
+    #: Story J.n.2 dormant shadow path. When True, the runner additionally
+    #: computes the (non-authoritative) segmented recipe hash and logs it,
+    #: leaving the flat `to_canonical_bytes` cache key unchanged. Execution
+    #: context only — never participates in cache identity. J.n.3 flips the
+    #: segmented hasher to authoritative and retires this flag.
+    shadow_segmented_identity: bool = False
 
     @classmethod
     def resolve(

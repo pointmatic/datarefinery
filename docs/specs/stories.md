@@ -452,7 +452,7 @@ The [spike memo](phase-j-recipe-architecture-spike.md) § 9 enumerates 7 substan
 
 ---
 
-### Story J.n.2: Segment-aware canonical hasher + per-segment versioning infrastructure [Planned]
+### Story J.n.2: Segment-aware canonical hasher + per-segment versioning infrastructure [Done]
 
 **Disposition: feature addition (infrastructure).** Part of the Recipe Architecture bundle.
 
@@ -460,14 +460,14 @@ Implement the segment-aware canonical-bytes machinery per the J.n.1 design memo:
 
 **Tasks:**
 
-- [ ] Implement `join_stable` per J.n.1 Q3 (concatenated digests or Merkle); ensure it supports cumulative-prefix composition (the deferred Q8 vertical-axis hook).
-- [ ] Define empty-segment markers; pin-test that an empty segment contributes a fixed nothing to the join.
-- [ ] Add per-segment version constants (e.g., `CORE_SCHEMA_VERSION`, `PLUGIN_IMAGE_SCHEMA_VERSION`, `PLUGIN_AUDIO_SCHEMA_VERSION`, `OVERLAYS_SCHEMA_VERSION`, `EXTENSIONS_SCHEMA_VERSION`).
-- [ ] Add migration registry skeleton keyed per J.n.1 Q4 (`(segment, from, to) → migration_fn`).
-- [ ] Provide a shadow-comparison mode: when active, the runner computes both old flat canonical bytes AND new segmented bytes, asserting they hash identically for existing flat-shape recipes (transition correctness; turned off in J.n.3 when segmented becomes the only path).
-- [ ] Unit tests for `join_stable` determinism, empty-segment isolation, prefix-composition behavior, shadow-mode parity on a sweep of fixture recipes.
-- [ ] DOC: document the new internal API in [`tech-spec.md`](tech-spec.md) § Cache identity.
-- [ ] CI parity: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+- [x] Implement `join_stable` per J.n.1 Q3 (concatenated digests or Merkle); ensure it supports cumulative-prefix composition (the deferred Q8 vertical-axis hook). Concatenated digests (`b"\x1f".join`) in new [`recipe/segments.py`](../../src/datarefinery/recipe/segments.py); `prefix_hash(digests, upto)` provides the vertical hook.
+- [x] Define empty-segment markers; pin-test that an empty segment contributes a fixed nothing to the join. `EMPTY_MARKER` = domain-separated 32-byte constant; `segment_digest(empty)` returns it; pin-tested ({}/None/[]/"" → marker; extensions={} ≡ extensions=None).
+- [x] Add per-segment version constants (e.g., `CORE_SCHEMA_VERSION`, `PLUGIN_IMAGE_SCHEMA_VERSION`, `PLUGIN_AUDIO_SCHEMA_VERSION`, `OVERLAYS_SCHEMA_VERSION`, `EXTENSIONS_SCHEMA_VERSION`). All five added (=1).
+- [x] Add migration registry skeleton keyed per J.n.1 Q4 (`(segment, from, to) → migration_fn`). `SEGMENT_MIGRATIONS: dict[tuple[str,int,int], Callable[[dict],dict]] = {}` (empty; J.n.7 populates).
+- [x] Provide a **dormant** shadow path: the segmented hasher exists alongside the authoritative flat `model_dump` hasher but does not yet drive the cache key. **Corrected per confirmed Q3** (the uniform-wrapping combiner makes the segmented hash *intentionally* ≠ the flat hash — that delta is J.n.3's one-time invalidation, not an error): shadow mode does NOT assert flat == segmented. It computes the segmented hash on a degenerate single-`core` wrapping of the flat recipe (no field distribution — J.n.3 owns that) and asserts **determinism** + that **the flat hasher remains authoritative** (cache key unchanged when shadow is on). J.n.3 flips authority to segmented and performs the real field distribution — the atomic flip. Implemented: `shadow_segments_from_flat` / `shadow_recipe_hash`; `RuntimeConfig.shadow_segmented_identity: bool = False`; runner computes + DEBUG-logs the shadow hash when on, authoritative flat key untouched.
+- [x] Unit tests for `join_stable` determinism, empty-segment isolation, prefix-composition behavior, and shadow determinism / authoritative-key-unchanged on a sweep of fixture recipes. 16 unit tests in [`test_segments.py`](../../tests/unit/test_segments.py) + 1 integration test in [`test_shadow_segmented_identity.py`](../../tests/integration/test_shadow_segmented_identity.py) (shadow-on vs shadow-off → identical authoritative `recipe_hash` + instance path).
+- [x] DOC: document the new internal API in [`tech-spec.md`](tech-spec.md) § Cache identity. Added `recipe.segments` subsection + a "being superseded" note on the flat-canonical subtlety.
+- [x] CI parity: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/`. 1358 tests pass; mypy clean (218 files); ruff check + format clean.
 
 **Out of Scope:**
 
