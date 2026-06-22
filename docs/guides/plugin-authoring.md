@@ -2,9 +2,10 @@
 
 A DataRefinery **plugin** specializes the recipe pipeline for one data category. The plugin declares which recipe sections it supports, which operations are available within those sections, and the parameter schema for each operation; it then supplies the operation implementations at materialize time.
 
-v1 ships three plugins out of the box (see [`src/datarefinery/plugins/`](../../src/datarefinery/plugins/)):
+DataRefinery ships these plugins out of the box (see [`src/datarefinery/plugins/`](../../src/datarefinery/plugins/)):
 
 - `image_classification` — full implementation (Filters, Generation, Transformations, Featurizations, Augmentations, Visualizations).
+- `audio_classification` — the **second real plugin** (`is_stub() → False`), scaffolded in Story J.o with an empty operation set; its operations (decode, windowing, `log_mel_spectrogram`, `audio_normalize`) land in Stories J.p–J.t. Its existence as a distinct, non-image plugin is what validates the **plugin-interface honesty goal** from [`concept.md`](../specs/concept.md) and [`features.md`](../specs/features.md) — the abstraction bakes in no image assumptions.
 - `tabular` — stub: schemas declared, `operation_factory` refuses.
 - `text` — stub: schemas declared, `operation_factory` refuses.
 

@@ -104,7 +104,14 @@ def test_is_stub_reflects_factory_behavior(plugin: Plugin) -> None:
             f"operation_factory({section!r}, {op_name!r}) succeeded"
         )
 
-    # Non-stub: at least one declared op must construct cleanly so the
+    # Non-stub *scaffold* (Story J.o): a real plugin may ship with an
+    # intentionally-empty operation set — a registered seam awaiting its ops
+    # (e.g. `audio_classification`, whose ops land in J.p-J.t). There is nothing
+    # to construct, so the "at least one constructable op" check does not apply.
+    if not plugin.supported_operations:
+        return
+
+    # Non-stub with declared ops: at least one must construct cleanly so the
     # ``is_stub`` claim is grounded.
     succeeded: list[tuple[str, str]] = []
     failures: list[tuple[str, str, str]] = []

@@ -680,7 +680,7 @@ Phase-bundle release closing the rearchitecture work. Bumps the package version 
 
 ---
 
-### Story J.o: `audio_classification` plugin scaffold + protocol conformance [Planned]
+### Story J.o: `audio_classification` plugin scaffold + protocol conformance [Done]
 
 **Disposition: feature addition (plugin seam).** Part of Phase J phase-bundle release. Closes R8.
 
@@ -688,13 +688,13 @@ Stand up the bare `audio_classification` plugin so the existing plugin-discovery
 
 **Tasks:**
 
-- [ ] Add `src/datarefinery/plugins/audio_classification/__init__.py` and `src/datarefinery/plugins/audio_classification/plugin.py` with the minimum `Plugin` protocol implementation: `name = "audio_classification"`, `supported_sections` per the J.n design memo, `supported_operations = []`, `is_stub() → False`, `operation_factory` raising `PluginError` for any op kind until populated.
-- [ ] Register the plugin via the existing `datarefinery.plugins` entry-point group in [`pyproject.toml`](../../pyproject.toml).
-- [ ] Add `loader_stamped_fields(recipe)` hook stub (per the Future entry on plugin-pluggable validator reserved-set hooks); audio scaffold returns an empty set initially — populated as J.p–J.t add field-stamping ops.
-- [ ] Unit test that the plugin loads, reports the correct name, `is_stub() → False`, and an empty operation list.
-- [ ] Plugin-contract test: declare a minimal fixture recipe with `plugin: audio_classification`, no operations; confirm it validates cleanly and materializes an empty instance (mirrors the precedent for image_classification with no Filters/Generation/etc.).
-- [ ] DOC: brief [`docs/guides/plugin-authoring.md`](../guides/plugin-authoring.md) cross-reference noting `audio_classification` is the second real plugin (joining `image_classification`), validating the plugin-interface honesty goal from `concept.md` and `features.md`.
-- [ ] CI parity: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+- [x] Add [`plugins/audio_classification/__init__.py`](../../src/datarefinery/plugins/audio_classification/__init__.py) + [`plugin.py`](../../src/datarefinery/plugins/audio_classification/plugin.py): `name = "audio_classification"`, `supported_sections` = full standard set (per design memo § 4 — includes the frozen audio stages Generation/Featurizations/Transformations + the mandatory Input/Output/Labels/Splits; "inheriting the rest costs nothing"), `supported_operations = {}`, `is_stub() → False`, `operation_factory` raises `PluginError` naming section/op. Plus `recommended_params`/`extension_keys` (return `{}`) so it satisfies the J.n.4/J.n.6 protocol additions.
+- [x] Register the plugin via the `datarefinery.plugins` entry-point group in [`pyproject.toml`](../../pyproject.toml); editable reinstall (`pyve env run pip install -e .`) so discovery finds it.
+- [x] Add `loader_stamped_fields(recipe)` hook stub — returns `set()` in the scaffold; J.p–J.t populate it as field-stamping ops land. **Scoped narrowly per J.n.1 Q6:** only the audio plugin's stub is in J.o; wiring the hook into validator check 23 across all plugins remains the separate Q6 follow-up.
+- [x] Unit / contract test: [`tests/plugin_contract/test_audio_classification.py`](../../tests/plugin_contract/test_audio_classification.py) — loads via discovery, correct name, `is_stub() → False`, empty op list, `operation_factory` raises, `recommended_params`/`extension_keys`/`loader_stamped_fields` empty.
+- [x] Plugin-contract/materialize test: minimal `plugin: audio_classification` recipe validates cleanly (all 28 checks) **and** materializes an empty-op instance ([`tests/integration/test_audio_scaffold.py`](../../tests/integration/test_audio_scaffold.py)). **Scope note:** audio input/decode is J.p, so the seam test injects records via the runner's `raw_records=` path (the same pattern other runner integration tests use) rather than reading an audio source from disk — the point is the zero-op pipeline seam, not audio I/O. Also relaxed the generic `test_protocol.py::test_is_stub_reflects_factory_behavior` to permit a non-stub plugin with an intentionally-empty op set (the new scaffold case).
+- [x] DOC: [`plugin-authoring.md`](../guides/plugin-authoring.md) intro updated — `audio_classification` listed as the second real plugin, validating the plugin-interface honesty goal from `concept.md`/`features.md`.
+- [x] CI parity: `pyve test` (1446 pass), `mypy src tests` (clean, 229 files), `ruff check` + `ruff format --check` (clean), per-module core-invariant coverage gate (all 8 ≥ 95%; new audio package at 100%). Fixed en-dash (RUF00x) + list-invariance (`list[Mapping]`) + E501 issues surfaced by the full gate.
 
 **Out of Scope:**
 
