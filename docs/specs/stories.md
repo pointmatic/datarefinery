@@ -383,11 +383,9 @@ The project already builds with Hatchling (`build-backend = "hatchling.build"`);
 
 A consumer is planning to use DataRefinery for audio classification. This phase is focused on implementing the requirements in `docs/specs/audio-classification-requirements.md`.
 
-> **⏸ PAUSED (2026-06-13).** Stories J.o–J.w are on hold pending the segmented-recipe-identity rearchitecture (Story J.x spike → [`phase-j-recipe-architecture-spike.md`](phase-j-recipe-architecture-spike.md) → forthcoming `plan_phase` / Phase K), which sequences **before** this subphase resumes. J.n Finding A (`target_sample_rate` would invalidate every image cache) generalized into a recipe-model rearchitecture decision.
+> **▶ RESUMED (2026-06-22).** The segmented-recipe-identity rearchitecture (Story J.x spike → Recipe Architecture bundle J.n.1–J.n.9) shipped at **v0.22.0**, so Subphase J-1 resumed on the new segmented foundation. J.o–J.q are `[Done]`; J.r is the next `[Planned]` story. J.n Finding A (`target_sample_rate` would invalidate every image cache) was closed structurally by J.n.3's `AudioSource` discriminated variant + `plugin:audio` segment.
 >
-> **Dependency precision:** the hard dependency begins at **J.p** (audio sources + `target_sample_rate` need the plugin-surface segment; the `AudioSource` variant *is* that segment in miniature). **J.o** (bare scaffold — touches no recipe-model/canonical-bytes surface) is technically independent, but is kept behind the rearchitecture too for coherence and because building audio on the flat model would enlarge the one-time migration (adds surface to the very model being re-segmented — against the memo's §8 timing argument). Audio is therefore built **once**, on the new foundation, not refactored.
->
-> J.p/J.q/etc. also still reference the pre-v3 `pyve testenv run …` form — to be updated to `pyve env run …` when these stories execute.
+> CI-parity steps below use the Pyve v3 `pyve env run …` form (the pre-v3 `pyve testenv run …` form is retained only in already-completed stories' historical records).
 
 ---
 
@@ -756,7 +754,7 @@ Implement the windowing op that turns a variable-length decoded clip into N fixe
 
 ---
 
-### Story J.r: Clip-level label semantics + Splits-before-Generation order (R6) [Planned]
+### Story J.r: Clip-level label semantics + Splits-before-Generation order (R6) [Done]
 
 **Disposition: feature addition + validator check.** Part of Phase J phase-bundle release. Closes R6.
 
@@ -764,14 +762,14 @@ Make clip-level labels propagate to all windows of a clip and enforce that all w
 
 **Tasks:**
 
-- [ ] Confirm the runner enforces Splits → Generation order via an integration-test guard so the ordering can't regress (build on the J.n memo's verification).
-- [ ] Implement label propagation: when the window op derives child records, the parent's `label` field is inherited verbatim, along with any other label-bearing fields per the recipe's `Labels.field` declaration.
-- [ ] Add validator **check N+1** (new check; integration suite count assertion updates): when the recipe declares a Generation op that fans records out AND Splits is present AND Labels exists, confirm Splits operates at the parent-record level (no per-child stratification path). Refuse with a clear message naming the affected sections if the configuration would otherwise stratify on post-Generation child records.
-- [ ] Unit tests: label propagation across windows; window→parent grouping integrity; validator refuses a leak-prone configuration.
-- [ ] Integration test: a multi-clip fixture with stratified Splits → assert every clip's windows land in exactly one split (no clip's `source_record_id` appears in two splits).
-- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Splits + clip-level labels callout.
-- [ ] CHANGELOG entry.
-- [ ] CI parity.
+- [x] Confirm the runner enforces Splits → Generation order via an integration-test guard so the ordering can't regress (build on the J.n memo's verification). `test_splits_runs_before_generation_in_stage_order` in [`tests/integration/test_audio_clip_split_integrity.py`](../../tests/integration/test_audio_clip_split_integrity.py) pins `STAGE_NAMES.index("Splits") < STAGE_NAMES.index("Generation")` — the structural invariant the whole R6 guarantee rests on (runner.py:109).
+- [x] Implement label propagation: when the window op derives child records, the parent's `label` field is inherited verbatim, along with any other label-bearing fields per the recipe's `Labels.field` declaration. **Already correct from J.q** — the `window` op builds each child as `dict(record)`, so every clip-level field (including the label under any `Labels.field` name) is inherited verbatim. Locked with a regression guard `test_window_propagates_clip_level_label_verbatim_to_every_window` (non-default `category` label field) in [`test_window_op.py`](../../tests/plugins/audio_classification/test_window_op.py).
+- [x] Add validator **check 29** (`splits_operate_at_clip_level`; integration suite count assertion updates 28→29): when a record-fanning Generation op (`replace_input_records=True`) is present and `Splits.stratify_by` is set, refuse if `stratify_by` names a fan-out-introduced field (`source_record_id` / `window_index` — module constant `_FANOUT_CHILD_FIELDS`), naming the offending field + the fanning op(s). Complements check 9 (declared-somewhere) without overlapping it — declaring `window_index` in `Output.record_schema` satisfies 9 but check 29 still refuses stratifying on it. [`recipe/validator.py`](../../src/datarefinery/recipe/validator.py).
+- [x] Unit tests: label propagation across windows; window→parent grouping integrity; validator refuses a leak-prone configuration. 5 check-29 cases in [`test_validator.py`](../../tests/unit/test_validator.py) (refuse window_index / source_record_id; pass on clip-level label / no-fanning-op / no-stratify_by) + the window-op label-propagation guard.
+- [x] Integration test: a multi-clip fixture with stratified Splits → assert every clip's windows land in exactly one split (no clip's `source_record_id` appears in two splits). `test_every_clips_windows_land_in_exactly_one_split` (8 clips × 2 classes, `stratify_by: label`) asserts pairwise-disjoint per-split `source_record_id` sets, full clip coverage, label inheritance, and the 32-window expansion ([`test_audio_clip_split_integrity.py`](../../tests/integration/test_audio_clip_split_integrity.py)).
+- [x] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Splits + clip-level labels callout. New § Splits → *Clip-level labels (audio) and split integrity* subsection (propagation, split-integrity, check-29-vs-check-9 distinction, ✅/❌ stratify_by example); § Generation → `window` "Splits-before-windowing" bullet updated to reference check 29.
+- [x] CHANGELOG entry. New bullet under the Subphase J-1 `[Unreleased]` section (label propagation + check 29 + the 29-check count).
+- [x] CI parity. `pyve test` (1476 pass), `pyve env run mypy src tests` (clean, 238 files), `pyve env run ruff check src/ tests/` + `ruff format --check` (clean).
 
 **Out of Scope:**
 
@@ -901,7 +899,7 @@ Phase-bundle release closing Subphase J-1. Bumps the package version, writes the
 - [ ] Bump `src/datarefinery/__init__.py` `__version__` to the next minor (per the Version Cadence rule: "highest-impact change in the bundle"; a new modality plugin is **minor**). Hatchling reads this as the single source of truth — no `pyproject.toml [project].version` edit.
 - [ ] CHANGELOG entry: enumerate the new `audio_classification` plugin and the R1–R8 closures; cross-repo contract additions from J.q + J.s + J.t + J.u; new dependency on `librosa`; CHANGELOG note that the second real plugin validates the plugin-interface honesty goal.
 - [ ] Cross-repo coordination final check: confirm [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) and [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) are both current with the audio additions.
-- [ ] Run the full local-verification suite: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
+- [ ] Run the full local-verification suite: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/`.
 - [ ] Present at the approval gate.
 
 **Out of Scope:**

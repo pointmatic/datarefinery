@@ -94,6 +94,32 @@ def test_window_inherits_sample_rate_path_and_label() -> None:
         assert r["label"] == "cat"
 
 
+def test_window_propagates_clip_level_label_verbatim_to_every_window() -> None:
+    # Story J.r (R6): a clip-level label is inherited verbatim by every window of
+    # the clip, regardless of the recipe's Labels.field name (here a non-default
+    # "category" field) — the data-side half of clip-level label semantics.
+    clip = {
+        "record_id": "clips/dog/c.wav",
+        "sample_array": np.arange(1000, dtype=np.float32),
+        "sample_rate": 16000,
+        "path": "/data/clips/dog/c.wav",
+        "category": "dog",
+    }
+    out = window(
+        [clip],
+        seed=0,
+        inputs=["sample_array"],
+        output_schema=_OUTPUT_SCHEMA,
+        params={"window_length_samples": 300, "hop_samples": 300, "remainder": "drop"},
+        label_field="category",
+        op_name="win",
+    )
+    assert len(out) == 3
+    assert all(r["category"] == "dog" for r in out)
+    # And every window groups back to the one parent clip.
+    assert {r["source_record_id"] for r in out} == {"clips/dog/c.wav"}
+
+
 def test_window_length_seconds_resolves_against_sample_rate() -> None:
     # 0.5s @ 16 kHz = 8000 samples; a 16000-sample clip yields 2 windows (hop=8000).
     out = _run(

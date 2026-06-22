@@ -155,8 +155,8 @@ def test_valid_recipe_passes_all_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 28
-    assert {r.check_id for r in report.results} == set(range(1, 29))
+    assert len(report.results) == 29
+    assert {r.check_id for r in report.results} == set(range(1, 30))
     assert all(r.status == "pass" for r in report.results)
 
 
@@ -2037,3 +2037,103 @@ def test_check_27_partial_split_overlap_still_refused() -> None:
     failures = _failures_for(report, 27)
     assert len(failures) == 1
     assert "train" in failures[0].message
+
+
+# ---------------------------------------------------------------------------
+# Check 29 — Splits operate at clip level for a record-fanning Generation op
+# (Story J.r, R6)
+# ---------------------------------------------------------------------------
+
+
+def _audio_recipe(*, stratify_by: str | None = None, fanning: bool = True) -> Recipe:
+    """Minimal audio recipe with a `window` Generation op.
+
+    `source_record_id` / `window_index` are declared in the record schema so
+    check 9 (stratify field must be declared) passes — isolating check 29 as
+    the discriminating check for "stratify on a fan-out-introduced field".
+    """
+    splits: dict[str, Any] = {"ratios": {"train": 0.34, "val": 0.33, "test": 0.33}}
+    if stratify_by is not None:
+        splits["stratify_by"] = stratify_by
+    return Recipe.model_validate(
+        {
+            "schema_version": 3,
+            "plugin": "audio_classification",
+            "Input": {
+                "sources": [
+                    {
+                        "name": "clips",
+                        "type": "audio_folder",
+                        "path": "/data",
+                        "target_sample_rate": 16000,
+                    }
+                ]
+            },
+            "Output": {
+                "record_schema": {
+                    "label": {"dtype": "str"},
+                    "source_record_id": {"dtype": "str"},
+                    "window_index": {"dtype": "int"},
+                }
+            },
+            "Labels": {"field": "label", "source": {"kind": "direct"}},
+            "Splits": splits,
+            "Generation": [
+                {
+                    "name": "win",
+                    "op": "window",
+                    "inputs": ["sample_array"],
+                    "output_schema": "matches_input",
+                    "seed": 0,
+                    "splits": ["train", "val", "test"],
+                    "replace_input_records": fanning,
+                    "params": {
+                        "window_length_samples": 1600,
+                        "hop_samples": 1600,
+                        "remainder": "drop",
+                    },
+                }
+            ],
+        }
+    )
+
+
+def _audio_plugin() -> _Plugin:
+    return _Plugin(name="audio_classification")
+
+
+def test_check_29_refuses_stratify_on_window_index_with_fanning_generation() -> None:
+    recipe = _audio_recipe(stratify_by="window_index")
+    report = validate(recipe, _audio_plugin())
+    failures = _failures_for(report, 29)
+    assert len(failures) == 1
+    assert "window_index" in failures[0].message
+    assert "Splits" in failures[0].message and "Generation" in failures[0].message
+
+
+def test_check_29_refuses_stratify_on_source_record_id() -> None:
+    recipe = _audio_recipe(stratify_by="source_record_id")
+    report = validate(recipe, _audio_plugin())
+    failures = _failures_for(report, 29)
+    assert len(failures) == 1
+    assert "source_record_id" in failures[0].message
+
+
+def test_check_29_passes_when_stratify_on_clip_level_label() -> None:
+    recipe = _audio_recipe(stratify_by="label")
+    report = validate(recipe, _audio_plugin())
+    assert not _failures_for(report, 29)
+
+
+def test_check_29_passes_without_a_fanning_generation_op() -> None:
+    # window_index stratify is harmless when no Generation op fans records out:
+    # there is no clip→window expansion to leak across splits.
+    recipe = _audio_recipe(stratify_by="window_index", fanning=False)
+    report = validate(recipe, _audio_plugin())
+    assert not _failures_for(report, 29)
+
+
+def test_check_29_passes_when_no_stratify_by() -> None:
+    recipe = _audio_recipe(stratify_by=None)
+    report = validate(recipe, _audio_plugin())
+    assert not _failures_for(report, 29)

@@ -620,7 +620,7 @@ Generation:
 - **Remainder:** a window begins at every `hop_samples` offset within the clip. Full windows are emitted as-is; any window extending past the clip end is **zero-padded** (`remainder: pad_zero`) or **skipped** (`remainder: drop`).
 - **Grouping:** each window record carries `source_record_id` (the parent clip id) and `window_index`, and `record_id = "<clip>__w0000"`. Downstream tools group windows back to their clip via `source_record_id` (the clip↔window aggregation key). `manifest.record_counts` reflects the expanded window count.
 - **Determinism:** windowing is fully deterministic (no RNG) — byte-identical across runs and worker counts.
-- **Splits-before-windowing:** because Splits run before Generation, each clip's windows all land in the clip's assigned split (clip-level split integrity; the defensive validator check lands in a later story).
+- **Splits-before-windowing:** because Splits run before Generation, each clip's windows all land in the clip's assigned split, and every window inherits the clip's label verbatim (clip-level split integrity + label propagation). Validator **check 29** defensively refuses `Splits.stratify_by` naming a fan-out field (`source_record_id` / `window_index`) — see § Splits → *Clip-level labels*.
 
 #### `tag_fields` on `imagecorruptions_apply`
 
@@ -671,6 +671,21 @@ Splits:
 - `seed` defaults to the recipe-level `seed` if omitted.
 - For deterministic non-ratio splitting, use `key_assignment` with a field-to-split mapping instead of `ratios`.
 - `class_balance` lets ModelFoundry honor a sampling strategy at training time — that handles class imbalance without removing data.
+
+#### Clip-level labels (audio) and split integrity
+
+When a recipe uses a record-fanning `Generation` op — today the audio `window` op (`replace_input_records: true`), which fans one clip into N window records — labels are **clip-level**: each window inherits its parent clip's label verbatim. Because `Splits` runs *before* `Generation` (see § Generation → `window`), each split is a set of *clips*, and all of a clip's windows land in the clip's assigned split. This guarantees no train/eval leakage across a clip's windows — verifiable as "no clip's `source_record_id` appears in two splits."
+
+Stratify on a **clip-level** field (typically the label). Validator **check 29** refuses `Splits.stratify_by` set to a field the fan-out *introduces* on its child records — `source_record_id` or `window_index` — because those fields do not exist on the clip-level records present when `Splits` runs, and stratifying on them would be the recipe-level path to scattering a clip's windows across splits:
+
+```yaml
+Splits:
+  ratios: { train: 0.7, val: 0.15, test: 0.15 }
+  stratify_by: label            # ✅ clip-level — every window of a clip stays together
+  # stratify_by: window_index   # ❌ refused by check 29 (window-level field)
+```
+
+This is distinct from check 9 (the stratify field must be *declared* somewhere): declaring `window_index` in `Output.record_schema` satisfies check 9 but still does not make it a valid stratification key — check 29 closes that gap. (Noisy / low-confidence label handling is out of scope for the data side; it belongs to the modeling repo.)
 
 #### Sub-partitioning via `applies_to`
 

@@ -73,7 +73,7 @@ def test_tabular_recipe_validates_clean_against_stub_plugin() -> None:
     recipe = Recipe.model_validate(_tabular_recipe_dict())
     report = validate(recipe, TABULAR_PLUGIN)
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 28
+    assert len(report.results) == 29
 
 
 def test_tabular_operation_factory_raises_plugin_error() -> None:

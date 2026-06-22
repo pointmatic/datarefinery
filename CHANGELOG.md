@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `source_record_id` now serves two mechanisms (aggressive variants `__v` +
   audio windows `__w`). `recipe-authoring.md` § Generation gains a `window`
   subsection.
+- **Clip-level label semantics + split integrity (Story J.r, R6).** Clip-level
+  labels propagate verbatim to every window of a clip, and all of a clip's
+  windows stay within one split — a free consequence of the runner's
+  `Splits`-before-`Generation` stage order (each split is a set of clips; the
+  `window` op fans clips out within their already-assigned split). New validator
+  **check 29** (`splits_operate_at_clip_level`) defensively refuses
+  `Splits.stratify_by` naming a fan-out-introduced field (`source_record_id` /
+  `window_index`) when a record-fanning Generation op is present — the one
+  recipe-level path to window-level stratification, which would scatter a clip's
+  windows across splits. Complements check 9 (declared-somewhere) without
+  overlapping it. The validator suite now runs **29** checks.
+  `recipe-authoring.md` § Splits gains a *Clip-level labels* subsection.
 
 
 re-founds DataRefinery's cache identity on a **segmented** model with

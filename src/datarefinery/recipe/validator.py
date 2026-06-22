@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""FR-2 recipe validator framework + checks 1-22.
+"""FR-2 recipe validator framework + checks 1-29.
 
 Each enumerated check from features.md becomes a `check_NN_<descriptor>`
 function returning a `CheckResult`. `validate(recipe, plugin)` runs every
@@ -76,6 +76,16 @@ _LIST_SECTIONS = (
     "Visualizations",
     "Sinks",
 )
+
+
+#: Story J.r (R6): fields a record-fanning Generation op *introduces* on its
+#: child records — the cross-cutting clip↔window grouping markers. ``window``
+#: stamps both (``source_record_id`` = parent clip id, ``window_index`` = the
+#: per-child window ordinal); FR-11 aggressive variants reuse ``source_record_id``
+#: for the same grouping role. None of these exist on the parent records present
+#: at Splits time, so stratifying on them is a clip→window split-leak vector
+#: (check 29).
+_FANOUT_CHILD_FIELDS = frozenset({"source_record_id", "window_index"})
 
 
 def _declared_sections(recipe: Recipe) -> list[str]:
@@ -1519,6 +1529,54 @@ def check_28_extension_keys_declared(recipe: Recipe, plugin: Plugin) -> CheckRes
     )
 
 
+def check_29_splits_operate_at_clip_level(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Story J.r (R6): a recipe with a record-fanning Generation op must
+    stratify at the clip (parent) level, never on a fan-out child field.
+
+    Windowing (the ``window`` Generation op, ``replace_input_records: true``)
+    fans one clip into N child window records. The runner guarantees ``Splits``
+    runs **before** ``Generation`` (``STAGE_NAMES``), so each split is a set of
+    *clips* and every window of a clip inherits its parent's split — clip→window
+    split-integrity is a free consequence of stage order. This check is the
+    defensive guard: it refuses the one recipe-level way an author could express
+    window-level stratification, namely ``Splits.stratify_by`` naming a field the
+    fan-out *introduces* (``source_record_id`` / ``window_index`` —
+    :data:`_FANOUT_CHILD_FIELDS`). Such a field does not exist on the parent
+    records present at Splits time; stratifying on it is incoherent and, were the
+    stage order ever to regress, would scatter a clip's windows across splits
+    (train/eval leakage).
+
+    Complements check 9 (stratify field must be *declared* somewhere): an author
+    can satisfy check 9 by declaring ``window_index`` in ``Output.record_schema``,
+    yet still must not stratify on it — check 29 closes that gap. Passes trivially
+    when there is no fanning Generation op or no ``stratify_by``.
+    """
+    del plugin
+    descriptor = "splits_operate_at_clip_level"
+    stratify_by = recipe.Splits.stratify_by
+    if stratify_by is None:
+        return _passed(29, descriptor)
+    fanning = [g for g in recipe.Generation if g.replace_input_records]
+    if not fanning:
+        return _passed(29, descriptor)
+    if stratify_by not in _FANOUT_CHILD_FIELDS:
+        return _passed(29, descriptor)
+    fanning_ops = sorted({g.op for g in fanning})
+    return CheckResult(
+        check_id=29,
+        descriptor=descriptor,
+        status="fail",
+        location="Splits.stratify_by",
+        message=(
+            f"Splits.stratify_by={stratify_by!r} is a window-level field introduced "
+            f"by the record-fanning Generation op(s) {fanning_ops}; it does not exist "
+            f"on the clip-level records present when Splits runs. Stratify on a "
+            f"clip-level field (e.g. the label) so every window of a clip stays in one "
+            f"split — clip→window leakage would otherwise be possible."
+        ),
+    )
+
+
 _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = (
     (1, "schema_version_recognized", check_01_schema_version_recognized),
     (2, "plugin_name_discoverable", check_02_plugin_name_discoverable),
@@ -1616,6 +1674,7 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         check_27_dtype_altering_transform_incompatible_with_aggressive,
     ),
     (28, "extension_keys_declared", check_28_extension_keys_declared),
+    (29, "splits_operate_at_clip_level", check_29_splits_operate_at_clip_level),
 )
 
 
