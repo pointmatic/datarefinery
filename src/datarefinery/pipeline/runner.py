@@ -335,6 +335,7 @@ class PipelineRunner:
                 output_record_schema=self.recipe.Output.record_schema,
                 label_field=label_field,
                 master_seed=self.seed,
+                unlabeled_splits=frozenset(unlabeled_split_names(self.recipe)),
             )
             split_map = dict(gen_result.splits)
             warnings.extend(_wrap(current_stage, gen_result.warnings))

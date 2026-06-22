@@ -76,12 +76,18 @@ def apply_generation(
     output_record_schema: Mapping[str, FieldSpec],
     label_field: str | None = None,
     master_seed: int = 0,
+    unlabeled_splits: frozenset[str] = frozenset(),
 ) -> GenerationResult:
     """Apply every declared generation op to its target splits.
 
     The returned ``splits`` are fresh dicts (callers may keep references
     to the originals safely). Pre/post counts include every input split,
     even those untouched by generation.
+
+    ``unlabeled_splits`` (Story J.v.2): records on an unlabeled partition
+    (FR-22) legitimately carry no ``label_field``, so for those splits the
+    label field is exempt from the output-schema requirement — every other
+    declared field is still required. Labeled splits keep the full requirement.
     """
     counts_before = {name: len(recs) for name, recs in splits.items()}
     out: dict[str, list[Record]] = {name: list(recs) for name, recs in splits.items()}
@@ -111,7 +117,10 @@ def apply_generation(
                 master_seed,
                 resolved_output_schema,
             )
-            _validate_against_output_schema(op.name, split_name, new_records, output_fields)
+            required_fields = output_fields
+            if label_field and split_name in unlabeled_splits:
+                required_fields = output_fields - {label_field}
+            _validate_against_output_schema(op.name, split_name, new_records, required_fields)
             if op.replace_input_records:
                 out[split_name] = list(new_records)
             else:

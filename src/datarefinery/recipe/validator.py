@@ -515,12 +515,19 @@ def check_13_labels_resolvable(recipe: Recipe, plugin: Plugin) -> CheckResult:
 
 
 def _defined_split_names(recipe: Recipe) -> set[str]:
+    # Source-partition-derived splits (Story J.v.1): a pre-partitioned source
+    # contributes its `partition` as a final split — Form A (partitions ARE the
+    # splits, no ratios) and Form B (`ratios` carve sub-splits from one
+    # partition while the others pass through heldout). Union them so an op
+    # targeting a heldout partition (e.g. `splits: [train, val, test]` where
+    # `test` is a source partition) validates under check 15.
+    partition_splits = {src.partition for src in recipe.Input.sources if src.partition is not None}
     splits = recipe.Splits
     if splits.ratios:
-        return set(splits.ratios.keys())
+        return set(splits.ratios.keys()) | partition_splits
     if splits.key_assignment:
-        return set(splits.key_assignment.mapping.values())
-    return set()
+        return set(splits.key_assignment.mapping.values()) | partition_splits
+    return partition_splits
 
 
 def check_14_generation_output_schema_consistent(recipe: Recipe, plugin: Plugin) -> CheckResult:

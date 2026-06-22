@@ -857,34 +857,72 @@ Pin `source_record_id` as the consumer-bind grouping key for audio window aggreg
 
 ---
 
-### Story J.v: End-to-end audio integration fixture + acceptance gate [Planned]
+### Story J.v: End-to-end audio integration fixture + acceptance gate [Done]
 
 **Disposition: integration test.** Part of Phase J phase-bundle release. Closes acceptance criteria 1–9 from [`audio-classification-requirements.md`](audio-classification-requirements.md) § Acceptance criteria.
 
 Author a tiny but realistic audio fixture dataset (9 clips across 3 classes, varied durations, mixed source sample rates, one unlabeled partition) and a recipe exercising every R1–R7 capability. Run `init → validate → materialize` end-to-end and assert each of the 9 acceptance criteria. This is the integration gate that catches inter-story gaps before phase-bundle release.
 
+**Gate findings (developer-confirmed at the J.v gate, 2026-06-22).** The dry run surfaced **exactly two** latent unlabeled-partition gaps, each split into its own prerequisite bugfix story (developer choice) and landed before this gate: **J.v.1** (validator check 15 ignored source-partition-derived splits) and **J.v.2** (Generation output-schema check required `label` on unlabeled records). The all-labeled audio happy path materialized end-to-end with no gaps. Full friction list: [`phase-j-subphase-1-audio-friction.md`](phase-j-subphase-1-audio-friction.md).
+
 **Tasks:**
 
-- [ ] Add `tests/fixtures/audio/` with 9 short synthetic audio files (sine sweeps and simple tones — deterministic synthesis; no real recordings, keeps the repo lean and avoids licensing questions).
-- [ ] Author `tests/fixtures/recipes/audio_classification_v1.yaml` exercising audio_folder + `label_from` + decode + window (Generation) + log_mel_spectrogram (Featurization) + normalize (fit-on-train) + Splits.
-- [ ] Add `tests/integration/test_audio_classification.py` covering:
-  - AC1: init → validate → materialize succeeds with no workarounds.
-  - AC2: byte-identical re-run (excluding `created_at` / `elapsed_seconds`).
-  - AC3: cosmetic edit → cache hit; semantic edit (window_length change) → cache miss.
-  - AC4: window determinism across worker counts (`workers=1, 2, 4`).
-  - AC5: featurization is one-output-per-input (record count unchanged at the Featurization stage).
-  - AC6: `stats_from_instance` round-trip with a sibling eval recipe.
-  - AC7: stratified splits → every window's `source_record_id` lands in exactly one split.
-  - AC8: plugin-contract test green.
-  - AC9: failure path (deliberately broken decode params) → FAILED-marked temp directory; no partial cached instance.
-- [ ] Document any surprises encountered as a friction-list note (either an addendum to an existing phase-J friction doc or a new `phase-j-subphase-1-audio-friction.md`); follow-up fixes become J.w-adjacent or post-phase stories at developer discretion.
-- [ ] CHANGELOG entry.
-- [ ] CI parity.
+- [x] Synthetic 9-clip fixture via a **deterministic builder** ([`tests/fixtures/build_audio_fixture.py`](../../tests/fixtures/build_audio_fixture.py) — 3 classes × 2 labeled `audio_folder` clips + 3 unlabeled `audio_flat` clips; varied durations 0.3–0.6s; mixed source rates 22050/16000/8000/11025 Hz). Mirrors the `build_cifar10_shaped.py` pattern (generate-at-test-time, no vendored binaries, license-free); `soundfile` lazily imported. *(Task said "add files"; realized as a builder per repo convention + the task's "deterministic synthesis / keeps the repo lean" language.)*
+- [x] Committed recipe [`tests/fixtures/recipes/audio_classification_v1.yaml`](../../tests/fixtures/recipes/audio_classification_v1.yaml): `audio_folder` (labeled, partition=train) + `audio_flat` (unlabeled, partition=test) → decode → `window` (Generation) → `log_mel_spectrogram` (`mel`) → `audio_normalize` (`feature`, fit-on-train) → stratified Splits (`applies_to: train`, heldout test). The test injects the fixture paths (harness wiring; the committed shape is used verbatim otherwise). `sample_array` declared in `record_schema` (check-7 convention, mirrors image's `image`/`path`).
+- [x] [`tests/integration/test_audio_classification.py`](../../tests/integration/test_audio_classification.py) (11 tests): AC1 (validate→materialize→status, no workarounds) + the `init`-declines-audio non-goal; AC2 (byte-identical `recipe.json` / dataset JSONL / fitted parquet across two independent runs); AC3 (cosmetic edit → same hash + cache hit; semantic window-length edit → different hash); AC4 (workers=1 vs 2 byte-identical datasets); AC5 (record count unchanged across Featurization via a `stop_after="Generation"` comparison); AC6 (`stats_from_instance` sibling eval read-through); AC7 (per-split `source_record_id` sets disjoint; labeled clips fully covered, heldout test separate); AC8 (plugin discovered, `is_stub()` False, op set ⊇ window/log_mel/audio_normalize); AC9 (mid-pipeline failure → `FAILED` temp marker + no promoted instance). *(AC1 omits `init` — image-only v1 non-goal — and asserts `init` declines audio instead; AC9 triggers via a mid-pipeline failure since decode failures surface pre-temp-dir. Both documented in the friction note.)*
+- [x] Friction-list note authored at [`phase-j-subphase-1-audio-friction.md`](phase-j-subphase-1-audio-friction.md): the two gaps (→ J.v.1 / J.v.2) + three authoring notes (init non-goal, in-pipeline-array-fields-in-record_schema, AC9 mid-pipeline-failure rationale). No open follow-ups for the J-1 bundle.
+- [x] CHANGELOG entry under the Subphase J-1 `[Unreleased]` section.
+- [x] CI parity. `pyve test` (1517 pass), `pyve env run mypy src tests` (clean, 246 files), `pyve env run ruff check src/ tests/` + `ruff format --check` (clean).
 
 **Out of Scope:**
 
 - Performance benchmarking (Future).
 - Real-audio-dataset fixtures (Future; behind a licensing decision).
+
+---
+
+### Story J.v.1: Validator check 15 — recognize source-partition-derived splits [Done]
+
+**Disposition: bugfix (cross-cutting validator).** Part of Phase J phase-bundle release (no per-story version bump). **Sequenced before J.v** — extracted from a gap the J.v acceptance gate surfaced during dry-run (developer-chosen at the J.v gate, 2026-06-22: split the fix into its own story rather than fix it in-band).
+
+**The bug.** `recipe.validator._defined_split_names` computes the set of defined splits from `Splits.ratios` / `Splits.key_assignment` only — it omits **source-partition-derived splits**. When a recipe declares a pre-partitioned heldout split via `Input.sources[*].partition: test` (Form B: `Splits.ratios {train, val}` + `applies_to: train`, with `test` passed through from the source partition) AND any op declares `splits: [..., test]`, **check 15 (`split_references_defined`) wrongly flags `test` as undefined** and validation fails. This is cross-cutting (image + audio); it stayed latent because [`test_partitioned_inputs.py`](../../tests/integration/test_partitioned_inputs.py) splits records but runs no op targeting the heldout partition. The audio acceptance recipe (J.v) is the first to window + featurize the heldout `test` partition, so it's the first to hit it. `_defined_split_names` also feeds checks 10 and 25, so the fix benefits those uniformly.
+
+**Tasks:**
+
+- [x] Reproduce with a failing unit test: `test_check_15_recognizes_source_partition_derived_splits` ([`test_validator.py`](../../tests/unit/test_validator.py)) — a `partition: test` source + `Splits.ratios {train, val}` + `applies_to: train` + a Transformation declaring `splits: [train, val, test]`; red pre-fix (check 15 flagged `test`), green post-fix.
+- [x] Fix `_defined_split_names` ([`recipe/validator.py`](../../src/datarefinery/recipe/validator.py)) to union the non-None `Input.sources[*].partition` names into the defined-split set (Form A: partitions *are* the splits — returned even with no `ratios`; Form B: `ratios` ∪ heldout partitions). Bogus-split cases still fail.
+- [x] Regression guard: `test_check_15_still_fails_for_bogus_split_with_partitions_present` (a genuinely undefined `ghost` split still fails while the partition `test` is recognized); existing `test_partitioned_inputs.py` + `test_unlabeled_partition.py` stay green.
+- [x] Confirm checks 10 / 25 (other `_defined_split_names` consumers) stay correct — full validator suite (130 tests) + partition/unlabeled integration tests green; the union only *adds* legitimately-defined split names, so those checks tighten correctly without false positives.
+- [x] CHANGELOG entry under the Subphase J-1 `[Unreleased]` section (new `### Fixed` subsection; validator bugfix; no recipe/manifest shape change, no `schema_version` bump).
+- [x] CI parity. `pyve test` (1503 pass), `pyve env run mypy src tests` (clean, 245 files), `pyve env run ruff check src/ tests/` + `ruff format --check` (clean).
+
+**Out of Scope:**
+
+- The audio acceptance gate itself (J.v owns it).
+- Any change to how partitions are resolved into splits at materialize time (the runtime already honors partitions; this is purely the validator's defined-split accounting).
+
+---
+
+### Story J.v.2: Generation output-schema check is unlabeled-aware [Done]
+
+**Disposition: bugfix (cross-cutting runtime).** Part of Phase J phase-bundle release (no per-story version bump). **Sequenced before J.v**, after J.v.1 — the second of exactly two latent gaps the J.v acceptance dry-run surfaced (developer-chosen at the J.v gate, 2026-06-22: split into its own story).
+
+**The bug.** The Generation stage's `_validate_against_output_schema` ([`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py)) requires **every** `Output.record_schema` field on every generated record. Records on an **unlabeled** partition (FR-22: `Input.sources[*].unlabeled: true`) legitimately carry **no `label`** field, so running any record-fanning/record-emitting Generation op (e.g. audio `window`) on a heldout unlabeled split fails materialize with `missing required Output field(s) ['label']`. The check is not unlabeled-aware. Cross-cutting (image too); latent because no prior recipe ran a Generation op on an unlabeled split. Empirically confirmed: with the label requirement exempted on unlabeled splits, the full audio recipe (labeled `train` partition + unlabeled `test` partition) materializes end-to-end — train/val windows labeled, test's 12 windows flow through label-free with all other fields intact.
+
+**Tasks:**
+
+- [x] Reproduce with a failing test: `test_generation_exempts_label_on_unlabeled_split` ([`test_generation_stage.py`](../../tests/unit/test_generation_stage.py)) runs the audio `window` op on an unlabeled split whose records lack `label`; red pre-fix (`MaterializeError: missing required Output field(s) ['label']`), green post-fix.
+- [x] Thread the unlabeled-split set into `apply_generation` ([`pipeline/stages/generation.py`](../../src/datarefinery/pipeline/stages/generation.py)) — new `unlabeled_splits: frozenset[str] = frozenset()` param; the per-split output-schema validation subtracts `label_field` from the required set when `split_name in unlabeled_splits`. Labeled splits keep the full requirement.
+- [x] Wire the runner's `apply_generation(...)` call to pass `unlabeled_splits=frozenset(unlabeled_split_names(self.recipe))` ([`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py)).
+- [x] Unit tests (3): unlabeled split + label-less records → passes (windows emitted, no label, no error); labeled split with label-less records → still fails on `label`; a non-label phantom field missing on an unlabeled split → still fails (only `label_field` is exempt).
+- [x] Integration test: **folded into the J.v acceptance gate** (its AC1 materializes this exact recipe with the unlabeled `test` partition end-to-end; the unlabeled split's windows carry no `label` but all other fields, labeled splits unaffected). Verified by real-runner dry run pre-J.v: `record_counts {train:15, val:13, test:12}`, test windows label-free, no clip straddles splits.
+- [x] CHANGELOG entry under the Subphase J-1 `[Unreleased]` `### Fixed` subsection.
+- [x] CI parity. `pyve test` (1506 pass), `pyve env run mypy src tests` (clean, 245 files), `pyve env run ruff check src/ tests/` + `ruff format --check` (clean).
+
+**Out of Scope:**
+
+- The audio acceptance gate itself (J.v owns it; its unlabeled-partition assertions will exercise this fix end-to-end).
+- Any change to how unlabeled records are loaded or labeled — purely the Generation-stage output-schema accounting.
 
 ---
 

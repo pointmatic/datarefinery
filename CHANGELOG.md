@@ -94,6 +94,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   § cross-repo coordination now names the per-record dataset-JSONL grouping-key
   fields as a shape-binding surface; `concept.md` § Plugin-interface honesty notes
   `audio_classification` as the second fully-real plugin. No code change.
+- **End-to-end audio acceptance gate (Story J.v).** Added a synthetic 9-clip
+  fixture builder (`tests/fixtures/build_audio_fixture.py` — 3 classes, varied
+  durations, mixed source sample rates, one unlabeled heldout partition), the
+  committed recipe `tests/fixtures/recipes/audio_classification_v1.yaml`
+  exercising R1-R7 (audio_folder + audio_flat/unlabeled → decode → window →
+  log_mel → audio_normalize → stratified Splits), and
+  `tests/integration/test_audio_classification.py` asserting acceptance criteria
+  AC1-AC9 (validate→materialize→status with no workarounds; byte-identical
+  re-run; cosmetic-hit/semantic-miss cache identity; worker-count invariance;
+  featurization preserves record count; `stats_from_instance` sibling
+  round-trip; clip-level split integrity; plugin-contract sanity; FAILED-temp-dir
+  failure path) plus the `init`-declines-audio non-goal. The gate's dry run
+  surfaced two latent unlabeled-partition gaps, fixed in J.v.1 + J.v.2 (below);
+  the friction list is `docs/specs/phase-j-subphase-1-audio-friction.md`.
+
+### Fixed
+
+- **Validator check 15 recognizes source-partition-derived splits (Story J.v.1).**
+  `recipe.validator._defined_split_names` previously derived the defined-split
+  set from `Splits.ratios` / `key_assignment` only, omitting splits contributed
+  by a pre-partitioned source (`Input.sources[*].partition`). A recipe with a
+  heldout `test` partition (Form B: `ratios {train, val}` + `applies_to: train`)
+  plus any op declaring `splits: [..., test]` was wrongly rejected by check 15
+  (`split_references_defined`). Now the non-None source-`partition` names are
+  unioned into the defined splits (benefiting checks 10 / 25 too). Cross-cutting
+  (image + audio); latent until the J.v audio acceptance recipe windowed +
+  featurized a heldout partition. No recipe/manifest shape change, no
+  `schema_version` bump.
+- **Generation output-schema check is unlabeled-aware (Story J.v.2).** The
+  Generation stage's `_validate_against_output_schema` required *every*
+  `Output.record_schema` field on every generated record, so running a
+  record-emitting Generation op (e.g. audio `window`) on an **unlabeled**
+  partition (FR-22) failed materialize with `missing required Output
+  field(s) ['label']` — unlabeled records legitimately carry no `label`.
+  `apply_generation` now takes the `unlabeled_splits` set (threaded from the
+  runner's `unlabeled_split_names(recipe)`) and exempts the recipe's
+  `Labels.field` from the requirement on unlabeled splits only; every other
+  field stays required, and labeled splits are unchanged. Cross-cutting
+  (image + audio); latent until the J.v audio recipe windowed a heldout
+  unlabeled partition. No recipe/manifest shape change, no `schema_version`
+  bump.
 
 
 re-founds DataRefinery's cache identity on a **segmented** model with

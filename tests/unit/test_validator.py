@@ -856,6 +856,46 @@ def test_check_15_passes_when_all_split_refs_defined() -> None:
     assert not _failures_for(report, 15)
 
 
+def test_check_15_recognizes_source_partition_derived_splits() -> None:
+    # Story J.v.1: a pre-partitioned heldout `test` split (Form B: ratios
+    # {train, val} + applies_to train, test passed through from the source
+    # partition) is a defined split, so an op targeting it must validate.
+    rec = _base_dict()
+    rec["Input"]["sources"] = [
+        {"name": "tr", "type": "image_folder", "path": "/data/train", "partition": "train"},
+        {"name": "te", "type": "image_folder", "path": "/data/test", "partition": "test"},
+    ]
+    rec["Splits"] = {"ratios": {"train": 0.8, "val": 0.2}, "applies_to": "train", "seed": 7}
+    rec["Transformations"] = [
+        {
+            "name": "n",
+            "op": "normalize",
+            "fit_source": "train",
+            "splits": ["train", "val", "test"],  # `test` only exists via the source partition
+        }
+    ]
+    report = validate(_build(rec), _Plugin())
+    assert not _failures_for(report, 15)
+
+
+def test_check_15_still_fails_for_bogus_split_with_partitions_present() -> None:
+    # The partition union must not mask a genuinely undefined split name.
+    rec = _base_dict()
+    rec["Input"]["sources"] = [
+        {"name": "tr", "type": "image_folder", "path": "/data/train", "partition": "train"},
+        {"name": "te", "type": "image_folder", "path": "/data/test", "partition": "test"},
+    ]
+    rec["Splits"] = {"ratios": {"train": 0.8, "val": 0.2}, "applies_to": "train", "seed": 7}
+    rec["Transformations"] = [
+        {"name": "n", "op": "normalize", "fit_source": "train", "splits": ["train", "ghost"]}
+    ]
+    report = validate(_build(rec), _Plugin())
+    failures = _failures_for(report, 15)
+    assert len(failures) == 1
+    assert "ghost" in failures[0].message
+    assert "test" not in failures[0].message  # the partition split is recognized
+
+
 def test_check_16_fails_when_neither_n_nor_fraction() -> None:
     bad = _base_dict()
     bad["SampleData"] = {"selector": {}}

@@ -1,0 +1,86 @@
+# Copyright (c) 2026 Pointmatic
+# SPDX-License-Identifier: Apache-2.0
+#
+# Story J.v — audio-classification end-to-end acceptance recipe (R1-R7).
+#
+# Exercises: two input sources (a labeled `audio_folder` train partition + an
+# unlabeled `audio_flat` test partition), decode + per-source resample to a
+# canonical `target_sample_rate` (R1/R2), windowing as a Generation op (R3),
+# log-mel featurization (R4), fit-on-train per-mel-bin normalization (R5),
+# clip-level labels + stratified Splits carving val from the labeled partition
+# while the unlabeled partition stays heldout (R6), and the `source_record_id`
+# clip->window grouping key emitted by windowing (R7).
+#
+# The two `path` values below are PLACEHOLDERs: the J.v acceptance test
+# synthesizes the fixture into a temp dir (tests/fixtures/build_audio_fixture.py)
+# and rewrites both source paths to that dir before validate/materialize. The
+# placeholder paths keep this committed file a portable, reviewable recipe shape.
+schema_version: 3
+plugin: audio_classification
+seed: 0
+
+Input:
+  sources:
+    - name: labeled
+      type: audio_folder
+      path: PLACEHOLDER/train          # rewritten by the test
+      partition: train
+      target_sample_rate: 16000
+    - name: heldout
+      type: audio_flat
+      path: PLACEHOLDER/test            # rewritten by the test
+      partition: test
+      unlabeled: true
+      target_sample_rate: 16000
+
+Output:
+  # The audio loader stamps `sample_array` (the decoded waveform) on every
+  # record; declaring it here puts it in the validator's field universe so the
+  # window / log_mel ops that read it pass check 7 — the same convention image
+  # recipes use for the loader-stamped `image` / `path` fields. (Like `image`,
+  # the array itself is in-pipeline only and is not serialized into the JSONL.)
+  record_schema:
+    sample_array: { dtype: float32 }
+    label: { dtype: str }
+
+Labels:
+  field: label
+  source: { kind: direct }
+
+Splits:
+  ratios: { train: 0.67, val: 0.33 }
+  applies_to: train                     # carve val from the labeled partition; test stays heldout
+  stratify_by: label                    # clip-level stratification (R6)
+  seed: 7
+
+Generation:
+  - name: win
+    op: window
+    inputs: [sample_array]
+    output_schema: matches_input
+    seed: 0
+    splits: [train, val, test]
+    replace_input_records: true         # each clip -> N window records (R3)
+    params:
+      window_length_samples: 1600       # 0.1s @ 16 kHz
+      hop_samples: 1600                  # non-overlapping
+      remainder: drop
+
+Featurizations:
+  - name: logmel
+    op: log_mel_spectrogram
+    inputs: [sample_array]
+    output_field: mel                    # raw log-mel spectrogram (R4)
+    params:
+      n_fft: 512
+      hop_length: 256
+      n_mels: 32
+      f_min: 0.0
+      power: 2.0
+    splits: [train, val, test]
+  - name: norm
+    op: audio_normalize
+    inputs: [mel]
+    output_field: feature                # fit-on-train per-mel-bin normalized (R5)
+    fit_source: train
+    splits: [train, val, test]

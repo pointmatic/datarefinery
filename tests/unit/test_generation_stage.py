@@ -464,3 +464,83 @@ def test_generation_result_is_frozen() -> None:
     gr = GenerationResult(splits={}, counts_before={}, counts_after={}, warnings=())
     with pytest.raises(FrozenInstanceError):
         gr.warnings = ("x",)  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Unlabeled-split label exemption (Story J.v.2)
+# ---------------------------------------------------------------------------
+
+import numpy as np  # noqa: E402
+
+from datarefinery.plugins.audio_classification import PLUGIN as AUDIO_PLUGIN  # noqa: E402
+
+
+def _audio_output_schema() -> dict[str, FieldSpec]:
+    return {"sample_array": FieldSpec(dtype="float32"), "label": FieldSpec(dtype="str")}
+
+
+def _window_op(split: str) -> GenerationOp:
+    return GenerationOp(
+        name="win",
+        op="window",
+        inputs=["sample_array"],
+        output_schema="matches_input",
+        seed=0,
+        splits=[split],
+        replace_input_records=True,
+        params={"window_length_samples": 4, "hop_samples": 4, "remainder": "drop"},
+    )
+
+
+def _unlabeled_clip() -> Mapping[str, Any]:
+    # An unlabeled-partition clip: carries no `label` field (FR-22).
+    return {
+        "record_id": "clip",
+        "sample_array": np.arange(8, dtype=np.float32),
+        "sample_rate": 16000,
+    }
+
+
+def test_generation_exempts_label_on_unlabeled_split() -> None:
+    op = _window_op("test")
+    result = apply_generation(
+        {"test": [_unlabeled_clip()]},
+        [op],
+        plugin=AUDIO_PLUGIN,
+        output_record_schema=_audio_output_schema(),
+        label_field="label",
+        unlabeled_splits=frozenset({"test"}),
+    )
+    windows = result.splits["test"]
+    assert len(windows) == 2  # 8 samples / window 4 / hop 4 → 2 windows
+    assert all("label" not in r for r in windows)  # no label survives, and no error
+
+
+def test_generation_still_requires_label_on_labeled_split() -> None:
+    # Same label-less records, but the split is NOT unlabeled → label required.
+    op = _window_op("train")
+    with pytest.raises(MaterializeError, match="label"):
+        apply_generation(
+            {"train": [_unlabeled_clip()]},
+            [op],
+            plugin=AUDIO_PLUGIN,
+            output_record_schema=_audio_output_schema(),
+            label_field="label",
+            unlabeled_splits=frozenset(),
+        )
+
+
+def test_generation_unlabeled_exempts_only_the_label_field() -> None:
+    # A non-label required field that the op never produces still fails, even on
+    # an unlabeled split — only `label_field` is exempted.
+    op = _window_op("test")
+    schema = {**_audio_output_schema(), "phantom": FieldSpec(dtype="str")}
+    with pytest.raises(MaterializeError, match="phantom"):
+        apply_generation(
+            {"test": [_unlabeled_clip()]},
+            [op],
+            plugin=AUDIO_PLUGIN,
+            output_record_schema=schema,
+            label_field="label",
+            unlabeled_splits=frozenset({"test"}),
+        )
