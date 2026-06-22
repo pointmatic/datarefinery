@@ -25,6 +25,11 @@ from pydantic import ValidationError
 from datarefinery.core.errors import RecipeError
 from datarefinery.recipe.migrations import v1_to_v2, v2_to_v3
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.segments import (
+    apply_segment_migrations,
+    current_segment_versions,
+    segment_versions_for_era,
+)
 
 LATEST_SCHEMA_VERSION: int = 3
 SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1, 2, 3})
@@ -111,6 +116,15 @@ def load(path: Path) -> Recipe:
         )
 
     data = _migrate_to_latest(data, schema_version)
+    # Per-segment migrations (J.n.7): once the flat chain has lifted the recipe
+    # to the segmented era, replay any registered per-segment migrations to
+    # bring each segment up to the current build version. A pure pass-through
+    # while every segment sits at the current era (the steady state today).
+    data = apply_segment_migrations(
+        data,
+        from_versions=segment_versions_for_era(LATEST_SCHEMA_VERSION),
+        to_versions=current_segment_versions(),
+    )
 
     try:
         return Recipe.model_validate(data)

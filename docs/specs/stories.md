@@ -606,7 +606,7 @@ Per spike memo § 4 and J.n.1 Q5: introduce the sanctioned `extensions:` namespa
 
 ---
 
-### Story J.n.7: Per-segment migration registry + per-segment canonical-hash pin tests [Planned]
+### Story J.n.7: Per-segment migration registry + per-segment canonical-hash pin tests [Done]
 
 **Disposition: feature addition + enforcement infrastructure.** Part of the Recipe Architecture bundle. **Subsumes** the existing [`stories.md § Future`](stories.md) "Default-change discipline tooling for cache-identity stability" entry — remove that Future entry as part of this story.
 
@@ -614,20 +614,15 @@ Replace the single global `schema_version` with per-segment versions and per-seg
 
 **Tasks:**
 
-- [ ] Populate the migration registry from J.n.2's skeleton: `(segment, from, to) → migration_fn`. Migrations run during the loader's read path; the cached `recipe.json` always reflects the latest segmented shape.
-- [ ] Per-segment canonical-hash pin tests:
-  - Image-only fixture: hash MUST NOT move on any audio plugin-surface change (Finding A enforced).
-  - Audio-only fixture: hash MUST NOT move on any image plugin-surface change.
-  - Recipe-without-overlays: hash UNCHANGED before/after overlays mechanism (J.n.5).
-  - Recipe-without-extensions: hash UNCHANGED before/after extensions mechanism (J.n.6).
-  - Each segment gets its own pinned fixture; an unexpected hash change at that fixture is a blocking CI failure that forces a conscious per-segment `schema_version` bump + migration.
-- [ ] Pin test for the no-implicit-defaults rollout (J.n.4): default-reintroduction anywhere in any `ParameterSpec` fails CI.
-- [ ] (Optional, per J.n.1 Q8) If the minimal vertical-axis cut is adopted: stage-boundary pin tests — a downstream-only segment change MUST leave the expensive upstream stage's prefix hash byte-identical; a reused-upstream materialization MUST byte-match a from-scratch run. Skip if Q8 declined.
-- [ ] DOC: update [`tech-spec.md`](tech-spec.md) § Cache Identity to describe per-segment versions + migration registry + pin-test discipline.
-- [ ] Remove the [`stories.md § Future`](stories.md) "Default-change discipline tooling for cache-identity stability" entry (subsumed). Cross-reference J.n.7 from the removal.
-- [ ] If J.n.1 Q6 decided so: collapse the Future "plugin-pluggable validator reserved-set hook" entry into this story; otherwise leave as-is.
-- [ ] CHANGELOG entry.
-- [ ] CI parity.
+- [x] Populate the migration registry from J.n.2's skeleton: `(segment, from, to) → migration_fn`. Migrations run during the loader's read path; the cached `recipe.json` always reflects the latest segmented shape. **Per the confirmed [versioning-model decision](phase-j-recipe-architecture-design.md) (2026-06-22 gate):** flat `schema_version` stays the on-disk era marker (Option 1 — no on-disk segment-version block, so per-segment versioning adds **no** new invalidation). [`segments.py`](../../src/datarefinery/recipe/segments.py) gains `SEGMENT_VERSION_KEYS`, `SCHEMA_ERA_SEGMENT_VERSIONS` (structural era-detection table), `current_segment_versions()`, `segment_versions_for_era()`, and `apply_segment_migrations(flat, from, to)` — which partitions the flat dict, replays `SEGMENT_MIGRATIONS[(segment, v, v+1)]` per segment (plugin-family-gated for Finding A), and re-flattens. Wired into [`loader.load`](../../src/datarefinery/recipe/loader.py) after the flat chain. **Exact pass-through in the steady state** (every segment at the current era → no perturbation); registry empty today (no segment has bumped). A missing migration for a version gap is a hard load error.
+- [x] Per-segment canonical-hash pin tests: image core/plugin, audio core/plugin, empty-overlays/extensions → `EMPTY_MARKER`. Each segment digest is pinned independently in [`tests/unit/test_segment_pin_hashes.py`](../../tests/unit/test_segment_pin_hashes.py); an unexpected move of any single segment's digest is a blocking CI failure forcing a conscious per-segment bump + migration. Cross-plugin isolation enforced (Finding A at segment granularity: an audio-surface change leaves both image segment digests byte-identical, and vice-versa); unused-overlay additivity pinned (definitions stripped by `apply_overlays(None)` → identity + every segment digest unchanged); extensions additivity pinned (perturbs only the `extensions` digest).
+- [x] Pin test for the no-implicit-defaults rollout (J.n.4): default-reintroduction anywhere in any `ParameterSpec` fails CI. **Already satisfied** by [`tests/unit/test_no_implicit_defaults.py`](../../tests/unit/test_no_implicit_defaults.py) (`test_parameter_spec_has_no_default_field`, `test_parameter_spec_rejects_a_default_kwarg`, `test_no_registered_op_declares_a_parameter_default` sweep over all installed plugins) — verified covers this task; no new test needed.
+- [x] (Optional, per J.n.1 Q8) Stage-boundary pin tests — **skipped: Q8 declined for this bundle** (DR's flat gradient). `prefix_hash` keeps the vertical axis adoptable later with no combiner redesign.
+- [x] DOC: update [`tech-spec.md`](tech-spec.md) § Cache Identity to describe per-segment versions + migration registry + pin-test discipline. Added the "Per-segment versions + migrations" + "Pin-test discipline" paragraphs under `recipe.segments`.
+- [x] Remove the [`stories.md § Future`](stories.md) "Default-change discipline tooling for cache-identity stability" entry (subsumed by the per-segment pin tests + no-defaults guard). Removed; this story is the subsuming work.
+- [~] If J.n.1 Q6 decided so: collapse the Future "plugin-pluggable validator reserved-set hook" entry into this story; otherwise leave as-is. **Flagged for developer at the gate (see below):** Q6 decided to collapse the *decision* into the bundle, but the *implementation* (`Plugin.loader_stamped_fields` / `validate_plugin_segment`) is not in J.n.7's task checklist and was not built here. Left the Future entry intact rather than misrepresent it as done — recommend a follow-up story or an explicit J.n.7 scope expansion.
+- [x] CHANGELOG entry. Added under the Phase J bundle.
+- [x] CI parity. `pyve test` (1430 pass), `mypy src tests` (clean, 225 files), `ruff check` + `ruff format --check` (clean).
 
 **Out of Scope:**
 
@@ -972,7 +967,6 @@ The `archive_stories` mode preserves this section verbatim when archiving storie
 - **Image-classification plugin: additional capabilities deferred from Phase H sub-bundle** — see [`phase-h-datarefinery-feature-recommendation.md`](phase-h-datarefinery-feature-recommendation.md) for full specifications:
   - FR-ARCH-1 tight coupling — sibling `recipe_hash` participating in the current recipe's cache identity, so re-materializing upstream auto-invalidates downstream. The Phase H sub-bundle shipped FR-TRANS-1 with loose coupling; tight coupling is the follow-up needed for multi-team or longitudinal workflows.
   - Generic record-tagging primitive — factor FR-FILTER-1's bespoke `label` / `exclude_already_labeled` params into a shared mechanism multiple filter ops can use.
-- **Default-change discipline tooling for cache-identity stability** — expand the canonical-hash pinning test suite to cover multiple fixture recipes with different default-coverage profiles, so any change to a pydantic field default (anywhere in the recipe model graph) trips at least one pin and forces the developer to either revert or bump `schema_version`. Add an optional pre-commit / CI hook that diffs pydantic field defaults against `main` and requires a `schema_version` bump or an explicit "non-semantic default change" acknowledgement in the commit message. End-state invariant: cache invalidations are always deliberate (acknowledged at change time, announced in release notes); never silent. Plan as production-readiness work.
 - **`stats_from_instance.variant: <name>` selector** — let a consumer recipe pin a specific sibling-variant's fitted statistics (e.g., normalize stats fit under a specific experimental overlay). The Phase I G19 fix closes the no-variant case; the variant-selector form is a follow-up. Added during Phase I planning (Story I.h).
 - **Real `to_grayscale` Transformation op** — Phase I removed the declared-but-unimplemented `to_grayscale` OperationSpec entry to keep the surface honest. A real implementation with a `method: average | luminance | …` parameter set is deferred until a recipe surfaces a concrete need. Added during Phase I planning (Story I.h).
 - **Plugin-pluggable validator-check reserved-set hook** — let plugins declare `Plugin.loader_stamped_fields(recipe) -> set[str]` so validator check 23 (Featurization `output_field` collision) can be applied to non-stub plugins when their loaders ship. Today the reserved-set is hardcoded for `image_classification`; tabular and text stubs don't stamp fields and don't need the hook yet. Originally noted in Story I.c's prevention notes; added during Phase I planning (Story I.h).

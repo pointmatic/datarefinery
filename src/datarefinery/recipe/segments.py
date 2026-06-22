@@ -99,6 +99,146 @@ EXTENSIONS_SCHEMA_VERSION: int = 1
 #: registers its own whole-recipe entry).
 SEGMENT_MIGRATIONS: dict[tuple[str, int, int], Callable[[dict[str, Any]], dict[str, Any]]] = {}
 
+#: The version-keyed segments for migration/version dispatch. ``plugin`` is
+#: split per plugin family (``plugin:image`` / ``plugin:audio``) because the
+#: two bump independently (Finding A: an audio-surface change must never touch
+#: an image recipe). ``core``/``overlays``/``extensions`` are single-keyed.
+SEGMENT_VERSION_KEYS: tuple[str, ...] = (
+    "core",
+    "plugin:image",
+    "plugin:audio",
+    "overlays",
+    "extensions",
+)
+
+#: The first flat ``schema_version`` of the *segmented-canonical era* — the J.n.3
+#: combiner switch. Flat eras 1/2 are pre-segmented and are lifted to era 3 by
+#: the flat ``(int, int)`` chain in ``recipe.loader`` *before* any per-segment
+#: migration runs, so segment migrations only ever see era-3+ recipes.
+SEGMENTED_ERA: int = 3
+
+#: Structural era-detection table (design Q4): the flat ``schema_version`` on
+#: disk stays the era marker (Option 1 keeps the recipe flat — no on-disk
+#: segment-version block, no extra invalidation), and each era pins the version
+#: of every segment at that era. A new era is appended whenever any segment
+#: bumps; the loader diffs the recipe's era against :func:`current_segment_versions`
+#: and runs the registered per-segment migrations to close the gap.
+SCHEMA_ERA_SEGMENT_VERSIONS: dict[int, dict[str, int]] = {
+    3: {"core": 1, "plugin:image": 1, "plugin:audio": 1, "overlays": 1, "extensions": 1},
+}
+
+
+def current_segment_versions() -> dict[str, int]:
+    """The version each segment is at *in this build* (the per-segment constants)."""
+    return {
+        "core": CORE_SCHEMA_VERSION,
+        "plugin:image": PLUGIN_IMAGE_SCHEMA_VERSION,
+        "plugin:audio": PLUGIN_AUDIO_SCHEMA_VERSION,
+        "overlays": OVERLAYS_SCHEMA_VERSION,
+        "extensions": EXTENSIONS_SCHEMA_VERSION,
+    }
+
+
+def segment_versions_for_era(schema_version: int) -> dict[str, int]:
+    """The per-segment versions a recipe at flat ``schema_version`` carries.
+
+    Raises ``KeyError`` for a non-segmented era (< :data:`SEGMENTED_ERA`): such a
+    recipe must first be lifted to the segmented era by the flat migration chain.
+    """
+    return dict(SCHEMA_ERA_SEGMENT_VERSIONS[schema_version])
+
+
+def _partition_flat(flat: dict[str, Any]) -> dict[str, Any]:
+    """Split a flat recipe dict into its four hash segments (field-keyed
+    ``core``/``plugin``; bare-mapping ``overlays``/``extensions``)."""
+    core: dict[str, Any] = {}
+    plugin: dict[str, Any] = {}
+    for field, value in flat.items():
+        segment = RECIPE_FIELD_SEGMENTS.get(field)
+        if segment == "core":
+            core[field] = value
+        elif segment == "plugin":
+            plugin[field] = value
+    return {
+        "core": core,
+        "plugin": plugin,
+        "overlays": flat.get("overlays") or {},
+        "extensions": flat.get("extensions") or {},
+    }
+
+
+def _partition_for_key(version_key: str) -> str:
+    """Map a :data:`SEGMENT_VERSION_KEYS` entry to its hash-segment partition."""
+    if version_key.startswith("plugin"):
+        return "plugin"
+    return version_key
+
+
+def apply_segment_migrations(
+    flat: dict[str, Any],
+    from_versions: Mapping[str, int],
+    to_versions: Mapping[str, int],
+) -> dict[str, Any]:
+    """Bring each segment of a flat recipe dict from its on-disk era version up
+    to the current build version by replaying the registered per-segment
+    migrations in :data:`SEGMENT_MIGRATIONS`.
+
+    The dispatch is per *segment-version key* (:data:`SEGMENT_VERSION_KEYS`):
+    a ``("core", v, v+1)`` migration rewrites the core fields; a
+    ``("plugin:image", v, v+1)`` migration rewrites the plugin fields only when
+    the recipe's ``plugin`` matches that family. ``overlays``/``extensions``
+    migrate their bare namespace mapping.
+
+    When ``from_versions == to_versions`` (the steady state — every recipe sits
+    at the current era, which is true for the whole pre-1.0 lifetime until a
+    segment first bumps) this is an **exact pass-through**: the flat dict is
+    returned unchanged, so the read path can never perturb canonical bytes while
+    the registry is dormant.
+    """
+    if dict(from_versions) == dict(to_versions):
+        return flat
+
+    parts = _partition_flat(flat)
+    plugin_name = flat.get("plugin")
+    for version_key in SEGMENT_VERSION_KEYS:
+        start = from_versions.get(version_key, 1)
+        end = to_versions.get(version_key, 1)
+        if start >= end:
+            continue
+        # A plugin-family migration only applies to a recipe of that family.
+        if version_key == "plugin:image" and plugin_name not in _IMAGE_PLUGIN_NAMES:
+            continue
+        if version_key == "plugin:audio" and plugin_name not in _AUDIO_PLUGIN_NAMES:
+            continue
+        partition = _partition_for_key(version_key)
+        for v in range(start, end):
+            step = SEGMENT_MIGRATIONS.get((version_key, v, v + 1))
+            if step is None:
+                raise ValueError(
+                    f"no segment migration registered for {version_key!r} "
+                    f"{v} -> {v + 1}; a segment-version bump requires a migration "
+                    f"(see project-essentials.md cache-identity ceremony)"
+                )
+            parts[partition] = step(parts[partition])
+
+    # Re-flatten: core/plugin fields overwrite their slots; overlays/extensions
+    # are set back as bare mappings (dropped entirely if migrated to empty).
+    out = {k: v for k, v in flat.items() if RECIPE_FIELD_SEGMENTS.get(k) not in ("core", "plugin")}
+    out.update(parts["core"])
+    out.update(parts["plugin"])
+    for namespace_segment in ("overlays", "extensions"):
+        if parts[namespace_segment]:
+            out[namespace_segment] = parts[namespace_segment]
+        else:
+            out.pop(namespace_segment, None)
+    return out
+
+
+#: Plugin ``name`` values that belong to each plugin family for segment-migration
+#: dispatch. Kept small and explicit; extended when a new plugin of a family ships.
+_IMAGE_PLUGIN_NAMES: frozenset[str] = frozenset({"image_classification"})
+_AUDIO_PLUGIN_NAMES: frozenset[str] = frozenset({"audio_classification"})
+
 
 def _is_empty(value: Any) -> bool:
     """An empty/absent segment: ``None`` or an empty container/string."""

@@ -68,6 +68,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (spike memo § 6 trust boundary). `Plugin.extension_keys` joins the protocol's
   required-attribute set. Recipe guides updated (`recipe-authoring.md` §
   Extensions, `plugin-authoring.md` § Declaring consumed extension keys).
+- **Per-segment versions + migration registry + pin-test discipline
+  (Story J.n.7).** Each identity segment now evolves on its own version axis —
+  no global umbrella counter. The flat `schema_version` stays the on-disk era
+  marker (Option 1 keeps recipes flat), so per-segment versioning adds **no new
+  cache invalidation**. `recipe.segments` gains `SEGMENT_VERSION_KEYS`, a
+  `SCHEMA_ERA_SEGMENT_VERSIONS` era-detection table, `current_segment_versions()`,
+  and `apply_segment_migrations()`, which the loader replays on the read path to
+  bring each segment up to the current build version via the
+  `(segment, from, to)`-keyed `SEGMENT_MIGRATIONS` registry. While every segment
+  sits at the current era (the steady state today) the dispatch is an exact
+  pass-through; a segment-version bump without a registered migration is a hard
+  load-time error. New `tests/unit/test_segment_pin_hashes.py` pins each
+  segment's digest for representative image/audio fixtures — an unexpected move
+  of any single segment's digest is a blocking CI failure that forces a
+  conscious per-segment bump + migration, and the empty-`overlays`/`extensions`
+  digests are pinned to the empty-segment marker (the J.n.5/J.n.6 additivity
+  gate). Subsumes the former Future "Default-change discipline tooling" item.
+  `tech-spec.md` § Cache Identity updated.
 - **Plugin source subclasses — `AudioSource` (Story J.n.3).** `InputSource`
   is now the open base of a narrow discriminated union; `AudioSource` adds
   `target_sample_rate`. Selection is presence-based and `type` stays a free

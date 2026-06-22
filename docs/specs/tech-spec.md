@@ -339,11 +339,24 @@ recipe_identity_hash(recipe) -> str      # AUTHORITATIVE cache identity (J.n.3)
 prefix_hash(digests, upto) -> str        # cumulative-prefix hook for the deferred vertical axis (Q8)
 ```
 
-The segmented hasher composes the recipe hash from independent per-segment digests, so an empty segment contributes a fixed nothing (additive) and a change to one segment cannot move another's digest (scoped invalidation — design Q1/Q3). Per-segment version constants (`CORE_SCHEMA_VERSION`, `PLUGIN_IMAGE_SCHEMA_VERSION`, `PLUGIN_AUDIO_SCHEMA_VERSION`, `OVERLAYS_SCHEMA_VERSION`, `EXTENSIONS_SCHEMA_VERSION`) and a `(segment, from, to)`-keyed `SEGMENT_MIGRATIONS` skeleton accompany it (design Q4; populated by J.n.7).
+The segmented hasher composes the recipe hash from independent per-segment digests, so an empty segment contributes a fixed nothing (additive) and a change to one segment cannot move another's digest (scoped invalidation — design Q1/Q3). Per-segment version constants (`CORE_SCHEMA_VERSION`, `PLUGIN_IMAGE_SCHEMA_VERSION`, `PLUGIN_AUDIO_SCHEMA_VERSION`, `OVERLAYS_SCHEMA_VERSION`, `EXTENSIONS_SCHEMA_VERSION`) and a `(segment, from, to)`-keyed `SEGMENT_MIGRATIONS` registry govern per-segment evolution (design Q4).
 
 **Internal partition (Option 1).** The author-facing recipe stays *flat*; `segments_of` partitions `recipe.model_dump(mode="json")` per `RECIPE_FIELD_SEGMENTS` — `core`/`plugin` are field-keyed; `overlays`/`extensions` are single-namespace segments contributed as their bare mapping (so an empty/stripped namespace collapses to `EMPTY_MARKER`). A CI guard (`test_every_recipe_field_is_assigned_exactly_one_segment`) pins that every `Recipe` field has exactly one segment, so a new section cannot be added without consciously choosing its segment.
 
 **Authoritative since J.n.3.** Identity switched from the flat `sha256(to_canonical_bytes)` to `recipe_identity_hash` (the segmented join). That combiner change is a canonical-form algorithm change, so it rode a `schema_version` **2→3** bump (loader `(2, 3)` bootstrap migration; v3 = the segmented-canonical era). This was the **one-time pre-1.0 cache-invalidation event** — every existing instance re-materializes once; prohibitive post-1.0 (design § 8). The `test_canonical_hash_pin` gate now pins the segmented identity; a representative image/audio pin pair (`tests/integration/test_segmented_identity.py`) locks Finding A — `AudioSource.target_sample_rate` never enters an image recipe's canonical bytes.
+
+**Per-segment versions + migrations (Story J.n.7).** Each segment evolves on its own version axis — there is **no global umbrella counter** (a global one would re-couple every segment's changes). The flat `schema_version` stays the **on-disk era marker** (Option 1 keeps the recipe flat — no on-disk segment-version block, so per-segment versioning adds *no* new invalidation); `recipe.segments` carries the structural era-detection table:
+
+```python
+SEGMENT_VERSION_KEYS = ("core", "plugin:image", "plugin:audio", "overlays", "extensions")
+SCHEMA_ERA_SEGMENT_VERSIONS: dict[int, dict[str, int]]   # flat schema_version → per-segment versions
+current_segment_versions() -> dict[str, int]             # what this build is at (the constants)
+apply_segment_migrations(flat, from_versions, to_versions) -> dict
+```
+
+On the loader read path, once the flat `(int, int)` chain has lifted a recipe to the segmented era, `apply_segment_migrations` replays the registered `SEGMENT_MIGRATIONS[(segment, v, v+1)]` steps to bring each segment from its era version up to `current_segment_versions()`. A `("core", …)` migration rewrites the core fields; a `("plugin:image", …)` migration touches the plugin fields only for an image-family recipe (Finding A — an audio bump never rewrites an image recipe, and vice-versa). **While every segment sits at the current era (the steady state for the entire pre-1.0 lifetime so far), the dispatch is an exact pass-through** — the read path cannot perturb canonical bytes while the registry is dormant. A segment-version bump without a registered migration is a hard load-time error, routing the author to the cache-identity ceremony.
+
+**Pin-test discipline.** Isolation is *enforced, not asserted*. `tests/unit/test_segment_pin_hashes.py` pins each segment's digest for a representative image and audio fixture; an unexpected move of any single segment's digest is a blocking CI failure that forces a conscious per-segment version bump + migration. The empty-`overlays`/`extensions` digests are pinned to `EMPTY_MARKER`, so the J.n.5/J.n.6 mechanisms can never retroactively perturb a recipe that doesn't use them. The no-implicit-defaults guard (`tests/unit/test_no_implicit_defaults.py`, J.n.4) fails CI if any `ParameterSpec` reintroduces a `default`. (The Q8 vertical-axis stage-boundary pins are deliberately *not* implemented — Q8 declined for this bundle; `prefix_hash` keeps them adoptable later without a combiner redesign.)
 
 ### `recipe.overlays` (FR-14)
 
