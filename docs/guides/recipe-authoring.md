@@ -897,11 +897,15 @@ Featurizations:
 
 `log_mel_spectrogram` (no fit) — convert each fixed-length window's `sample_array` into a **log-mel spectrogram**: a 2-D array of shape `(n_mels, n_frames)` (librosa-native orientation — mel bins on axis 0) written under `output_field`. One feature per input window — the Featurization stage does not change the record count. The op is fully deterministic (a pure function of the window samples + params, so byte-identical across runs and worker counts) and is **only available with the `[audio]` extra** (librosa); invoking it without the extra raises an actionable error.
 
+`audio_normalize` (**fit-on-train**) — per-mel-bin standardization of a log-mel feature: a length-`n_mels` mean/std vector fit over (examples × frames) keeping the mel axis, persisted to `fitted_statistics/<op_id>/` and applied across every declared split using the persisted values (FR-6; train/inference parity). `mean`/`std` are mode-selecting params (omit ⇒ fit from train; pin both to skip fitting). It carries the same `std == 0 → 1.0` zero-variance guard as the image `normalize` op (the persisted `std` keeps the unmodified fit value; the guard fires at apply only), and supports `stats_from_instance` sibling import unchanged.
+
+Because normalizing a *derived* feature must run **after** the feature exists — and the pipeline runs `Transformations` before `Featurizations` — `audio_normalize` is a **Featurization, not a Transformation** (it can't be a Transformation: there'd be no feature yet). The convention is therefore a two-op chain: `log_mel_spectrogram` writes the raw `mel`, then `audio_normalize` reads `mel` and writes the final `feature` (distinct fields, so the no-overwrite collision guard is satisfied and both raw and scaled features stay inspectable). This is a cross-modality staple — tabular column scaling and text embedding normalization will follow the same pattern. See `tech-spec.md` § `pipeline.runner` (stage-order rationale).
+
 ```yaml
 Featurizations:
   - name: logmel
     inputs: [sample_array]                 # the decoded/windowed sample array
-    output_field: feature
+    output_field: mel                      # the RAW log-mel spectrogram
     op: log_mel_spectrogram
     params:
       n_fft: 2048
@@ -912,9 +916,15 @@ Featurizations:
       # f_max omitted ⇒ Nyquist (sample_rate / 2). It is the one
       # mode-selecting optional; all other params are required.
     splits: [train, val, test]
+  - name: norm
+    inputs: [mel]                          # reads the raw spectrogram
+    output_field: feature                  # the NORMALIZED model input
+    op: audio_normalize
+    fit_source: train                      # per-mel-bin stats fit on train only
+    splits: [train, val, test]
 ```
 
-`n_fft` / `hop_length` / `n_mels` / `f_min` / `power` are **required** (no-implicit-defaults rule); `f_max` is **mode-selecting** — omit it to use the Nyquist frequency, or pin a ceiling explicitly. Per-mel-bin normalization of the feature is a separate fit-on-train op (`audio_normalize`, § Transformations) added in a later story; v1 ships log-mel only (MFCC and other spectral representations are Future). Like `sample_array`, the `feature` array is an in-pipeline representation — it is consumed by downstream stages (e.g. `audio_normalize`) and is not serialized into the dataset JSONL.
+For `log_mel_spectrogram`, `n_fft` / `hop_length` / `n_mels` / `f_min` / `power` are **required** (no-implicit-defaults rule); `f_max` is **mode-selecting** — omit it to use the Nyquist frequency, or pin a ceiling explicitly. v1 ships log-mel only (MFCC and other spectral representations are Future). Like `sample_array`, the `mel` and `feature` arrays are in-pipeline representations — consumed by downstream stages (and, for `feature`, the model) but **not** serialized into the dataset JSONL; what persists from `audio_normalize` is its `fitted_statistics/<op_id>/` mean/std. (If you don't normalize, point `log_mel_spectrogram` straight at `output_field: feature`.)
 
 **Reserved `output_field` names.** A Featurization's `output_field` must not collide with a field the input loader stamps on every record. Validator check 23 (`featurization_output_field_loader_collision`) catches these at validate time. For the `image_classification` plugin the reserved set is:
 

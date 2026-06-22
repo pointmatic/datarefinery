@@ -22,11 +22,16 @@ from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
-import pyarrow as pa
 from PIL import Image
 
-from datarefinery.core.errors import MaterializeError, PluginError
+from datarefinery.core.errors import PluginError
 from datarefinery.pipeline.stages.transformations import FittedValues
+from datarefinery.plugins.normalize_stats import (
+    fit_mean_std,
+    unwrap_mean_std,
+    wrap_mean_std,
+    zscore,
+)
 
 Record = Mapping[str, Any]
 
@@ -133,12 +138,8 @@ class NormalizeOp:
     ) -> list[Record]:
         del params, label_field
         mean, std = _unwrap_mean_std(fitted)
-        # Guard against zero variance channels.
-        std_safe = np.where(std == 0, 1.0, std)
-        return [
-            _replace_image(r, ((np.asarray(r["image"], dtype=np.float64) - mean) / std_safe))
-            for r in records
-        ]
+        # Per-channel z-score (last axis); the std==0 guard lives in `zscore`.
+        return [_replace_image(r, zscore(r["image"], mean, std, axis=-1)) for r in records]
 
 
 # ---------------------------------------------------------------------------
@@ -223,42 +224,23 @@ def _cast_one(image: Any, target_dtype: np.dtype, scale: float) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+def _image_reduce_axes(ndim: int) -> tuple[int, ...] | None:
+    # Reduce across N, H, W; keep the channel axis (last) if present. A stack of
+    # 1-D per-record arrays (ndim < 3) reduces to a single scalar statistic.
+    return tuple(range(ndim - 1)) if ndim >= 3 else None
+
+
 def _per_channel_mean_std(
     records: list[Record],
 ) -> tuple[np.ndarray, np.ndarray]:
-    if not records:
-        raise MaterializeError(
-            "fit phase received an empty records list; cannot compute per-channel statistics"
-        )
-    stack = np.stack([np.asarray(r["image"], dtype=np.float64) for r in records])
-    # Reduce across N, H, W; keep channel axis if present.
-    axes_to_reduce = tuple(range(stack.ndim - 1)) if stack.ndim >= 3 else None
-    mean = stack.mean(axis=axes_to_reduce)
-    std = stack.std(axis=axes_to_reduce)
-    mean = np.atleast_1d(mean).astype(np.float64)
-    std = np.atleast_1d(std).astype(np.float64)
-    return mean, std
+    # Shared fit machinery (Story J.t); the image op keeps the *last* axis.
+    return fit_mean_std(records, field="image", reduce_axes_for=_image_reduce_axes)
 
 
-def _wrap_mean_std(mean: np.ndarray, std: np.ndarray | None) -> FittedValues:
-    vectors = {"mean": pa.table({"value": mean.tolist()})}
-    if std is not None:
-        vectors["std"] = pa.table({"value": std.tolist()})
-    return FittedValues(scalars={}, vectors=vectors)
-
-
-def _unwrap_mean_std(
-    fitted: FittedValues,
-) -> tuple[np.ndarray, np.ndarray]:
-    if "mean" not in fitted.vectors:
-        raise MaterializeError("transformation apply received fitted values without 'mean'")
-    mean = np.asarray(fitted.vectors["mean"]["value"].to_pylist(), dtype=np.float64)
-    std_table = fitted.vectors.get("std")
-    if std_table is None:
-        std = np.ones_like(mean)
-    else:
-        std = np.asarray(std_table["value"].to_pylist(), dtype=np.float64)
-    return mean, std
+# Thin aliases preserved for the image ops (NormalizeOp / MeanSubtractOp); the
+# implementations now live in `datarefinery.plugins.normalize_stats`.
+_wrap_mean_std = wrap_mean_std
+_unwrap_mean_std = unwrap_mean_std
 
 
 def _replace_image(record: Record, new_image: np.ndarray) -> dict[str, Any]:

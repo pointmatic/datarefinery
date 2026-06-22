@@ -24,6 +24,7 @@ from typing import Any
 
 from datarefinery.core.errors import PluginError
 from datarefinery.plugins.audio_classification.operations.featurizations import (
+    AudioNormalizeOp,
     LogMelSpectrogramOp,
 )
 from datarefinery.plugins.audio_classification.operations.generation import window
@@ -35,9 +36,14 @@ _GENERATION_OPS: dict[str, Operation] = {
 }
 
 #: Featurization-stage op handles (objects with fit/apply) dispatched by
-#: :meth:`operation_factory`.
+#: :meth:`operation_factory`. ``audio_normalize`` is a *fit-on-train*
+#: Featurization (not a Transformation): fit-on-train scaling of a derived
+#: feature must run after the feature exists, and Featurizations is the only
+#: stage that runs after derivation and supports fit-on-train + stats
+#: persistence (Story J.t; see the module docstring + tech-spec.md).
 _FEATURIZATION_OPS: dict[str, Any] = {
     "log_mel_spectrogram": LogMelSpectrogramOp(),
+    "audio_normalize": AudioNormalizeOp(),
 }
 
 #: The full standard recipe section set. Mirrors `image_classification` —
@@ -93,6 +99,16 @@ def _supported_operations() -> dict[str, OperationSpec]:
             fit_on_train=False,
             applicable_sections=frozenset({"Featurizations"}),
         ),
+        # ----- Feature normalization (R5, Story J.t) — fit-on-train -----
+        "audio_normalize": OperationSpec(
+            parameters={
+                # Both mode-selecting: absent ⇒ fit per-mel-bin from train.
+                "mean": ParameterSpec(type="float", required=False),
+                "std": ParameterSpec(type="float", required=False),
+            },
+            fit_on_train=True,
+            applicable_sections=frozenset({"Featurizations"}),
+        ),
     }
 
 
@@ -128,9 +144,7 @@ class AudioClassificationPlugin:
         if section == "Featurizations" and op_name in _FEATURIZATION_OPS:
             return _FEATURIZATION_OPS[op_name]
         raise PluginError(
-            f"audio_classification has no operation for "
-            f"(section={section!r}, op={op_name!r}); the remaining audio op "
-            f"(audio_normalize) lands in Story J.t"
+            f"audio_classification has no operation for (section={section!r}, op={op_name!r})"
         )
 
     def is_stub(self) -> bool:

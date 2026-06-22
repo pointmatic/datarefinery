@@ -165,7 +165,14 @@ Variant `record_id`s are derived as `f"{source_record_id}__v{variant_index:03d}"
 
 The `audio_classification` plugin's `window` op runs at the **Generation** stage with `replace_input_records: true`, so each decoded clip is replaced by its fixed-length window records — `manifest.record_counts` reflects the post-windowing count, not the clip count (exactly as aggressive augmentation already does). Each window record carries `source_record_id` (the parent clip) and `window_index`; the trailing remainder is zero-padded or dropped per the recipe's `remainder` param. `source_record_id` remains DataRefinery's documented **clip↔window grouping key** for downstream aggregation (R7): DR owns the key, the consumer owns the aggregation math (no DR aggregation op). The `__w` vs `__v` suffix disambiguates the two; a record is never both (no aggressive audio augmentation in v1). Pre-prod doc-evolution addition — no `schema_version` bump.
 
-**Audio `feature` field (Story J.s).** The `log_mel_spectrogram` Featurization op (Featurizations stage, no-fit, deterministic) adds an in-pipeline `feature` field to each window record — a log-mel spectrogram `np.ndarray` of shape `(n_mels, n_frames)` in **librosa-native orientation** (mel bins on axis 0, time frames on axis 1). One feature per input window; the Featurization stage does not change `record_counts`. **Like `sample_array`, `feature` is an array-valued in-pipeline representation and is NOT serialized into the dataset `<split>.jsonl`** (the JSONL writer drops non-JSON-native fields). Consumers do not read the feature array from the JSONL in v1; the array is the input to the fit-on-train `audio_normalize` Transformation (Story J.t), whose per-mel-bin statistics *are* persisted under `fitted_statistics/<op_id>/`. The mel-axis orientation is the cross-repo contract for any consumer that re-derives or re-normalizes features. Pre-prod doc-evolution addition — no `schema_version` bump.
+**Audio spectral features `mel` / `feature` (Stories J.s + J.t).** Audio featurization is a two-op chain at the **Featurizations** stage (run in recipe-declared order):
+
+- `log_mel_spectrogram` (no fit, deterministic) writes a **raw** log-mel spectrogram `np.ndarray` of shape `(n_mels, n_frames)` in **librosa-native orientation** (mel bins on axis 0, time frames on axis 1). Convention: `output_field: mel`. One feature per input window; the stage does not change `record_counts`.
+- `audio_normalize` (**fit-on-train**) reads `mel` and writes the **normalized** model-input feature. Convention: `output_field: feature`.
+
+`audio_normalize` is a fit-on-train **Featurization**, *not* a Transformation: normalizing a derived feature must run after the feature exists, and DataRefinery runs `Transformations` before `Featurizations` (see the DataRefinery `tech-spec.md` § `pipeline.runner` stage-order rationale). Its per-mel-bin statistics **are persisted** under `fitted_statistics/<op_id>/` (see § `audio_normalize` statistics).
+
+**Like `sample_array`, both `mel` and `feature` are array-valued in-pipeline representations and are NOT serialized into the dataset `<split>.jsonl`** (the JSONL writer drops non-JSON-native fields). Consumers do not read the feature arrays from the JSONL in v1; what crosses the boundary is the persisted `audio_normalize` statistics. The mel-axis orientation `(n_mels, n_frames)` is the cross-repo contract for any consumer that re-derives or re-normalizes features. Pre-prod doc-evolution addition — no `schema_version` bump.
 
 ### Sidecar PNG encoding
 
@@ -257,7 +264,7 @@ Shipped Phase J Story J.f, v0.20.0. The field enumerates the canonical class set
 
 ## Fitted statistics ModelFoundry binds against
 
-Fit-on-train Transformations (v1: `normalize`, `mean_subtract`) persist the statistics they fit on the train split under `fitted_statistics/<op_id>/`, where `<op_id>` is the op's `name` in the recipe's `Transformations` section. This is a **downstream binding surface**: a training consumer reads these statistics to apply the same transform its training data was prepared with, so that train/inference parity holds. It is distinct from the recipe-to-recipe `stats_from_instance` import (§ Recipe-side contract) — that mechanism is for *other DataRefinery recipes*; this section is for *downstream training consumers* such as ModelFoundry.
+Fit-on-train operations persist the statistics they fit on the train split under `fitted_statistics/<op_id>/`, where `<op_id>` is the op's `name` in its recipe section. Both fit-on-train **Transformations** (image `normalize`, `mean_subtract`) and fit-on-train **Featurizations** (image `categorical_encode` vocabularies; audio `audio_normalize` per-mel-bin stats) use the same `fitted_statistics/<op_id>/` mechanism. This is a **downstream binding surface**: a training consumer reads these statistics to apply the same transform its training data was prepared with, so that train/inference parity holds. It is distinct from the recipe-to-recipe `stats_from_instance` import (§ Recipe-side contract) — that mechanism is for *other DataRefinery recipes*; this section is for *downstream training consumers* such as ModelFoundry.
 
 ### On-disk layout
 
@@ -288,6 +295,17 @@ For the `normalize` op the fitted statistics are **per-channel vectors**:
 ### `mean_subtract` statistics
 
 For consumers that may encounter the related fit-on-train op `mean_subtract`: the `<op_id>/` directory contains **only** a `mean.parquet` vector (no `std.parquet`). The apply behavior is `x - mean`. A consumer that finds `mean_subtract` in the recipe should not look for `std`.
+
+### `audio_normalize` statistics (Story J.t)
+
+The `audio_classification` plugin's fit-on-train `audio_normalize` op (a **Featurization**, not a Transformation — see § Audio spectral features) persists the same `mean` / `std` vector pair as image `normalize`, with the **same parquet shape** (single `value` column, one row per element, axis-0 order), the **same zero-variance guard** (`std == 0 → 1.0` at apply, persisted `std` unmodified), and the **same `stats_from_instance` import** support. The only difference is the **statistics axis**:
+
+| Op | Vector length | Axis the stat is per | Apply broadcast |
+|---|---|---|---|
+| image `normalize` | `C` (RGB channels) | last axis of `(H, W, C)` | over `H, W` |
+| `audio_normalize` | `n_mels` | **mel axis (axis 0)** of `(n_mels, n_frames)` | over time frames |
+
+So `mean`/`std` each have **`n_mels` rows** (not `C`), and a consumer re-applying them standardizes each mel bin across its time frames: `(feature - mean[:, None]) / std[:, None]`. The vectors correspond to the `mel` feature (`log_mel_spectrogram` output); the normalized result is the `feature` field. There is no channel-order concern (audio is mono in v1); the only alignment requirement is that the consumer's feature is in librosa-native `(n_mels, n_frames)` orientation.
 
 ### Read path
 

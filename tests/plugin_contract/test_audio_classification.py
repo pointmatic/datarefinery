@@ -57,10 +57,10 @@ def test_operation_factory_returns_log_mel_spectrogram_handle() -> None:
     assert handle.fit_on_train is False
 
 
-def test_operation_factory_raises_for_unlanded_op() -> None:
-    # audio_normalize (Transformations, Story J.t) has not landed yet.
+def test_operation_factory_raises_for_unknown_op() -> None:
+    # mfcc is a documented Future op (J.n) — not part of the v1 op set.
     with pytest.raises(PluginError, match="audio_classification"):
-        PLUGIN.operation_factory("Transformations", "audio_normalize")
+        PLUGIN.operation_factory("Featurizations", "mfcc")
 
 
 def test_recommended_params_for_log_mel_and_empty_extension_keys() -> None:

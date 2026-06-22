@@ -1,22 +1,38 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""Audio-classification plugin: `log_mel_spectrogram` Featurization op (Story J.s, R4).
+"""Audio-classification plugin: Featurization ops.
 
-Converts each fixed-length window record's `sample_array` into a **log-mel
-spectrogram** `feature` of shape `(n_mels, n_frames)` (librosa-native
-orientation, mel bins on axis 0; frozen by the audio design memo Finding B).
-One feature output per input window — no record-count change at the
-Featurization stage. All existing fields are preserved; the op only *adds* the
-feature under the recipe's declared `output_field`.
+Two ops, both at the **Featurizations** stage, run in recipe-declared order:
 
-The op is **fully deterministic** (no RNG): the output is a pure function of the
-window samples and the params, so it is byte-identical across runs and worker
-counts (the determinism contract holds by construction).
+- ``log_mel_spectrogram`` (Story J.s, R4) — converts each fixed-length window's
+  ``sample_array`` into a **log-mel spectrogram** of shape ``(n_mels, n_frames)``
+  (librosa-native orientation, mel bins on axis 0). No fit; one output per input
+  window (no record-count change). librosa is lazily imported inside ``apply``
+  (gated behind the ``[audio]`` extra). The recommended `output_field` is
+  ``mel`` (the *raw* spectrogram); see the normalization note below.
 
-librosa is imported **lazily** inside `apply` (mirroring the decode path in
-`inputs.py` and the writer-side `from PIL import Image` pattern) so this module
-stays importable for plugin discovery / contract tests without the `[audio]`
-extra; invoking the op without librosa raises an actionable `PluginError`.
+- ``audio_normalize`` (Story J.t, R5) — **fit-on-train per-mel-bin**
+  standardization of a derived spectral feature: a length-``n_mels`` mean/std
+  vector fit over examples and frames keeping the mel axis, persisted to
+  ``fitted_statistics/<op_id>/`` and applied across all declared splits.
+
+**Why normalization is a Featurization, not a Transformation.** Fit-on-train
+standardization of a *derived* feature is a cross-modality staple (audio
+per-mel-bin now; tabular column scaling and text embedding normalization later).
+DataRefinery's stage order runs ``Transformations`` *before* ``Featurizations``,
+so a Transformation cannot see a feature a Featurization produces. The
+Featurizations stage is the only stage that both runs *after* feature derivation
+and supports fit-on-train + statistics persistence + ``stats_from_instance`` — so
+feature scaling lives here, expressed as a fit-on-train Featurization that reads
+a prior featurization's output. The convention is ``log_mel_spectrogram`` writes
+``mel`` and ``audio_normalize`` reads ``mel`` → writes the final ``feature``
+(distinct fields, so the stage's no-overwrite collision guard is satisfied and
+the raw and scaled features both stay auditable). This is the deliberate split
+from the image ``normalize`` op (which normalizes *raw* pixels at the
+Transformations stage); see ``tech-spec.md`` § Fit-on-train feature scaling.
+
+Both ops are deterministic (no RNG) → byte-identical across runs and worker
+counts.
 
 v1 ships log-mel only; MFCC and other spectral representations are Future (J.n).
 """
@@ -31,8 +47,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from datarefinery.core.errors import MaterializeError, PluginError
 from datarefinery.pipeline.stages.transformations import FittedValues
+from datarefinery.plugins.normalize_stats import (
+    fit_mean_std,
+    unwrap_mean_std,
+    wrap_mean_std,
+    zscore,
+)
 
 Record = Mapping[str, Any]
+
+#: Per-record axis the audio_normalize statistics are computed per: mel bins are
+#: axis 0 of the ``(n_mels, n_frames)`` feature.
+_MEL_AXIS = 0
 
 
 class LogMelParams(BaseModel):
@@ -132,3 +158,82 @@ def _import_librosa() -> Any:
             "install it with: pip install 'ml-datarefinery[audio]'"
         ) from exc
     return librosa
+
+
+def _audio_reduce_axes(ndim: int) -> tuple[int, ...]:
+    """Reduce over every stacked axis except the mel axis.
+
+    Per-record features are ``(n_mels, n_frames)``; stacking prepends the example
+    axis → ``(N, n_mels, n_frames)``, so the mel axis is index 1 in the stack and
+    every other axis (examples + frames) is reduced — yielding a length-``n_mels``
+    per-mel-bin statistic.
+    """
+    mel_in_stack = _MEL_AXIS + 1
+    return tuple(i for i in range(ndim) if i != mel_in_stack)
+
+
+class AudioNormalizeOp:
+    """Fit-on-train per-mel-bin standardization (see module docstring).
+
+    A Featurization op (so it runs *after* ``log_mel_spectrogram`` in the same
+    stage): it reads the spectral feature named by ``inputs[0]`` (convention:
+    ``mel``), fits a length-``n_mels`` mean/std on the train split (or honors a
+    recipe-pinned ``mean``/``std``), and writes the z-scored feature to
+    ``output_field`` (convention: ``feature``). Shares the fit / parquet-wrap /
+    ``std == 0 → 1.0`` zero-variance-guard machinery with the image
+    ``NormalizeOp`` via :mod:`datarefinery.plugins.normalize_stats`; only the
+    statistics axis differs (mel axis 0, not the last axis).
+    """
+
+    fit_on_train: bool = True
+
+    def _input_field(self, inputs: list[str]) -> str:
+        if not inputs:
+            raise PluginError(
+                "audio_normalize requires one input field naming the spectral "
+                "feature to normalize (e.g. 'mel')"
+            )
+        return inputs[0]
+
+    def fit(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        *,
+        inputs: list[str],
+        output_field: str,
+        label_field: str | None,
+    ) -> FittedValues:
+        del output_field, label_field
+        # Recipe-pinned mean/std are honored as the fit output (mode-selecting:
+        # absence ⇒ fit per-mel-bin from train), mirroring the image normalize op.
+        mean_param = params.get("mean")
+        std_param = params.get("std")
+        if mean_param is not None and std_param is not None:
+            mean = np.asarray(mean_param, dtype=np.float64)
+            std = np.asarray(std_param, dtype=np.float64)
+        else:
+            mean, std = fit_mean_std(
+                records, field=self._input_field(inputs), reduce_axes_for=_audio_reduce_axes
+            )
+        return wrap_mean_std(mean, std)
+
+    def apply(
+        self,
+        records: list[Record],
+        params: Mapping[str, Any],
+        fitted: FittedValues,
+        *,
+        inputs: list[str],
+        output_field: str,
+        label_field: str | None,
+    ) -> list[Record]:
+        del params, label_field
+        field = self._input_field(inputs)
+        mean, std = unwrap_mean_std(fitted)
+        out: list[Record] = []
+        for r in records:
+            new = dict(r)
+            new[output_field] = zscore(r[field], mean, std, axis=_MEL_AXIS)
+            out.append(new)
+        return out

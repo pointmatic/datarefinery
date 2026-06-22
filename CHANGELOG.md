@@ -50,19 +50,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `recipe-authoring.md` § Splits gains a *Clip-level labels* subsection.
 - **Spectral featurization — `log_mel_spectrogram` (Story J.s, R4).** New
   Featurization-stage op (`audio_classification`) converts each window's
-  `sample_array` into a log-mel spectrogram `feature` of shape
-  `(n_mels, n_frames)` (librosa-native orientation, mel bins on axis 0) via
-  librosa. One output per input window — no record-count change. Fully
-  deterministic (pure function → worker-count invariant). Params `n_fft` /
-  `hop_length` / `n_mels` / `f_min` / `power` are required (no-implicit-defaults);
-  `f_max` is mode-selecting (absent ⇒ Nyquist). librosa is lazily imported and
-  gated behind the `[audio]` extra. Like `sample_array`, `feature` is an
-  in-pipeline array and is not serialized into the dataset JSONL (it feeds the
-  fit-on-train `audio_normalize` op landing in J.t). v1 ships log-mel only; MFCC
-  and other spectral representations are Future. Cross-repo: the MF
-  vendor-dependency-spec § Audio window records documents the `feature` field +
-  mel-axis orientation. `recipe-authoring.md` § Featurizations gains a
-  `log_mel_spectrogram` subsection.
+  `sample_array` into a log-mel spectrogram of shape `(n_mels, n_frames)`
+  (librosa-native orientation, mel bins on axis 0) via librosa. One output per
+  input window — no record-count change. Fully deterministic (pure function →
+  worker-count invariant). Params `n_fft` / `hop_length` / `n_mels` / `f_min` /
+  `power` are required (no-implicit-defaults); `f_max` is mode-selecting
+  (absent ⇒ Nyquist). librosa is lazily imported and gated behind the `[audio]`
+  extra. The recommended `output_field` is `mel` (the raw spectrogram), which
+  the J.t `audio_normalize` op consumes. Like `sample_array`, the spectral array
+  is in-pipeline and is not serialized into the dataset JSONL. v1 ships log-mel
+  only; MFCC and other spectral representations are Future.
+  `recipe-authoring.md` § Featurizations gains the op.
+- **Fit-on-train feature normalization — `audio_normalize` (Story J.t, R5).**
+  New **fit-on-train Featurization** op (`audio_classification`) performing
+  per-mel-bin standardization: a length-`n_mels` mean/std vector fit over
+  (examples × frames) keeping the mel axis, persisted to
+  `fitted_statistics/<op_id>/`, applied across all declared splits, with the
+  `std == 0 → 1.0` zero-variance guard and `stats_from_instance` sibling import
+  carried over from image `normalize`. **Decision (resolving a flaw in the J.n
+  design memo, which placed it in `Transformations`):** fit-on-train scaling of
+  a *derived* feature is a Featurization, not a Transformation — the pipeline
+  runs `Transformations` before `Featurizations`, so a Transformation cannot see
+  a derived feature. Convention: `log_mel_spectrogram` → `mel`, then
+  `audio_normalize` reads `mel` → writes `feature`. This is memorialized as a
+  cross-modality staple capability in `features.md` FR-12 and `tech-spec.md`
+  § `pipeline.runner`. The shared mean/std fit / parquet-wrap / zero-variance
+  machinery was extracted to `plugins/normalize_stats.py` (parameterized by the
+  statistics axis) and is now shared by image `normalize` and `audio_normalize`.
+  Cross-repo: the MF vendor-dependency-spec gains an § `audio_normalize`
+  statistics subsection (per-mel-bin axis) and an updated audio-features section.
+  `recipe-authoring.md` § Featurizations documents the two-op `mel`→`feature`
+  chain.
 
 
 re-founds DataRefinery's cache identity on a **segmented** model with

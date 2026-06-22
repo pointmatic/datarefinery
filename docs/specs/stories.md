@@ -803,30 +803,33 @@ Implement the Featurization-stage operation that converts a fixed-length window 
 
 ---
 
-### Story J.t: Fit-on-train feature normalization for audio + `stats_from_instance` parity (R5) [Planned]
+### Story J.t: Fit-on-train feature normalization for audio + `stats_from_instance` parity (R5) [Done]
 
 **Disposition: feature addition (or extension of existing op, depending on J.n outcome).** Part of Phase J phase-bundle release. Closes R5.
 
 Bring fit-on-train normalization to audio spectral features. Per the J.n design memo, normalization operates per-mel-bin (vector of `n_mels` means and `n_mels` stds), fit only on the training split, persisted to `fitted_statistics/<op_id>/` in the existing structured form (JSON scalars + parquet vectors). Confirm the `stats_from_instance` sibling-import path works unchanged for audio normalization (FR-ARCH-1 loose-coupling invariant per project-essentials).
 
+**Stage-placement correction (developer-confirmed at the J.t gate, 2026-06-22).** The J.n memo froze `audio_normalize` at the **Transformations** stage. Implementation revealed this is broken: the runner executes `Transformations` *before* `Featurizations` ([runner.py:355 vs :381](../../src/datarefinery/pipeline/runner.py#L355)), so a Transformations-stage op cannot see the `feature` that `log_mel_spectrogram` (Featurizations) produces — empirically `KeyError: 'feature'`. Since fit-on-train scaling of a *derived* feature is a cross-modality staple (tabular column scaling, text embedding normalization will hit the same wall), the developer chose **Option A**: implement `audio_normalize` as a **fit-on-train Featurization** (the only stage that runs after derivation *and* supports fit-on-train + stats persistence + `stats_from_instance`), convention `log_mel_spectrogram` → `mel`, `audio_normalize` reads `mel` → writes `feature`. Memorialized as a staple capability in [`features.md`](features.md) FR-12 #5 and [`tech-spec.md`](tech-spec.md) § `pipeline.runner`. Amends J.s's documented `output_field` convention (`feature` → `mel`); J.s op code is unchanged (it writes whatever `output_field` the recipe declares). A dedicated post-Featurization transform stage was noted as a possible future `plan_phase` evolution, not adopted now.
+
 **Tasks:**
 
-- [ ] Per J.n decision: (a) reuse the existing `normalize` op with shape-agnostic per-last-axis fitting (default; cleanest if the J.n verify holds), OR (b) implement a new `audio_normalize` op (warranted only if the audio shape semantics differ enough).
-- [ ] If (a): document in [`tech-spec.md`](tech-spec.md) that `normalize` is shape-agnostic across modalities; add audio-specific unit tests covering per-mel-bin fit + apply.
-- [ ] If (b): implement `audio_normalize` mirroring `NormalizeOp`'s fit/apply discipline; add to `supported_operations`; document the deliberate split.
-- [ ] Verify `stats_from_instance` path: a consumer recipe importing an audio sibling's normalization stats reads them through correctly; the read-through invariant (no copy into the consumer's `fitted_statistics/`) holds.
-- [ ] Verify zero-variance guard semantics carry over: per-mel-bin channels with zero variance trigger the same `std == 0 → 1.0` substitution at apply (and the persisted `std.parquet` carries the unmodified fit value, matching the existing contract pinned in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md)).
-- [ ] Unit tests: fit determinism; apply correctness; zero-variance bin guard; `stats_from_instance` round-trip on an audio fixture.
-- [ ] Integration test: train + val materialize → val records carry the train-fitted normalization byte-identically.
-- [ ] **Cross-repo coordination.** Extend [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § `normalize` statistics to describe the audio shape variant: per-mel-bin axis order alongside the RGB-channel-order rule for images. If (b), document `audio_normalize` separately with its own subsection.
-- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Audio normalization callout.
-- [ ] CHANGELOG entry.
-- [ ] CI parity.
+- [x] ~~Per J.n decision (a)/(b)~~ → **Option (b) `audio_normalize`, as a fit-on-train Featurization** (not a Transformation — see stage-placement correction above). Implemented in [`operations/featurizations.py`](../../src/datarefinery/plugins/audio_classification/operations/featurizations.py) (`AudioNormalizeOp`); reduces over (examples × frames) keeping the mel axis (axis 0) → length-`n_mels` mean/std. Honors recipe-pinned `mean`/`std` (mode-selecting). Registered in `supported_operations` (Featurizations, `fit_on_train=True`) + `_FEATURIZATION_OPS` dispatch.
+- [x] **Shared-helper extraction** (memo Finding B1 implementation note): extracted the mean/std fit + parquet wrap/unwrap + `std == 0 → 1.0` zero-variance guard into [`plugins/normalize_stats.py`](../../src/datarefinery/plugins/normalize_stats.py), parameterized by the statistics axis (`reduce_axes_for` + `zscore(..., axis=)`). Image `NormalizeOp` refactored to call it (channel-last); `audio_normalize` calls it (mel-axis-0). Image normalize/mean_subtract tests stay green (byte-identical) — regression-verified.
+- [x] Verify `stats_from_instance` path: read-through works for audio (no copy into consumer's `fitted_statistics/`) — integration test `test_stats_from_instance_reads_through_without_refit_or_copy` (fake sibling instance + consumer op importing its mean/std).
+- [x] Verify zero-variance guard semantics carry over: per-mel-bin zero-variance channels → `std == 0 → 1.0` at apply, persisted `std` unmodified — unit test `test_zero_variance_bin_guard`.
+- [x] Unit tests ([`test_audio_normalize_op.py`](../../tests/plugins/audio_classification/test_audio_normalize_op.py), 7): per-mel-bin fit; fit→apply zero-mean/unit-std; field preservation; zero-variance guard; fit determinism; recipe-pinned mean/std; fit-on-train flag.
+- [x] Integration test ([`tests/integration/test_audio_normalize.py`](../../tests/integration/test_audio_normalize.py), 3): full decode→window→log_mel(`mel`)→audio_normalize(`feature`) materialize persists per-mel-bin `mean`/`std` parquet of length `n_mels`; val normalized with **train**-fitted stats byte-identically across a re-run; `stats_from_instance` read-through.
+- [x] **Cross-repo coordination.** Extended [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md): updated § Audio spectral features (`mel`/`feature` two-op chain), broadened § Fitted statistics intro to include fit-on-train Featurizations, added § `audio_normalize` statistics (per-mel-bin axis vs. RGB-channel-axis table).
+- [x] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Featurizations — added `audio_normalize` to the Audio subsection with the two-op `mel`→`feature` chain + why-it's-a-Featurization rationale.
+- [x] DOC (memorialize staple capability, developer-requested): [`features.md`](features.md) FR-12 behavior #5; [`tech-spec.md`](tech-spec.md) § `pipeline.runner` stage-order rationale. Evaluated [`concept.md`](concept.md) — no change needed (the placement is a feature/implementation concern already covered at the right altitude by the existing "normalization into recipe sections" goal + "plugin-interface honesty" value criterion).
+- [x] CHANGELOG entry (J.t bullet + J.s `output_field` convention amendment).
+- [x] CI parity. `pyve test` (1501 pass), `pyve env run mypy src tests` (clean, 244 files), `pyve env run ruff check src/ tests/` + `ruff format --check` (clean).
 
 **Out of Scope:**
 
 - Per-frame normalization (Future).
 - Multi-channel normalization for stereo audio (Future).
+- A dedicated post-Featurization transform stage (noted as a possible future `plan_phase` evolution; the Featurization-as-scaler convention covers v1).
 
 ---
 
