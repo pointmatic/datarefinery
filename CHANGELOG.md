@@ -5,12 +5,106 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.22.0] - 2026-06-22 — Phase J Recipe Architecture bundle
 
-### Changed — Phase J Recipe Architecture bundle (ships as v0.22.0; release ceremony in Story J.n.9)
+The **Recipe Architecture bundle** (Subphase J-1 prelude; Stories J.n–J.n.8)
+re-founds DataRefinery's cache identity on a **segmented** model with
+**per-segment versioning**, and lands the **no-implicit-defaults** discipline,
+the **`overlays`** generalization of `variants`, and the sanctioned
+**`extensions`** namespace. Segmentation is an *internal* partition — the recipe
+stays **flat on disk**, so no recipe edits are required.
+
+> **⚠️ One-time pre-1.0 mass cache invalidation.** This release changes the
+> canonical-bytes algorithm (flat → segmented hash) and, for recipes that
+> relied on an op-parameter default, the canonical bytes themselves. **Every
+> existing materialized instance is now stale and re-materializes once** —
+> potentially hours of recompute per recipe×input, multiplied across every
+> user. This is acceptable *now* (pre-1.0) and deliberately prohibitive
+> post-1.0 (spike memo § 8 / design memo § 8). It is the **single planned
+> invalidation** that buys per-segment *scoped* invalidation thereafter: after
+> this, an audio-plugin change can never invalidate an image recipe's cache.
+> Action: re-run `materialize`; no recipe edits needed.
+
+### Breaking
+
+- **Cache invalidation (one-time, pre-1.0).** Segmented identity (J.n.3) +
+  no-implicit-defaults (J.n.4) shift `recipe_hash` / canonical bytes; every
+  instance re-materializes once. Rides a single `schema_version` 2 → 3 bump
+  (loader `(2, 3)` bootstrap migration); no release sits between the two
+  stories. See the detail bullets below.
+
+### Added
+
+- **Segmented canonical recipe identity** — four identity segments
+  (`core` / `plugin:<name>` / `overlays` / `extensions`); per-segment SHA-256
+  digests combined with `join_stable` (J.n.3).
+- **Per-segment versioning + migration registry** — independent per-segment
+  version axes, a `(segment, from, to)`-keyed `SEGMENT_MIGRATIONS` registry
+  replayed on the loader read path, and structural era-detection keyed off the
+  flat `schema_version` (J.n.7).
+- **Per-segment canonical-hash pin-test discipline** — `test_segment_pin_hashes.py`
+  pins each segment's digest; an unexpected move is a blocking CI failure that
+  forces a conscious per-segment bump + migration (J.n.7).
+- **Sanctioned `extensions` namespace** — `extensions: {<namespace>: {<key>:
+  <value>}}` for experimental, plugin-consumed parameters; `extra="forbid"`
+  relaxed only inside; validator check 28 refuses undeclared keys; additive to
+  identity (J.n.6).
+
+### Changed
+
+- **Recipe model refactored into segments** (internal partition; recipe stays
+  flat on disk — J.n.3).
+- **`variants` → first-class `overlays`** — repeatable `--overlay`,
+  last-writer-wins; `manifest.variant` → `manifest.overlays: list[str]`
+  (manifest schema → v2); hash-neutral (J.n.5).
+- **`ParameterSpec` drops implicit defaults** — op params are `required` or
+  mode-selecting optional; recommended values move to
+  `Plugin.recommended_params`, emitted into recipe text by the scaffolder
+  (J.n.4).
+- **`Plugin` protocol** gains required `recommended_params` (J.n.4) and
+  `extension_keys` (J.n.6) members.
+
+### Cross-repo coordination
+
+- Segmented identity + per-segment versioning + no-implicit-defaults adopted as
+  the **cross-tool-family standard** (spike memo § 10). The MF/NbF
+  vendor-dependency-specs and `project-essentials.md` are updated to pin it
+  (J.n.8). ModelFoundry/NbFoundry adopt in their own repos (developer-owned).
+
+### Removed
+
+- **The global-umbrella recipe versioning model** — replaced by per-segment
+  versions (J.n.7). *Note:* the flat `recipe.schema_version` field **remains on
+  disk** as the era marker and the consumer-facing coordination counter; what is
+  gone is the single global counter as the *only* invalidation axis.
+- **`ParameterSpec(default=…)`** — the implicit-default field is removed; a CI
+  guard fails if it is reintroduced (J.n.4).
+- **Future entry "Default-change discipline tooling for cache-identity
+  stability"** — subsumed by J.n.7's per-segment pins + the no-defaults guard.
+  *(The Future "plugin-pluggable validator reserved-set hook" entry is **not**
+  removed — J.n.1 Q6 folded the decision into the bundle, but the implementation
+  was not built in J.n.7; it remains a tracked follow-up.)*
+
+### Fixed
+
+- **Coverage config** — bare `...` stub bodies (Protocol / abstract / overload
+  placeholders) are now excluded from coverage (`[tool.coverage.report]
+  exclude_lines`), so adding a multi-line `Plugin` protocol method no longer
+  drops `plugins/base.py` below the core-invariant 95% gate. (Build/test config
+  only; no runtime impact.)
+
+### Notes
+
+- Subphase J-1 audio (Stories J.o–J.w) was paused through this release and
+  resumes on the segmented foundation.
+- The Q8 vertical stage-reuse axis was declined for this bundle; `prefix_hash`
+  keeps it adoptable later without a combiner redesign.
+
+### Per-story detail
 
 - **⚠️ One-time pre-1.0 cache invalidation — segmented recipe identity
   (Story J.n.3).** The authoritative cache identity moved from the flat
+  `sha256(to_canonical_bytes(recipe))` to the **segmented** hash
   `sha256(to_canonical_bytes(recipe))` to the **segmented** hash
   `recipe.segments.recipe_identity_hash` — the recipe is partitioned into
   four identity segments (`core`/`plugin`/`overlays`/`extensions`) whose

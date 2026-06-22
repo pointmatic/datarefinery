@@ -141,6 +141,10 @@ exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
+    # Bare ellipsis stub bodies — Protocol / abstract / overload placeholders
+    # that are never executed (e.g. `Plugin` protocol methods in plugins/base).
+    # A standalone `...` is always a stub, never meaningful executable code.
+    "^\\s*\\.\\.\\.\\s*$",
 ]
 
 # Per-module coverage thresholds for the core-invariant set. CI workflow

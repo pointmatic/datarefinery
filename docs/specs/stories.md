@@ -657,7 +657,7 @@ Per spike memo § 10: the horizontal segmented-identity mechanism + no-implicit-
 
 ---
 
-### Story J.n.9: v0.22.0 release — Phase-J Recipe Architecture bundle close [Planned]
+### Story J.n.9: v0.22.0 release — Phase-J Recipe Architecture bundle close [Done]
 
 **Disposition: release bundle.** Part of the Recipe Architecture bundle (closing story).
 
@@ -665,17 +665,12 @@ Phase-bundle release closing the rearchitecture work. Bumps the package version 
 
 **Tasks:**
 
-- [ ] Bump [`src/datarefinery/__init__.py`](../../src/datarefinery/__init__.py) `__version__` to `"0.22.0"`. Hatchling reads this as the single source of truth — no `pyproject.toml [project].version` edit per memory `[[project_version_single_source]]`.
-- [ ] CHANGELOG entry under `## [0.22.0]`:
-  - **Breaking (cache invalidation):** one-time pre-1.0 mass invalidation. Every existing recipe re-materializes once. Document recompute cost and rationale; cite the [spike memo](phase-j-recipe-architecture-spike.md).
-  - **Added:** segmented canonical recipe identity (`core` / `plugin:<name>` / `overlays` / `extensions`); per-segment versioning + migration registry; per-segment canonical-hash pin-test discipline; sanctioned extensions namespace.
-  - **Changed:** Recipe model refactored into segments; `variants` → first-class `overlays`; `ParameterSpec` drops implicit defaults; scaffolder emits recommended values into recipe text.
-  - **Cross-repo coordination:** segmented identity adopted as the cross-tool-family standard per spike memo § 10; vendor-dependency-spec + project-essentials updates landed (J.n.8).
-  - **Removed:** the single global recipe `schema_version` (replaced by per-segment versions); `ParameterSpec(default=…)` implicit defaults; the Future "default-change discipline tooling" entry (subsumed by J.n.7); optionally the Future "plugin-pluggable validator reserved-set hook" entry (if J.n.1 Q6 absorbed it).
-  - **Notes:** Subphase J-1 audio (J.o–J.w) resumes after this release on the segmented foundation.
-- [ ] Cross-repo coordination final check: confirm [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md), [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md), and [`project-essentials.md`](project-essentials.md) are all current per J.n.8.
-- [ ] Run the full local-verification suite per memory `[[feedback_local_verification_mirrors_ci]]`: `pyve test`, `pyve testenv run mypy src tests`, `pyve testenv run ruff check src/ tests/`, `pyve testenv run ruff format --check src/ tests/`.
-- [ ] Present at the approval gate. After approval, Subphase J-1 audio resumes.
+- [x] Bump [`src/datarefinery/__init__.py`](../../src/datarefinery/__init__.py) `__version__` to `"0.22.0"`. Hatchling reads this as the single source of truth — no `pyproject.toml [project].version` edit per memory `[[project_version_single_source]]`. Editable install reprovisioned (`pyve env run pip install -e .`) so installed metadata matches; `datarefinery --version` → `0.22.0`; `test_version_single_source.py` green.
+- [x] CHANGELOG entry under `## [0.22.0]`: `[Unreleased]` converted to `## [0.22.0] - 2026-06-22 — Phase J Recipe Architecture bundle`. Leads with the **⚠️ one-time pre-1.0 mass cache-invalidation** blockquote (recompute cost + rationale, cites spike/design memo § 8), then Breaking / Added / Changed / Cross-repo coordination / Removed / Notes summary sections, with the existing per-story bullets retained under "Per-story detail".
+  - **Removed framing corrected:** worded as removing the *global-umbrella versioning model* — the flat `recipe.schema_version` **remains on disk** as the era marker (per the J.n.7 versioning-model decision), not gone. The Future "plugin-pluggable validator reserved-set hook" entry is **explicitly NOT** removed (J.n.1 Q6 folded the decision in, but J.n.7 did not implement it — tracked follow-up).
+- [x] Cross-repo coordination final check: [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md), [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md), and [`project-essentials.md`](project-essentials.md) confirmed current per J.n.8 (no further edits needed).
+- [x] Run the full local-verification suite per memory `[[feedback_local_verification_mirrors_ci]]`: `pyve test` (1430 pass), `mypy src tests` (clean, 225 files), `ruff check src/ tests/` + `ruff format --check src/ tests/` (clean), **and the per-module core-invariant coverage gate** (`coverage report --include=<module> --fail-under=95` for each of the 8 gated modules — all pass). **CI follow-up:** the gate first failed on `plugins/base.py` (93% < 95) — the new `extension_keys` multi-line protocol stub added a second uncovered bare-`...` statement (the J.n.6 `extension_keys` + J.n.4 `recommended_params` stubs). Fixed in [`pyproject.toml`](../../pyproject.toml) by excluding `^\s*\.\.\.$` stub bodies in `[tool.coverage.report].exclude_lines` (durable — protects J.o's forthcoming `loader_stamped_fields` protocol stub too). Memory `[[feedback_local_verification_mirrors_ci]]` updated to include the coverage gate (it was the missing local step).
+- [x] Present at the approval gate. After approval, Subphase J-1 audio resumes.
 
 **Out of Scope:**
 
