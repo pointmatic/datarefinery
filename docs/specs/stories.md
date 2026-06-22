@@ -926,7 +926,7 @@ Author a tiny but realistic audio fixture dataset (9 clips across 3 classes, var
 
 ---
 
-### Story J.w: vX.Y.0 release — Subphase J-1 phase-bundle close [Planned]
+### Story J.w: v0.23.0 release — Subphase J-1 phase-bundle close [Done]
 
 **Disposition: release bundle.** Part of Phase J phase-bundle release. The last story in Subphase J-1 (and in Phase J, unless further accretion lands first).
 
@@ -934,11 +934,11 @@ Phase-bundle release closing Subphase J-1. Bumps the package version, writes the
 
 **Tasks:**
 
-- [ ] Bump `src/datarefinery/__init__.py` `__version__` to the next minor (per the Version Cadence rule: "highest-impact change in the bundle"; a new modality plugin is **minor**). Hatchling reads this as the single source of truth — no `pyproject.toml [project].version` edit.
-- [ ] CHANGELOG entry: enumerate the new `audio_classification` plugin and the R1–R8 closures; cross-repo contract additions from J.q + J.s + J.t + J.u; new dependency on `librosa`; CHANGELOG note that the second real plugin validates the plugin-interface honesty goal.
-- [ ] Cross-repo coordination final check: confirm [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) and [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) are both current with the audio additions.
-- [ ] Run the full local-verification suite: `pyve test`, `pyve env run mypy src tests`, `pyve env run ruff check src/ tests/`, `pyve env run ruff format --check src/ tests/`.
-- [ ] Present at the approval gate.
+- [x] Bump `src/datarefinery/__init__.py` `__version__` `0.22.0 → 0.23.0` (new modality plugin = **minor** per the Version Cadence rule). Single source of truth — Hatchling reads `__init__.py`; no `pyproject.toml [project].version` edit. Refreshed the testenv editable install (`pyve env run pip install -e .`) so `importlib.metadata` reflects 0.23.0 (`test_version_single_source` green).
+- [x] CHANGELOG entry: authored the `## [0.23.0] - 2026-06-22` section — release lede enumerating the `audio_classification` plugin + R1–R8 closures (J.o/J.p/J.q/J.r/J.s/J.t/J.u/J.v) + cross-repo additions + the new `librosa`/`[audio]` dependency + the plugin-interface-honesty note; `### Added` (J.p–J.v) + `### Fixed` (J.v.1, J.v.2). **Also repaired a J.n.9 leftover** (developer-confirmed at the J.w gate): the Recipe Architecture bundle had no `## [0.22.0]` header (its lede dangled under `## [Unreleased]`); restored `## [0.22.0] - 2026-06-22` + the lede subject so the audio bundle cleanly separates as 0.23.0.
+- [x] Cross-repo coordination final check: confirmed [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) (Audio window records + Audio spectral features + `audio_normalize` statistics + aggregation contract/failure mode) and [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md) (Audio window records display ergonomics) are both current with the J.q/J.s/J.t/J.u additions.
+- [x] Full local-verification suite: `pyve test` (1517 pass), `pyve env run mypy src tests` (clean, 246 files), `pyve env run ruff check src/ tests/` + `pyve env run ruff format --check src/ tests/` (clean).
+- [x] Present at the approval gate.
 
 **Out of Scope:**
 

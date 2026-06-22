@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Subphase J-1 — Audio classification (phase-bundle; ships at the Story J.w release)
+## [0.23.0] - 2026-06-22
+
+**Subphase J-1 — Audio classification.** DataRefinery's **second fully-real
+plugin** (`audio_classification`, `is_stub() → False`), validating the
+plugin-interface-honesty goal — every audio capability lands on the existing
+category-agnostic abstractions, not "image with extra steps". Closes audio
+requirements **R1–R8**: audio input sources + decode (R1/R2, J.p), windowing as
+a record-fanning `Generation` op (R3, J.q), clip-level labels + Splits-before-
+Generation split integrity (R6, J.r), log-mel `Featurization` (R4, J.s),
+fit-on-train per-mel-bin `audio_normalize` (R5, J.t — established as a
+cross-modality staple capability), the `source_record_id` clip↔window
+aggregation-key contract (R7, J.u), and plugin-protocol conformance (R8, J.o),
+proven end-to-end by the J.v acceptance gate (AC1–AC9). Two cross-cutting
+validator/runtime gaps the gate surfaced are fixed under § Fixed (J.v.1, J.v.2).
+**New optional dependency:** `librosa` (+ transitive `soundfile`) behind the
+`[audio]` extra — `pip install 'ml-datarefinery[audio]'`; the default install
+stays lean and the plugin module imports librosa lazily. Cross-repo contracts
+(MF + NbF vendor-dependency-specs) updated for the audio window-record fields,
+`feature` orientation, `audio_normalize` statistics, and the aggregation
+boundary.
+
+### Added
 
 - **Audio input sources + decode (Story J.p).** New `audio_classification` input
   loader behind the `[audio]` optional extra (`pip install
@@ -136,7 +157,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unlabeled partition. No recipe/manifest shape change, no `schema_version`
   bump.
 
+## [0.22.0] - 2026-06-22
 
+The **Phase-J Recipe Architecture bundle** (Stories J.n.1–J.n.9)
 re-founds DataRefinery's cache identity on a **segmented** model with
 **per-segment versioning**, and lands the **no-implicit-defaults** discipline,
 the **`overlays`** generalization of `variants`, and the sanctioned
