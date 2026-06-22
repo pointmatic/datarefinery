@@ -287,6 +287,27 @@ Splits:
 
 **Downstream inference pattern.** The materialized instance contains labeled `train`/`val` splits and an unlabeled `test` split as `dataset/test.jsonl`. Train a model on `train`+`val`; run it against the records in `test.jsonl` to produce predictions. That last step is external to DataRefinery (per `concept.md` non-goals); the unlabeled partition's job is to *exist* in the materialized instance for downstream tooling to consume.
 
+#### Audio sources
+
+The `audio_classification` plugin (requires the `[audio]` extra: `pip install 'ml-datarefinery[audio]'`) provides two source kinds that mirror the image ones, plus a **required canonical sample rate**. Every audio source must declare `target_sample_rate`; the loader decodes each clip with librosa and resamples it to that rate, so the pipeline sees one uniform sample rate regardless of how the clips were recorded. There is **no default** for `target_sample_rate` — the canonical rate is a behavior-affecting choice the author writes explicitly (the no-implicit-defaults rule).
+
+- `audio_folder` — class-named subdirectory per label (`<root>/<class>/<file>.{wav,flac,ogg,mp3}`), labels from the subdir name. Mirrors `image_folder`; `label_from` must not be set.
+- `audio_flat` — flat directory of audio files; labels come from a sidecar manifest declared via `label_from` (`by_id`/`by_row_order`, exactly as for `image_flat`), or `unlabeled: true` for inference-only partitions.
+
+```yaml
+Input:
+  sources:
+    - name: clips
+      type: audio_folder
+      path: ./data/clips
+      target_sample_rate: 16000        # REQUIRED — every clip is resampled to this
+Labels:
+  field: label
+  source: { kind: direct }
+```
+
+Each decoded record carries `{record_id, sample_array, sample_rate, path[, label]}` — `sample_array` is a mono float32 NumPy array at `sample_rate == target_sample_rate`. Decode is deterministic (same file + target rate → byte-identical array), and the source content hash covers the audio bytes (plus the manifest bytes for `audio_flat`), so the cache invalidates correctly when inputs change. v1 is **mono-focused** (stereo is Future). Windowing, featurization (`log_mel_spectrogram`), and `audio_normalize` are separate ops added in later stories.
+
 ### `Output`
 
 Declares the record schema the materialized dataset must satisfy. Field names, dtypes, and (for tensor fields) shapes form the structural contract downstream tools bind against.

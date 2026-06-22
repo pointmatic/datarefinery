@@ -703,7 +703,7 @@ Stand up the bare `audio_classification` plugin so the existing plugin-discovery
 
 ---
 
-### Story J.p: Audio input sources + decode (R1 + R2) [Planned]
+### Story J.p: Audio input sources + decode (R1 + R2) [Done]
 
 **Disposition: feature addition.** Part of Phase J phase-bundle release. Closes R1 + R2.
 
@@ -711,17 +711,17 @@ Implement the two audio input source kinds (parallel to `image_folder` and `imag
 
 **Tasks:**
 
-- [ ] Implement `audio_folder` source kind in `src/datarefinery/plugins/audio_classification/inputs.py`: directory-of-class-subdirectories form; labels derived from the immediate-parent directory name; per-file `record_id` derivation matching the `image_folder` pattern.
-- [ ] Implement `audio_flat` source kind with `label_from` (CSV/manifest join by `record_id`).
-- [ ] Support `unlabeled: true` partitions for both source kinds — consistent with `Labels.source.kind: direct` semantics; label-dependent stages refuse on unlabeled partitions as already enforced for images.
-- [ ] Implement decode op via librosa (per J.n decision): read source audio file, resample to recipe-declared `target_sample_rate`, emit a record `{record_id, sample_array: np.ndarray, sample_rate: int, path: str}`.
-- [ ] Add `target_sample_rate: int = 16000` to the audio input source pydantic model (canonical-bytes participation auto-included; default value perturbs canonical bytes only for recipes declaring the audio plugin — pre-prod re-materialize event for those recipes only).
-- [ ] Add `librosa` (and transitive `soundfile`) dependency. Pinned version chosen by the J.n memo if it surfaced one; otherwise current stable.
-- [ ] Unit tests: decode determinism (same bytes → byte-identical decoded array); per-source-rate resampling determinism; cross-source-rate canonicalization to the recipe's target rate; `unlabeled: true` partition handling.
-- [ ] Integration test: tiny fixture audio dataset (3 clips, mixed source rates) loads and decodes to expected `(count, sample_rate, shape)` tuples.
-- [ ] DOC: [`docs/guides/recipe-authoring.md`](../guides/recipe-authoring.md) § Audio sources subsection.
-- [ ] CHANGELOG entry under the in-progress next-minor (target v0.22.0) section: new audio input sources + decode op; new dependency on `librosa`.
-- [ ] CI parity.
+- [x] Implement `audio_folder` source kind in [`plugins/audio_classification/inputs.py`](../../src/datarefinery/plugins/audio_classification/inputs.py): class-subdir form; labels from immediate-parent dir name; `record_id = "<source>/<class>/<file>"` matching the `image_folder` pattern.
+- [x] Implement `audio_flat` source kind with `label_from` — both `by_id` (join on file stem) and `by_row_order`; reuses the image loader's `_build_label_index`.
+- [x] Support `unlabeled: true` partitions for both source kinds — `audio_flat` + `unlabeled` attaches no label; `audio_folder` + `unlabeled` is refused (declare `audio_flat`), mirroring the image rule. Label-dependent stages already refuse on unlabeled splits (check 21, plugin-agnostic).
+- [x] Implement decode (loader-side per memo § 3, **not** a recipe op): librosa reads + resamples to the source's `target_sample_rate`, emits `{record_id, sample_array, sample_rate, path[, label]}` (mono float32). Lazy librosa import → module importable without the extra; `PluginError` if invoked without it.
+- [~] ~~Add `target_sample_rate: int = 16000`~~ — **superseded.** J.n.3 already shipped `AudioSource.target_sample_rate: int = Field(gt=0)` (required), and the union selection is presence-based, so a default would break selection and reintroduce an implicit default against J.n.4. **Confirmed at the gate (2026-06-22): keep required** — no model change. Audio authors write the canonical rate explicitly; the loader refuses a non-`AudioSource` reaching it.
+- [x] Add `librosa` (+ transitive `soundfile`) as the **`[audio]` optional extra** (memo decision — keeps the default install lean), not a base dependency. mypy override added for the stub-less libs; CI install line → `".[corruptions,audio]"`.
+- [x] Unit tests: decode determinism (byte-identical array), resampling, cross-source-rate canonicalization to one target, `unlabeled` handling, `audio_flat` `by_id`/`by_row_order`, non-`AudioSource` refusal, `hash_audio_sources` ([`tests/plugins/audio_classification/test_audio_inputs.py`](../../tests/plugins/audio_classification/test_audio_inputs.py), 8). `importorskip` so they skip without `[audio]`.
+- [x] Integration test: 3-clip mixed-rate `audio_folder` fixture through `load_raw_records` → `(count=3, sample_rate=16000, mono ~1600-sample shapes)` + content-hash stability ([`tests/integration/test_audio_inputs.py`](../../tests/integration/test_audio_inputs.py)).
+- [x] DOC: [`recipe-authoring.md`](../guides/recipe-authoring.md) § Input → new "Audio sources" subsection.
+- [x] CHANGELOG entry under a new `## [Unreleased]` "Subphase J-1 — Audio classification" section (v0.22.0 already shipped; the audio bundle ships at J.w).
+- [x] CI parity: `pyve test` (1456 pass; audio tests run locally with librosa installed), `mypy src tests` (clean, 233 files), `ruff check`/`format` (clean), core-invariant coverage gate (all 8 ≥ 95%; new audio inputs module 90%).
 
 **Out of Scope:**
 

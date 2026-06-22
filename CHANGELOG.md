@@ -5,9 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.22.0] - 2026-06-22 — Phase J Recipe Architecture bundle
+## [Unreleased]
 
-The **Recipe Architecture bundle** (Subphase J-1 prelude; Stories J.n–J.n.8)
+### Subphase J-1 — Audio classification (phase-bundle; ships at the Story J.w release)
+
+- **Audio input sources + decode (Story J.p).** New `audio_classification` input
+  loader behind the `[audio]` optional extra (`pip install
+  'ml-datarefinery[audio]'`; librosa + transitive soundfile). Two source kinds
+  mirror the image ones — `audio_folder` (class-subdir labels) and `audio_flat`
+  (+`label_from` `by_id`/`by_row_order`, or `unlabeled: true`) — and the loader
+  **decodes** each clip with librosa, resampling to the source's required
+  `target_sample_rate`, emitting `{record_id, sample_array, sample_rate,
+  path[, label]}` (mono float32). Decode is deterministic; the source content
+  hash covers audio bytes (+ manifest bytes for `audio_flat`). `target_sample_rate`
+  stays **required** (no default — the canonical rate is an explicit
+  author-written value per the no-implicit-defaults rule; superseding the J.p
+  draft's "default 16000"). librosa is imported lazily so the plugin stays
+  importable without the extra. CI installs `[corruptions,audio]` to exercise the
+  decode path. `recipe-authoring.md` § Input gains an Audio sources subsection.
+
+
 re-founds DataRefinery's cache identity on a **segmented** model with
 **per-segment versioning**, and lands the **no-implicit-defaults** discipline,
 the **`overlays`** generalization of `variants`, and the sanctioned

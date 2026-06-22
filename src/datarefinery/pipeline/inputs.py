@@ -60,6 +60,13 @@ def load_raw_records(
     if plugin.name == "image_classification":
         attach_label = recipe.Labels.source.kind == "direct"
         return _load_image_classification(recipe.Input.sources, attach_label=attach_label)
+    if plugin.name == "audio_classification":
+        # Lazy import keeps librosa (and the audio module) out of the core
+        # input path; the audio reader decodes loader-side (Story J.p).
+        from datarefinery.plugins.audio_classification.inputs import load_audio_records
+
+        attach_label = recipe.Labels.source.kind == "direct"
+        return load_audio_records(recipe.Input.sources, attach_label=attach_label)
     if plugin.name in {"tabular", "text"}:
         raise PluginError(
             f"materialize: input loading for plugin {plugin.name!r} is not "
@@ -425,6 +432,10 @@ def hash_inputs(recipe: Recipe, plugin: Plugin) -> Mapping[str, str]:
     Useful for resolving cache identity ahead of materialize (e.g., the
     ``status`` verb in Story D.f).
     """
+    if plugin.name == "audio_classification":
+        from datarefinery.plugins.audio_classification.inputs import hash_audio_sources
+
+        return hash_audio_sources(recipe.Input.sources)
     if plugin.name != "image_classification":
         raise PluginError(
             f"hash_inputs: no disk-backed loader registered for plugin {plugin.name!r}"

@@ -40,6 +40,11 @@ dependencies = [
 [project.optional-dependencies]
 llm = ["lmentry"]
 corruptions = ["scikit-image", "opencv-python-headless"]
+# Story J.p: audio_classification decode + featurization. librosa pulls a heavy
+# transitive tail (numba/llvmlite, scipy, soundfile), so it stays an optional
+# extra — the audio plugin imports it lazily (inside the loader/op) so the
+# module is importable for discovery/contract tests without it installed.
+audio = ["librosa"]
 
 [project.urls]
 Homepage = "https://github.com/pointmatic/datarefinery"
@@ -99,6 +104,13 @@ explicit_package_bases = true
 # uses an older click. Suppress at the module level.
 [[tool.mypy.overrides]]
 module = ["click", "click.*"]
+ignore_missing_imports = true
+
+# Story J.p: the `[audio]` extra (librosa + transitive soundfile) ships without
+# py.typed / stubs. The audio plugin imports them lazily; suppress missing-stub
+# errors at the module level like `click` above.
+[[tool.mypy.overrides]]
+module = ["librosa", "librosa.*", "soundfile"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
