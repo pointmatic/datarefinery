@@ -194,8 +194,8 @@ def test_canonical_bytes_are_valid_utf8_json(tmp_path: Path) -> None:
     canonical = _canonical(tmp_path, "base", _BASELINE_YAML)
     payload = json.loads(canonical.decode("utf-8"))
     # Authored as v1; loader migrates the recipe to the latest schema_version
-    # before canonical-bytes computation (Story I.x.1).
-    assert payload["schema_version"] == 2
+    # before canonical-bytes computation (1→2→3; J.n.3 segmented era).
+    assert payload["schema_version"] == 3
     # Compact form: no whitespace separators.
     text = canonical.decode("utf-8")
     assert ", " not in text

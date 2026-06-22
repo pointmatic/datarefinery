@@ -23,11 +23,11 @@ is still a conscious choice, not a silent byte-shift.
 **How to update the pin (legitimately).** After a deliberate
 cache-invalidating change, regenerate the digest with::
 
-    pyve run python -c "import hashlib; \\
-        from datarefinery.recipe.canonical import to_canonical_bytes; \\
+    pyve run python -c "\\
+        from datarefinery.recipe.segments import recipe_identity_hash; \\
         from datarefinery.recipe.loader import load; \\
         from pathlib import Path; \\
-        print(hashlib.sha256(to_canonical_bytes(load(Path('<fixture>')))).hexdigest())"
+        print(recipe_identity_hash(load(Path('<fixture>'))))"
 
 then update ``_PINNED_DIGEST`` below in the same commit that ships the
 change. A reviewer signing off on that diff is signing off on the
@@ -36,11 +36,10 @@ invalidation.
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import load
+from datarefinery.recipe.segments import recipe_identity_hash
 
 # Representative recipe fixture. Fields are populated across every
 # section that contributes to canonical bytes today; defaults that
@@ -82,13 +81,16 @@ Splits:
 # commit — see project-essentials.md "Cache identity is the
 # reproducibility contract — invalidations are ceremonious."
 #
-# v0.19.0 (Phase I bundle 4) bump: the fixture is authored as
-# schema_version 1; the loader migrates it to schema_version 2 (G15 /
-# Story I.x.1, with G12 / I.x.2 and G16a / I.x.3 piggybacking on the
-# same registry). The reshaped recipe has different canonical bytes
-# from the v1 pin, so the digest below was updated as part of the
-# bundle's deliberate cache-invalidation event.
-_PINNED_DIGEST = "146b2059e3a010d22c7ea0229a112a944cd4754277bdeb3ac3f57d3792ff5dcc"
+# v0.22.0 (Story J.n.3) bump — the segmented-canonical era. Cache identity
+# moved from the flat ``to_canonical_bytes`` sha256 to the per-segment
+# ``join_stable`` combiner (``recipe.segments.recipe_identity_hash``); this
+# pin now gates that authoritative hash. The combiner change is a
+# canonical-form algorithm change, so it rode the ``schema_version`` 2→3 bump
+# (loader ``(2, 3)`` bootstrap migration). The fixture is authored as
+# schema_version 1; the loader migrates 1→2→3 before hashing. This was the
+# one-time pre-1.0 cache-invalidation event — every existing instance
+# re-materializes once (prohibitive post-1.0; see the design memo § 8).
+_PINNED_DIGEST = "9659e4381cdcb504ebe57496661fceaab3be3b16f6db52eefed9aa33485c65e4"
 
 _FAILURE_MESSAGE = """
 Canonical hash drift detected.
@@ -125,6 +127,5 @@ release-notes mention is sufficient). Post-production it is mandatory.
 def test_canonical_hash_is_pinned(tmp_path: Path) -> None:
     fixture_path = tmp_path / "fixture.yaml"
     fixture_path.write_text(_FIXTURE_YAML, encoding="utf-8")
-    canonical = to_canonical_bytes(load(fixture_path))
-    digest = hashlib.sha256(canonical).hexdigest()
+    digest = recipe_identity_hash(load(fixture_path))
     assert digest == _PINNED_DIGEST, f"{_FAILURE_MESSAGE}\nGot: {digest}"

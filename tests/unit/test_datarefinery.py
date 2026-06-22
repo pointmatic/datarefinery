@@ -36,7 +36,7 @@ from datarefinery.cache.layout import (
 from datarefinery.core.config import RuntimeConfig
 from datarefinery.core.errors import MaterializeError
 from datarefinery.recipe import validator as validator_module
-from datarefinery.recipe.canonical import to_canonical_bytes
+from datarefinery.recipe.segments import recipe_identity_hash
 
 
 def _records(n: int = 12, classes: int = 2) -> list[dict[str, Any]]:
@@ -161,7 +161,7 @@ def test_cache_key_uses_recipe_inputs_and_seed(tmp_path: Path) -> None:
     records = _records()
     key = obj.cache_key(_input_hashes(records))
 
-    expected_recipe = hashlib.sha256(to_canonical_bytes(obj.recipe)).hexdigest()
+    expected_recipe = recipe_identity_hash(obj.recipe)
     assert key.recipe_hash == expected_recipe
     assert key.seed == 42
 
@@ -187,7 +187,7 @@ def test_materialize_round_trip_via_instance_load(tmp_path: Path) -> None:
     assert reloaded.path == instance.path
     assert reloaded.manifest.recipe_hash == instance.manifest.recipe_hash
     # The reloaded recipe canonicalizes to the same hash recorded in the manifest.
-    expected_hash = hashlib.sha256(to_canonical_bytes(reloaded.recipe)).hexdigest()
+    expected_hash = recipe_identity_hash(reloaded.recipe)
     assert expected_hash == reloaded.manifest.recipe_hash
 
 

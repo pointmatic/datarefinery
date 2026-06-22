@@ -4,14 +4,13 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
 import pytest
 
 from datarefinery.cache.identity import CacheKey, compute_cache_key
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.segments import recipe_identity_hash
 
 
 def _base_dict() -> dict[str, Any]:
@@ -120,9 +119,11 @@ def test_adding_a_source_changes_input_hash() -> None:
     assert a.input_hash != b.input_hash
 
 
-def test_recipe_hash_matches_canonical_bytes_sha256() -> None:
+def test_recipe_hash_is_the_segmented_identity_hash() -> None:
+    # J.n.3: cache identity is the per-segment `join_stable` hash, not the
+    # flat `to_canonical_bytes` sha256.
     recipe = _recipe()
-    expected = hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+    expected = recipe_identity_hash(recipe)
     key = compute_cache_key(recipe, {}, seed=0)
     assert key.recipe_hash == expected
 

@@ -134,32 +134,3 @@ def test_downstream_change_does_not_move_an_upstream_prefix() -> None:
     d1 = [*upstream, seg.segment_digest({"c": 3})]
     d2 = [*upstream, seg.segment_digest({"c": 999})]
     assert seg.prefix_hash(d1, 2) == seg.prefix_hash(d2, 2)
-
-
-# ---------------------------------------------------------------------------
-# Dormant shadow path
-# ---------------------------------------------------------------------------
-
-
-def test_shadow_segments_wrap_flat_recipe_as_core_only() -> None:
-    flat = {"plugin": "image", "seed": 0, "Filters": []}
-    segs = seg.shadow_segments_from_flat(flat)
-    assert segs["core"] == flat
-    assert segs["plugin"] is None and segs["overlays"] is None and segs["extensions"] is None
-
-
-def test_shadow_hash_is_deterministic() -> None:
-    flat = {"plugin": "image", "seed": 0}
-    assert seg.shadow_recipe_hash(flat) == seg.shadow_recipe_hash(dict(flat))
-
-
-def test_shadow_hash_differs_from_flat_hash_by_design() -> None:
-    # The combiner wraps; the segmented hash is intentionally != the flat
-    # model_dump hash. That delta is J.n.3's one-time invalidation.
-    import json
-
-    flat = {"plugin": "image", "seed": 0}
-    flat_hash = hashlib.sha256(
-        json.dumps(flat, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
-    ).hexdigest()
-    assert seg.shadow_recipe_hash(flat) != flat_hash

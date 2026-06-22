@@ -23,18 +23,20 @@ import yaml
 from pydantic import ValidationError
 
 from datarefinery.core.errors import RecipeError
-from datarefinery.recipe.migrations import v1_to_v2
+from datarefinery.recipe.migrations import v1_to_v2, v2_to_v3
 from datarefinery.recipe.models import Recipe
 
-LATEST_SCHEMA_VERSION: int = 2
-SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1, 2})
+LATEST_SCHEMA_VERSION: int = 3
+SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1, 2, 3})
 
 # Each migration key (from_version, to_version) maps to a callable that
 # rewrites a recipe dict in place of any v<from> shape with the
 # equivalent v<to> shape. The chain is registered in
-# :mod:`datarefinery.recipe.migrations`.
+# :mod:`datarefinery.recipe.migrations`. (2, 3) is the J.n.3 flat→segmented
+# bootstrap — the one-time pre-1.0 cache-invalidation event.
 migrations: dict[tuple[int, int], Callable[[dict[str, Any]], dict[str, Any]]] = {
     (1, 2): v1_to_v2,
+    (2, 3): v2_to_v3,
 }
 
 KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(

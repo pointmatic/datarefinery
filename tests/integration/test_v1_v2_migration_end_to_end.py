@@ -105,8 +105,9 @@ def test_v1_recipe_migrates_in_loader_and_materializes_to_instance(tmp_path: Pat
     recipe = load(recipe_path)
 
     # The migration chain ran: every field on disk is v1 shape but the
-    # loaded model is v2 throughout.
-    assert recipe.schema_version == 2
+    # loaded model is at the latest schema_version throughout (1→2→3; v3 is
+    # the J.n.3 segmented-canonical era).
+    assert recipe.schema_version == 3
     # G15 — Filters.
     assert isinstance(recipe.Filters[0], FilterOp)
     assert recipe.Filters[0].op == "random_sample"

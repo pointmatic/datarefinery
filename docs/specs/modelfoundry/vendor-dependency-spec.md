@@ -78,7 +78,7 @@ A materialized instance lives under `<cache-root>/instances/<recipe-hash16>/<inp
 ```text
 <instance>/
 ├── manifest.json
-├── recipe.json                  # canonical v2-shape recipe (loader-migrated if authored as v1)
+├── recipe.json                  # canonical v3-shape recipe (loader-migrated from v1/v2)
 ├── dataset/
 │   ├── train.jsonl              # one record per line
 │   ├── val.jsonl
@@ -93,7 +93,7 @@ A materialized instance lives under `<cache-root>/instances/<recipe-hash16>/<inp
 └── report/                      # see § Report subsections
 ```
 
-`recipe.json` is the canonical-form recipe — the same bytes hashed for the cache key (see § Cache-identity contract). DataRefinery's loader applies any v1→v2 migration before persisting, so consumers reading `recipe.json` always see the v2-shape regardless of the recipe's authored version.
+`recipe.json` is the canonical-form recipe — the full `model_dump` of the model whose segments are hashed for the cache key (see § Cache-identity contract). DataRefinery's loader applies any v1→v2→v3 migration before persisting, so consumers reading `recipe.json` always see the latest (v3) shape regardless of the recipe's authored version. The v3 shape is field-identical to v2 (the v2→v3 bootstrap stamps the version only); v3's substantive change is the segmented `recipe_hash`.
 
 **The original authored YAML is NOT persisted in the instance.** The instance holds only the canonical JSON form (for reproducibility and cache identity). The authored YAML is the user's source artifact and lives in the user's repo, referenced by path. Consumers that need to display "what the user wrote" must retain the source path separately — pretty-printing `recipe.json` gives "what was materialized," which is post-migration and key-sorted and may diverge from the YAML the user actually authored.
 
@@ -333,7 +333,7 @@ The `report/` directory holds the human-readable summary:
 
 The cache key (instance directory path) is `SHA-256(canonical_recipe_bytes) ⊕ SHA-256(raw_input_bytes) ⊕ seed`, truncated to 16 hex chars per component for the path (`<recipe-hash16>/<input-hash16>/<seed>`). The **full** digests live in `manifest.json` for audit.
 
-The canonical bytes are produced by `pydantic_model.model_dump(mode="json")` followed by `json.dumps(sort_keys=True, separators=(",", ":"), ensure_ascii=False)`. **Every pydantic field default participates in canonical bytes** — adding a field with a default value, changing a default value, or reordering a field all perturb the canonical hash for recipes that overlap the change.
+**`recipe_hash` is the *segmented* identity hash as of schema v3 (Story J.n.3).** It is no longer the flat `sha256(model_dump → json.dumps)`. The recipe is partitioned into four identity segments (`core`/`plugin`/`overlays`/`extensions`); each segment's sorted-compact-JSON is SHA-256'd, the digests are joined in fixed order (`b"\x1f".join`), and `recipe_hash = SHA-256(join)`. Per-segment digests are independent — a change to one segment cannot move another's digest (scoped invalidation). Every pydantic field default still participates *within its segment*; the takeaway for consumers is unchanged and strengthened: **`recipe_hash` is DataRefinery's to compute — never replicate it.** (The flat `to_canonical_bytes` still exists as the full-recipe dump but no longer defines identity.)
 
 Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SCHEMA_VERSIONS`) is the deliberate invalidation lever. Non-bumped DataRefinery releases preserve cache identity. Releases that DO invalidate carry a prominent CHANGELOG callout (see v0.15.0 for the H.p–H.r.2 example: adding `AugmentationOp.materialization` and `expansion` defaults perturbed canonical bytes for any recipe with `Augmentations`).
 
@@ -342,6 +342,11 @@ Bumping `schema_version` (in `src/datarefinery/recipe/loader.py`'s `SUPPORTED_SC
 - **`FilterOp`** (Story I.x.1 / G15): v1 nested `predicate: {op, ...rest, seed?}`; v2 lifts to top-level `{op, params, seed?}` (matches every other section). The migration is one-way; ModelFoundry should bind against the v2 shape and rely on the loader to migrate v1 recipes on read.
 - **`GenerationOp`** (Story I.x.2 / G12): v1 left `op` implicit (the recipe's `name` doubled as the op lookup key), called the splits field `applies_at`, and required `output_schema` to be an explicit `dict[str, FieldSpec]`. v2 has explicit `op: str` at top level, renames `applies_at` → `splits`, and widens `output_schema` to accept the literal `"matches_input"` shorthand (resolved at materialize time to `Output.record_schema` plus declared tag fields). The migration handles all three reshapes and the documented v1 workaround pattern of stashing `op:` inside `params:`; ModelFoundry should bind against the v2 names and treat `output_schema: "matches_input"` as a possible value.
 - **Assertion `kind` naming** (Story I.x.3 / G16a): three v1 bare-verb names rename to predicate-sentence form — `dtype` → `dtype_equals`, `range` → `value_range`, `record_count` → `record_count_in_range`. The mapping applies to both `InputContracts[*].assertion` and `OutputExpectations[*].assertion`. `required_field` and `distributional` are unchanged. v1 names are removed (not aliased) post-migration; ModelFoundry consumers reading the cached `recipe.json` will see the v2 names exclusively. The seven additional v2 kinds added in Story I.o (`split_record_counts`, `per_class_count_per_split`, `count_by_field`, `count_by_fields`, `shape_equals`, `value_in_set`, `per_class_count_equals`) were already predicate-sentence and are unaffected.
+
+**Schema v2 → v3 (Phase J Recipe Architecture bundle, v0.22.0 — Story J.n.3).** The bump is a **canonical-form algorithm change**: identity moved to the segmented hash above. It is a **one-time pre-1.0 cache invalidation** — every existing instance re-materializes once. Two consumer-relevant points:
+
+- **The recipe shape on disk is UNCHANGED.** Segmentation is an internal partition (Option 1), not an author-facing reshape — `recipe.json` stays flat with the same top-level sections and field names. Consumers binding to recipe-model fields need **no** changes for v3; the loader migrates v1/v2 recipes to v3 by stamping `schema_version: 3` (no field redistribution). Only `recipe_hash` (and therefore the instance path) changes — and consumers must not bind to that directly anyway (use the resolver).
+- **`AudioSource` discriminated-union member (forward-looking).** `InputSource` is now the open base of a narrow union; an audio source carries `target_sample_rate: int` (selected presence-based; `type` stays a free `str`). Image sources are unaffected and structurally cannot carry audio-only fields. The audio plugin proper lands in a later Subphase-J-1 story; consumers binding only to image recipes see no change.
 
 ## Resolving a materialized instance
 
@@ -371,7 +376,7 @@ report = DataRefinery.from_recipe("recipe.yaml", config=cfg, variant=v, seed=s).
 | `manifest` | `Manifest \| None` | Parsed manifest on `hit`; `None` otherwise. |
 | `note` | `str \| None` | Human-readable detail on `corrupt`. |
 
-**Do NOT recompute the cache key or instance path yourself.** Cache identity is DataRefinery's contract, not a consumer-replicable formula. Per § Cache-identity contract, `recipe_hash` is `SHA-256` over `model_dump(mode="json")` + canonical `json.dumps`, and **every pydantic field default participates** — so a DataRefinery release that adds a field, changes a default, or refines the canonical algorithm shifts `recipe_hash` for overlapping recipes. A consumer that hand-rolls the key (or builds the `<recipe-hash16>/<input-hash16>/<seed>` path directly) will, after any such change, **silently resolve to the wrong or a stale directory with no error** — exactly the brittleness this resolver exists to absorb. Bind to `report.instance_path` and `report.cache_key`; never to a locally-computed equivalent. *(Pinned 2026-06-13, Story J.l — see header.)*
+**Do NOT recompute the cache key or instance path yourself.** Cache identity is DataRefinery's contract, not a consumer-replicable formula. Per § Cache-identity contract, `recipe_hash` is the **segmented** hash (per-segment SHA-256 digests joined and re-hashed, as of v3), and **every pydantic field default participates within its segment** — so a DataRefinery release that adds a field, changes a default, or refines the canonical algorithm (as v3 itself did) shifts `recipe_hash` for overlapping recipes. A consumer that hand-rolls the key (or builds the `<recipe-hash16>/<input-hash16>/<seed>` path directly) will, after any such change, **silently resolve to the wrong or a stale directory with no error** — exactly the brittleness this resolver exists to absorb. Bind to `report.instance_path` and `report.cache_key`; never to a locally-computed equivalent. *(Pinned 2026-06-13, Story J.l — see header.)*
 
 ## Schema-version coordination policy
 
@@ -379,12 +384,12 @@ report = DataRefinery.from_recipe("recipe.yaml", config=cfg, variant=v, seed=s).
 
 | Field | Where | Current value | Source of truth |
 |---|---|---|---|
-| `recipe.schema_version` | `recipe.json` (top-level) | `2` | `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION` |
+| `recipe.schema_version` | `recipe.json` (top-level) | `3` | `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION` |
 | `manifest.schema_version` | `manifest.json` (top-level) | `1` | `datarefinery.pipeline.manifest.MANIFEST_SCHEMA_VERSION` |
 
-`recipe.schema_version` versions the **recipe shape** (the loader migrates v1→v2 on read); `manifest.schema_version` versions the **manifest document format** and advances on its own, unrelated cadence. A consumer binding against the recipe-schema coordination logic below MUST read `recipe.schema_version` — reading `manifest.schema_version` (currently `1`) where the recipe version (currently `2`) is meant is a silent off-by-one that will mis-route the migration check. *(F5, pinned in Round 3 — see header.)*
+`recipe.schema_version` versions the **recipe shape** (the loader migrates v1→v2→v3 on read); `manifest.schema_version` versions the **manifest document format** and advances on its own, unrelated cadence. A consumer binding against the recipe-schema coordination logic below MUST read `recipe.schema_version` — reading `manifest.schema_version` (currently `1`) where the recipe version (currently `3`) is meant is a silent off-by-one that will mis-route the migration check. *(F5, pinned in Round 3 — see header.)*
 
-As of the current DataRefinery release the supported set is **`{1, 2}`** with **`LATEST_SCHEMA_VERSION = 2`** (importable as `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION`). DataRefinery's loader applies the registered `(1, 2)` migration chain before validation, so a consumer using `Instance.load` always sees the **v2-shaped** recipe regardless of the on-disk recipe's authored version. A consumer that still pins its tracked set to `{1}` MUST update to include `2` before binding v2 instances, or it will hard-error per the rule below.
+As of the current DataRefinery release the supported set is **`{1, 2, 3}`** with **`LATEST_SCHEMA_VERSION = 3`** (importable as `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` / `LATEST_SCHEMA_VERSION`). DataRefinery's loader applies the registered `(1, 2)` then `(2, 3)` migration chain before validation, so a consumer using `Instance.load` always sees the **v3-shaped** recipe regardless of the on-disk recipe's authored version. The v3 bootstrap is version-stamp-only (no field reshape — see § Cache-identity contract "Schema v2 → v3"), so the v3 recipe shape is field-identical to v2; the substantive v3 change is the segmented `recipe_hash`. A consumer that still pins its tracked set to `{1, 2}` MUST update to include `3` before binding v3 instances, or it will hard-error per the rule below.
 
 ModelFoundry SHOULD track DataRefinery's current `SUPPORTED_SCHEMA_VERSIONS` set. When consuming a recipe whose `schema_version` is **outside** ModelFoundry's known support range:
 

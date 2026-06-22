@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Phase J Recipe Architecture bundle (ships as v0.22.0; release ceremony in Story J.n.9)
+
+- **⚠️ One-time pre-1.0 cache invalidation — segmented recipe identity
+  (Story J.n.3).** The authoritative cache identity moved from the flat
+  `sha256(to_canonical_bytes(recipe))` to the **segmented** hash
+  `recipe.segments.recipe_identity_hash` — the recipe is partitioned into
+  four identity segments (`core`/`plugin`/`overlays`/`extensions`) whose
+  per-segment SHA-256 digests are combined with `join_stable`. Because this
+  is a canonical-form algorithm change, it rides a **`schema_version` 2 → 3**
+  bump (loader `(2, 3)` bootstrap migration; v3 = the segmented-canonical
+  era). **Blast radius:** every existing recipe hashes to a new
+  `recipe_hash`, so **every materialized instance is now stale and
+  re-materializes once** — potentially hours of recompute per recipe×input,
+  across every user. This is acceptable *now* (pre-1.0) and deliberately
+  prohibitive post-1.0 (design memo § 8); it is the single planned
+  invalidation that buys per-segment scoped invalidation thereafter. The
+  recipe stays **flat** on disk — segmentation is an internal partition
+  (Option 1), not an author-facing reshape — so no recipe edits are
+  required; re-run `materialize` to rebuild instances.
+- **Plugin source subclasses — `AudioSource` (Story J.n.3).** `InputSource`
+  is now the open base of a narrow discriminated union; `AudioSource` adds
+  `target_sample_rate`. Selection is presence-based and `type` stays a free
+  `str`. The base's `extra="forbid"` structurally enforces *Finding A*:
+  audio-only source fields can never enter an image recipe's canonical bytes
+  (pinned by `tests/integration/test_segmented_identity.py`). Cross-repo
+  contract updated in
+  [`docs/specs/modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md)
+  and the NbFoundry mirror.
+
 ## [0.21.0] - 2026-06-16
 
 ### Fixed

@@ -13,7 +13,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializeAsAny,
+    field_validator,
+    model_validator,
+)
 
 Severity = Literal["error", "warning"]
 
@@ -108,8 +115,52 @@ class InputSource(_Frozen):
         return self
 
 
+class AudioSource(InputSource):
+    """Audio input source — the audio plugin's discriminated-union member.
+
+    Story J.n.3 (design Q1): plugin-specific source *fields* are carried on
+    a narrow subclass of the shared structural :class:`InputSource`, not on
+    the base. The base's ``extra="forbid"`` therefore makes the audio-only
+    ``target_sample_rate`` rejectable on a non-audio source — the structural
+    enforcement of Finding A (audio fields never enter an image recipe's
+    canonical bytes). The field is *version-governed* by ``plugin:audio``
+    (the straddle rule) even though it serializes within the ``core`` Input
+    structure; the audio plugin proper lands in Story J.o.
+    """
+
+    target_sample_rate: int = Field(gt=0)
+
+
 class InputSection(_Frozen):
-    sources: list[InputSource]
+    # `SerializeAsAny` so a selected `AudioSource` serializes its *own* fields
+    # (incl. `target_sample_rate`) instead of being narrowed to the declared
+    # base `InputSource` schema — otherwise audio-only fields would be stripped
+    # from canonical bytes and the discriminated-union representation would be
+    # serialization-invisible.
+    sources: list[SerializeAsAny[InputSource]]
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def _select_source_subclass(cls, value: Any) -> Any:
+        """Pick the plugin source subclass per the design Q1 union.
+
+        The selection is *presence-based* (a source declaring an audio-only
+        field is an :class:`AudioSource`) rather than keyed on ``type``: the
+        concrete audio ``type`` vocabulary is the audio plugin's to define
+        (Story J.o), and ``InputSource.type`` stays a free ``str`` (design
+        § 0). Already-constructed model instances pass through untouched.
+        """
+        if not isinstance(value, list):
+            return value
+        selected: list[Any] = []
+        for item in value:
+            if isinstance(item, InputSource):
+                selected.append(item)
+            elif isinstance(item, dict) and "target_sample_rate" in item:
+                selected.append(AudioSource.model_validate(item))
+            else:
+                selected.append(item)
+        return selected
 
 
 class FieldSpec(_Frozen):
@@ -453,7 +504,7 @@ class SinkOp(_Frozen):
 
 
 class Recipe(_Frozen):
-    schema_version: int = 2
+    schema_version: int = 3
     plugin: str
     seed: int = 0
     Input: InputSection

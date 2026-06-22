@@ -476,7 +476,7 @@ Implement the segment-aware canonical-bytes machinery per the J.n.1 design memo:
 
 ---
 
-### Story J.n.3: Recipe model refactor into segments + plugin-surface representation closes Finding A [Planned]
+### Story J.n.3: Recipe model refactor into segments + plugin-surface representation closes Finding A [Done]
 
 **Disposition: feature addition (mass refactor) + one-time pre-1.0 cache invalidation.** Part of the Recipe Architecture bundle. Closes spike memo Finding A.
 
@@ -484,19 +484,25 @@ Refactor `Recipe` from a flat pydantic model into a segmented one: `core`, `plug
 
 **This is the one-time pre-1.0 cache-invalidation event.** Every existing recipe re-materializes once. Acceptable now, prohibitive post-1.0 per spike memo § 8.
 
+**Implementation decisions (developer-confirmed at the J.n.3 gate).**
+
+- **Option 1 — internal partition, flat author-facing recipe** (vs. the rejected Option 3 author-facing nesting). Segmentation drives hashing / per-segment versioning / validation dispatch / pin boundaries; it is **not** an author-facing reshape. The recipe stays flat on disk. Decisive reasons: Option 1 keeps a future nested *authoring* mode reachable for free (the hash is over segment *content*, authoring-shape-independent) while Option 3 burns the pre-1.0 window on a reshape that isn't required for Finding A; and nesting would imply a stage hierarchy DR deliberately doesn't have (Q8 declined). The anti-footgun Option 3 would have given structurally is recovered by a **CI guard** that every `Recipe` field is assigned exactly one segment (`RECIPE_FIELD_SEGMENTS`). The author-readability UX of nesting is orthogonal — solvable with a validator/visualizer/wizard tool, not the identity model.
+- **`schema_version` 2 → 3.** The combiner change is a canonical-form algorithm change, which `project-essentials.md` requires to ride a bump. v3 = the segmented-canonical era; the `(2, 3)` bootstrap is **version-stamp-only** (no field redistribution — Option 1; no default injection — that is Q7 / J.n.4). On-disk per-segment version block deferred to J.n.7 (per-segment version constants stay code-side in `segments.py`; the `(segment, from, to)` registry skeleton stays wired but empty).
+- **Plugin source representation = open discriminated union.** `InputSource` is the open base (free-str `type` preserved); `AudioSource(InputSource)` adds `target_sample_rate`, selected **presence-based** (not on `type`, whose audio vocabulary is J.o's to define). `SerializeAsAny` so the subclass serializes its own fields; the base's `extra="forbid"` structurally enforces Finding A.
+
 **Tasks:**
 
-- [ ] Refactor [`src/datarefinery/recipe/models.py`](../../src/datarefinery/recipe/models.py): split `Recipe` into segment-typed sub-models per J.n.1 Q1 + Q2 decisions.
-- [ ] Implement the chosen plugin-surface representation (discriminated unions or nested sub-doc); migrate every plugin-specific field into the active plugin's segment.
-- [ ] Wire the runner / loader / validator / cache identity to use the segmented canonical bytes from J.n.2 (turn off shadow mode; segmented becomes the only path).
-- [ ] Audio-specific verification: `target_sample_rate` and any other audio-only fields live in `plugin:audio` only; pin-test that they do NOT appear in image recipes' canonical bytes (the direct resolution of J.n Finding A).
-- [ ] Migration logic v1 → vN (where N is the new segmented version) keyed by `(segment, from, to)` per J.n.2's registry. The loader applies migrations on read; the cached `recipe.json` reflects the new segmented shape.
-- [ ] Update all fixture recipes to the new segmented shape.
-- [ ] Integration test: image-fixture pin test shows hash UNCHANGED across an audio-plugin-surface change. Audio-fixture pin test shows hash CHANGED only for audio-segment changes.
-- [ ] DOC: update [`tech-spec.md`](tech-spec.md) § Data Models to describe the segmented recipe shape.
-- [ ] CHANGELOG entry under the in-progress v0.22.0 section: one-time pre-1.0 cache invalidation; document recompute cost and rationale.
-- [ ] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § Recipe-side contract + § Cache-identity contract; mirror in [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md). Full sweep of cross-repo docs lives in J.n.8; this story carries the local diffs that directly correspond to the refactor.
-- [ ] CI parity.
+- [x] Refactor [`src/datarefinery/recipe/models.py`](../../src/datarefinery/recipe/models.py): split `Recipe` into segment-typed sub-models per J.n.1 Q1 + Q2 decisions. **Done as an internal partition** (Option 1) — `RECIPE_FIELD_SEGMENTS` + `segments_of` in [`recipe/segments.py`](../../src/datarefinery/recipe/segments.py) rather than nesting the author-facing model; `Recipe` stays flat. CI guard pins exact field→segment coverage.
+- [x] Implement the chosen plugin-surface representation (discriminated unions or nested sub-doc); migrate every plugin-specific field into the active plugin's segment. **Open discriminated union** `InputSource | AudioSource` (presence-based selection, `SerializeAsAny`); `target_sample_rate` is the audio-only field, version-governed by `plugin:audio` (straddle rule).
+- [x] Wire the runner / loader / validator / cache identity to use the segmented canonical bytes from J.n.2 (turn off shadow mode; segmented becomes the only path). `recipe_identity_hash` is authoritative; routed through `cache/identity.py`, `reporting/report.py`, `core/instance.py`, `cache/sibling_stats.py`. Shadow path retired (config flag, runner block, `shadow_*` fns, shadow tests removed).
+- [x] Audio-specific verification: `target_sample_rate` and any other audio-only fields live in `plugin:audio` only; pin-test that they do NOT appear in image recipes' canonical bytes (the direct resolution of J.n Finding A). `tests/unit/test_recipe_segmentation.py` + `tests/integration/test_segmented_identity.py`.
+- [x] Migration logic v1 → vN (where N is the new segmented version) keyed by `(segment, from, to)` per J.n.2's registry. The loader applies migrations on read; the cached `recipe.json` reflects the new segmented shape. `v2_to_v3` whole-recipe bootstrap (design Q4); loader `SUPPORTED={1,2,3}`, `LATEST=3`. Per-`(segment, from, to)` registry stays wired-but-empty for J.n.7; recipe stays flat (version-stamp-only) per Option 1.
+- [x] Update all fixture recipes to the new segmented shape. **N/A under Option 1** — recipes stay flat; the only fixture-facing changes are the re-pinned canonical hash and `schema_version` 2→3 assertions (loader migrates authored v1/v2 fixtures).
+- [x] Integration test: image-fixture pin test shows hash UNCHANGED across an audio-plugin-surface change. Audio-fixture pin test shows hash CHANGED only for audio-segment changes. `tests/integration/test_segmented_identity.py` (pinned image + audio identities; both directions).
+- [x] DOC: update [`tech-spec.md`](tech-spec.md) § Data Models to describe the segmented recipe shape. Updated § `recipe.segments` (authoritative) + § Data Models (`AudioSource` union, flat-stays).
+- [x] CHANGELOG entry under the in-progress v0.22.0 section: one-time pre-1.0 cache invalidation; document recompute cost and rationale. Added under [Unreleased] (Recipe Architecture bundle / v0.22.0; J.n.9 owns the release section).
+- [x] **Cross-repo coordination.** Update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § Recipe-side contract + § Cache-identity contract; mirror in [`nbfoundry/vendor-dependency-spec.md`](nbfoundry/vendor-dependency-spec.md). Full sweep of cross-repo docs lives in J.n.8; this story carries the local diffs that directly correspond to the refactor.
+- [x] CI parity. 1377 tests pass; mypy clean (219 files); ruff check + format clean.
 
 **Out of Scope:**
 

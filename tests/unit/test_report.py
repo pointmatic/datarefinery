@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -22,8 +21,8 @@ from datarefinery.pipeline.manifest import (
     read_manifest,
     write_manifest,
 )
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.segments import recipe_identity_hash
 from datarefinery.reporting.report import (
     list_fitted_op_ids,
     re_render_report,
@@ -69,7 +68,7 @@ def _recipe() -> Recipe:
 
 
 def _manifest(recipe: Recipe, *, warnings: list[ManifestWarning] | None = None) -> Manifest:
-    rh = hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+    rh = recipe_identity_hash(recipe)
     return Manifest(
         datarefinery_version="0.3.12",
         plugin="image_classification",

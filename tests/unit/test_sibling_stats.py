@@ -11,7 +11,6 @@ sibling-op-not-found, statistics-incompatible).
 
 from __future__ import annotations
 
-import hashlib
 import textwrap
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -36,6 +35,7 @@ from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import Manifest, write_manifest
 from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import load as load_recipe
+from datarefinery.recipe.segments import recipe_identity_hash
 from datarefinery.recipe.variants import apply_variant
 
 _RECIPE_YAML = textwrap.dedent(
@@ -75,7 +75,7 @@ def _write_recipe(path: Path) -> Path:
 
 def _recipe_hash(recipe_path: Path) -> str:
     recipe = load_recipe(recipe_path)
-    return hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+    return recipe_identity_hash(recipe)
 
 
 def _build_promoted_instance(
@@ -328,7 +328,7 @@ def _recipe_hash_stripped(recipe_path: Path) -> str:
     materialize path at ``core/datarefinery.py:92-93``.
     """
     recipe = apply_variant(load_recipe(recipe_path), None)
-    return hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+    return recipe_identity_hash(recipe)
 
 
 def _build_promoted_instance_materialize_path(

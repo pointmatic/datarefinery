@@ -18,7 +18,6 @@ canonical hash of the recipe handed in.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -30,8 +29,8 @@ from datarefinery.cache.layout import (
 )
 from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.manifest import Manifest, read_manifest
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.segments import recipe_identity_hash
 
 REPORT_FILENAME = "report.md"
 DRIFT_FILENAME = "drift.json"
@@ -205,7 +204,7 @@ def re_render_report(
     instance_dir = Path(instance_dir)
     manifest = read_manifest(manifest_path(instance_dir))
 
-    expected_hash = hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+    expected_hash = recipe_identity_hash(recipe)
     if manifest.recipe_hash != expected_hash:
         raise MaterializeError(
             f"re_render_report: recipe hash mismatch with manifest. "

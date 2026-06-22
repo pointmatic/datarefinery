@@ -216,6 +216,28 @@ def v1_to_v2(recipe_dict: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def v2_to_v3(recipe_dict: dict[str, Any]) -> dict[str, Any]:
+    """Story J.n.3 flat→segmented bootstrap — the one-time pre-1.0
+    cache-invalidation event (design Q4).
+
+    v3 is the *segmented-canonical era*: recipe identity switched from the
+    flat ``model_dump`` sha256 to the per-segment ``join_stable`` combiner
+    (:func:`datarefinery.recipe.segments.recipe_identity_hash`). That is a
+    canonical-form algorithm change, which ``project-essentials.md`` requires
+    to ride a ``schema_version`` bump.
+
+    Under the confirmed Option-1 design the recipe stays *flat* on disk —
+    segmentation is an internal partition, not an author-facing reshape — so
+    this whole-recipe migration performs **no field redistribution**. (Default
+    injection for the no-implicit-defaults rollout is Q7 / Story J.n.4, not
+    here.) The only on-disk change is the version stamp; the identity shift is
+    carried entirely by the new combiner. Idempotent on already-v3 input.
+    """
+    out = dict(recipe_dict)
+    out["schema_version"] = 3
+    return out
+
+
 def register_v1_to_v2(*funcs: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
     """Append additional v1->v2 reshape callables. Used by I.x.2 and
     I.x.3 to extend the chain without re-importing private state."""

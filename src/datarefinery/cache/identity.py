@@ -15,8 +15,8 @@ import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.segments import recipe_identity_hash
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +45,7 @@ def compute_cache_key(
     order-independent: keys are sorted by source name before
     concatenation.
     """
-    recipe_hash = hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+    recipe_hash = recipe_identity_hash(recipe)
 
     parts = [f"{name}={raw_input_hashes[name]};" for name in sorted(raw_input_hashes)]
     payload = "".join(parts).encode("utf-8")

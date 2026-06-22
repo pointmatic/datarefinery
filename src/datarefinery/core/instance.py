@@ -16,7 +16,6 @@ only pay for I/O when they `get_scalar` / `get_vector`.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 from pathlib import Path
 
 from datarefinery.cache.layout import (
@@ -28,8 +27,8 @@ from datarefinery.cache.layout import (
 from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import Manifest, read_manifest
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.models import Recipe
+from datarefinery.recipe.segments import recipe_identity_hash
 from datarefinery.reporting.report import REPORT_FILENAME, re_render_report
 
 
@@ -70,7 +69,7 @@ class Instance:
             )
         recipe = Recipe.model_validate_json(r_path.read_text(encoding="utf-8"))
 
-        actual_hash = hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+        actual_hash = recipe_identity_hash(recipe)
         if actual_hash != manifest.recipe_hash:
             raise MaterializeError(
                 f"Instance.load: persisted recipe.json at {r_path} "

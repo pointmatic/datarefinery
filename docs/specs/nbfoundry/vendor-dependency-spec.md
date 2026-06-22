@@ -213,7 +213,7 @@ For machine-readable error output beyond the exit code + class name, see § "For
 
 ### Verb-specific surfaces
 
-- **`init`** — accepts `--input <dir>`, `--output <yaml-path>`, `--plugin {image_classification}`, `--enhance` (requires `[llm]` extra). The scaffolded recipe is written to `--output` with `schema_version: 1` today (F7 from J.b spike — auto-migrated to v2 by the loader; the canonical persisted shape inside materialized instances is always v2). Stable for v1.
+- **`init`** — accepts `--input <dir>`, `--output <yaml-path>`, `--plugin {image_classification}`, `--enhance` (requires `[llm]` extra). The scaffolded recipe is written to `--output` with `schema_version: 1` today (F7 from J.b spike — auto-migrated to v3 by the loader; the canonical persisted shape inside materialized instances is always the latest, v3). Stable for v1.
 - **`validate`** — positional argument is the recipe YAML. Prints a numbered checks table (FR-2 #1–#25 today; new checks land in subsequent releases). Exit 0 if every check passes (warnings allowed), exit 1 if any fails.
 - **`materialize`** — positional argument is the recipe YAML. Accepts `--stage <NAME>` for partial runs; valid stage names are `pipeline.runner.STAGE_NAMES`. Cache hits short-circuit before any temp-dir work.
 - **`status`** — positional argument is either a recipe YAML (resolves cache identity from disk) or a materialized instance directory. Exit 0 in all cases including cache miss; corrupt instances print the `corrupt` label but still exit 0.
@@ -250,7 +250,9 @@ Marimo enforces single-definition-per-symbol across cells: re-using a binding na
 
 ## Schema-version coordination policy
 
-NbFoundry SHOULD track DataRefinery's `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` set (importable; v0.19.0+ ships `{1, 2}` with `LATEST_SCHEMA_VERSION = 2`). The loader auto-migrates v1 recipes to v2 canonical shape on read; the persisted `recipe.json` inside a materialized instance is always v2.
+NbFoundry SHOULD track DataRefinery's `datarefinery.recipe.loader.SUPPORTED_SCHEMA_VERSIONS` set (importable; v0.22.0+ ships `{1, 2, 3}` with `LATEST_SCHEMA_VERSION = 3`). The loader auto-migrates v1→v2→v3 on read; the persisted `recipe.json` inside a materialized instance is always the latest (v3) shape.
+
+**Schema v2 → v3 (v0.22.0, Story J.n.3) — segmented recipe identity.** Cache identity moved from the flat canonical sha256 to a **segmented** hash; this is a **one-time pre-1.0 cache invalidation** (every instance re-materializes once). The recipe shape on disk is **unchanged** (segmentation is internal — the v2→v3 bootstrap stamps the version only, no field reshape), so NbFoundry — which drives the library/CLI rather than reading recipe internals — needs no binding changes beyond widening its tracked support set to include `3`. Full detail (segmented algorithm, `AudioSource` union) is in the MF spec § Cache-identity contract.
 
 For NbFoundry's use cases — driving the library/CLI rather than reading recipe internals — the schema-version coordination obligation is much lighter than ModelFoundry's:
 

@@ -31,7 +31,6 @@ Three explicit failure modes, each a distinct subclass of
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -43,8 +42,8 @@ from datarefinery.cache.layout import (
 from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import read_manifest
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import load as load_recipe
+from datarefinery.recipe.segments import recipe_identity_hash
 from datarefinery.recipe.variants import apply_variant
 
 
@@ -92,7 +91,7 @@ def resolve_sibling_stats(
     # this, any sibling recipe declaring `variants:` produces a hash
     # mismatch and the shard lookup fails (G19).
     sibling_recipe = apply_variant(load_recipe(recipe_path), None)
-    sibling_hash = hashlib.sha256(to_canonical_bytes(sibling_recipe)).hexdigest()
+    sibling_hash = recipe_identity_hash(sibling_recipe)
     shard = sibling_hash[:16]
 
     shard_dir = instances_root(cache_root) / shard

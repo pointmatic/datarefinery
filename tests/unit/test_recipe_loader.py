@@ -47,8 +47,9 @@ def _write(tmp_path: Path, payload: object) -> Path:
 def test_load_minimal_recipe_succeeds(tmp_path: Path) -> None:
     path = _write(tmp_path, _minimal_recipe_dict())
     recipe = load(path)
-    # Authored as v1; loader migrates to the latest schema_version on load.
-    assert recipe.schema_version == 2
+    # Authored as v1; loader migrates to the latest schema_version on load
+    # (1→2→3; v3 is the J.n.3 segmented-canonical era).
+    assert recipe.schema_version == 3
     assert recipe.plugin == "image_classification"
 
 
@@ -68,7 +69,7 @@ def test_unrecognized_schema_version_raises_with_supported_list(tmp_path: Path) 
         load(path)
     msg = str(info.value)
     assert "unsupported schema_version=99" in msg
-    assert "supported versions: [1, 2]" in msg
+    assert "supported versions: [1, 2, 3]" in msg
     assert "FR-1" in msg
 
 

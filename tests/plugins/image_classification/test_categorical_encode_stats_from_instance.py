@@ -12,7 +12,6 @@ test pattern.
 
 from __future__ import annotations
 
-import hashlib
 import textwrap
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -31,9 +30,9 @@ from datarefinery.pipeline.fitted_stats import FittedStatistics
 from datarefinery.pipeline.manifest import Manifest, write_manifest
 from datarefinery.pipeline.stages.featurizations import apply_featurizations
 from datarefinery.plugins.image_classification import PLUGIN as IMAGE_PLUGIN
-from datarefinery.recipe.canonical import to_canonical_bytes
 from datarefinery.recipe.loader import load as load_recipe
 from datarefinery.recipe.models import FeaturizationOp
+from datarefinery.recipe.segments import recipe_identity_hash
 from datarefinery.recipe.variants import apply_variant
 
 _SIBLING_RECIPE_YAML = textwrap.dedent(
@@ -74,7 +73,7 @@ def _write_sibling_recipe(path: Path) -> Path:
 
 def _sibling_recipe_hash(recipe_path: Path) -> str:
     recipe = apply_variant(load_recipe(recipe_path), None)
-    return hashlib.sha256(to_canonical_bytes(recipe)).hexdigest()
+    return recipe_identity_hash(recipe)
 
 
 def _build_sibling_with_vocabulary(

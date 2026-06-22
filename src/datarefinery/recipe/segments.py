@@ -1,10 +1,15 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
-"""Segment-aware canonical-bytes machinery (Story J.n.2, dormant infrastructure).
+"""Segment-aware canonical-bytes machinery.
 
 Implements the design frozen in
 ``docs/specs/phase-j-recipe-architecture-design.md``:
 
+- **Q1** (Story J.n.3) — the flat :class:`~datarefinery.recipe.models.Recipe`
+  is partitioned into the frozen four segments via :data:`RECIPE_FIELD_SEGMENTS`
+  + :func:`segments_of`. This is an *internal* partition (Option 1): the
+  author-facing recipe stays flat; segmentation drives hashing, per-segment
+  versioning, validation dispatch, and pin-test boundaries — not author shape.
 - **Q3** — canonical bytes = ordered concatenation of per-segment SHA-256
   digests, with a single fixed :data:`EMPTY_MARKER` for empty/absent
   segments, and an intrinsic *cumulative-prefix* form (:func:`prefix_hash`)
@@ -12,13 +17,12 @@ Implements the design frozen in
 - **Q4** — per-segment version constants and a ``(segment, from, to)``
   migration-registry skeleton (populated by J.n.7).
 
-This is **dormant**: no recipe field is segmented yet (J.n.3 owns the model
-refactor + the authoritative flip). The flat
-:func:`datarefinery.recipe.canonical.to_canonical_bytes` hasher remains
-authoritative until then. The segmented hash is *intentionally* not equal to
-the flat hash — the uniform-wrapping combiner is precisely the one-time
-invalidation J.n.3 lands; shadow mode therefore verifies determinism and
-dormancy, never flat==segmented.
+:func:`recipe_identity_hash` is the **authoritative** cache-identity hash as
+of J.n.3 (it replaced the flat
+:func:`datarefinery.recipe.canonical.to_canonical_bytes` sha256). The
+segmented hash is intentionally != the flat hash — the combiner change is the
+one-time pre-1.0 invalidation (and a canonical-form algorithm change, so it
+rides the ``schema_version`` 2→3 bump per ``project-essentials.md``).
 """
 
 from __future__ import annotations
@@ -26,11 +30,47 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from datarefinery.recipe.models import Recipe
 
 #: Fixed segment order for the horizontal axis. Vertical-axis *stage*
 #: segments (Q8, deferred) would compose on top via :func:`prefix_hash`.
 SEGMENT_ORDER: tuple[str, ...] = ("core", "plugin", "overlays", "extensions")
+
+#: Declarative assignment of every :class:`~datarefinery.recipe.models.Recipe`
+#: field to its owning segment (design Q1). A CI guard
+#: (``test_every_recipe_field_is_assigned_exactly_one_segment``) pins that this
+#: map covers the model exactly — so a new section *cannot* be added without
+#: consciously choosing its segment (the Option-1 anti-footgun replacing the
+#: structural enforcement author-facing nesting would have given). ``overlays``
+#: and ``extensions`` are single-namespace segments contributed as their bare
+#: mapping value by :func:`segments_of`; the others are field-keyed.
+RECIPE_FIELD_SEGMENTS: dict[str, str] = {
+    # core — identity, versions, and the structural sections
+    "schema_version": "core",
+    "plugin": "core",
+    "seed": "core",
+    "Input": "core",
+    "Output": "core",
+    "Labels": "core",
+    "SampleData": "core",
+    "InputContracts": "core",
+    "Splits": "core",
+    "OutputExpectations": "core",
+    # plugin — the op-list sections whose op vocabulary is plugin-defined
+    "Filters": "plugin",
+    "Generation": "plugin",
+    "Transformations": "plugin",
+    "Augmentations": "plugin",
+    "Featurizations": "plugin",
+    "Visualizations": "plugin",
+    "Sinks": "plugin",
+    # overlays — variants reborn (Q2); contributed as the bare mapping
+    "variants": "overlays",
+    # extensions — the J.n.6 namespace; no Recipe field exists yet
+}
 
 #: Separator between per-segment digests in the stable join. ASCII Unit
 #: Separator — cannot occur inside a hex/raw digest position ambiguously
@@ -112,19 +152,44 @@ def prefix_hash(digests: Sequence[bytes], upto: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Dormant shadow path
+# Recipe partition + authoritative identity (Story J.n.3)
 # ---------------------------------------------------------------------------
 
 
-def shadow_segments_from_flat(flat_recipe: Mapping[str, Any]) -> dict[str, Any]:
-    """Wrap a flat (pre-segmentation) recipe dump as a degenerate single-``core``
-    segment set, so the segmented machinery can be exercised end-to-end before
-    J.n.3 distributes fields. No real field assignment happens here."""
-    return {"core": dict(flat_recipe), "plugin": None, "overlays": None, "extensions": None}
+def segments_of(recipe: Recipe) -> dict[str, Any]:
+    """Partition a (flat, author-facing) recipe into the frozen four segments.
+
+    ``core`` and ``plugin`` are field-keyed dicts of their assigned sections
+    (per :data:`RECIPE_FIELD_SEGMENTS`); ``overlays`` and ``extensions`` are
+    single-namespace segments contributed as their *bare* mapping value, so an
+    empty/stripped namespace collapses to ``{}`` → :data:`EMPTY_MARKER`
+    (additivity, Q3/Q5). At hash time ``variants`` is always stripped to ``{}``
+    by :func:`~datarefinery.recipe.variants.apply_variant`, so ``overlays`` is
+    empty for every v1 recipe — overlay *definitions* never enter identity.
+    """
+    dump = recipe.model_dump(mode="json")
+    core: dict[str, Any] = {}
+    plugin: dict[str, Any] = {}
+    for field, value in dump.items():
+        segment = RECIPE_FIELD_SEGMENTS[field]
+        if segment == "core":
+            core[field] = value
+        elif segment == "plugin":
+            plugin[field] = value
+        # overlays/extensions are folded in as bare namespace values below.
+    return {
+        "core": core,
+        "plugin": plugin,
+        "overlays": dump.get("variants") or {},
+        "extensions": dump.get("extensions") or {},
+    }
 
 
-def shadow_recipe_hash(flat_recipe: Mapping[str, Any]) -> str:
-    """Segmented hash of the degenerate single-``core`` wrapping of a flat
-    recipe. Deterministic and intentionally != the flat hash; dormant (does
-    not drive the cache key in J.n.2)."""
-    return segmented_recipe_hash(shadow_segments_from_flat(flat_recipe))
+def recipe_identity_hash(recipe: Recipe) -> str:
+    """The authoritative recipe-side cache-identity hash (segmented join).
+
+    This is the single source of truth for ``CacheKey.recipe_hash`` and every
+    ``manifest.recipe_hash`` comparison. Replaced the flat
+    ``sha256(to_canonical_bytes(recipe))`` in J.n.3.
+    """
+    return segmented_recipe_hash(segments_of(recipe))
