@@ -258,10 +258,11 @@ when Phase J was archived, so the brief's link is merely stale. The companion
 [`modelfoundry-audio-feature-consumption.md`](modelfoundry-audio-feature-consumption.md)
 (the consuming half of the seam) is **also in-repo now**; it targets the *ModelFoundry*
 repo (its fix lives there) but usefully pins one producing-side constraint: the consumer
-resolves a `feature_path` relative to `dataset/` into a `(1, n_mels, n_frames)` /
-`(C, n_mels, n_frames)` spectrogram tensor and applies the persisted `audio_normalize`
-fit-on-train stats. Its fix is required for an end-to-end unblock; this doc covers
-DataRefinery's producing half only.
+resolves a `feature_path` (instance-root-relative, `<instance>/<feature_path>`) into a
+`(1, n_mels, n_frames)` model-input tensor (always 2-D `(n_mels, n_frames)` `float32` on
+disk in v1) and applies the persisted per-mel-bin `audio_normalize` fit-on-train stats.
+Its fix is required for an end-to-end unblock; this doc covers DataRefinery's producing
+half only.
 
 **Root cause worth noting:** that archived requirements spec specifies R4 (compute the
 spectral feature) and R5 (fit-on-train normalize) on the data side, but its "Contract
@@ -278,11 +279,19 @@ ingestion/bugfix item, and it cannot be created in `debug` mode. Recommended pat
 
 - **Architectural / integration spike first.** The brief lays out three behavior-level
   options; the spike chooses among them and settles the paired ModelFoundry contract:
-  1. **`npy_per_record` (brief's preferred).** Persist the named float field per record
-     (e.g. `features/<split>/<record_id>.npy`) and rewrite a `feature_path` relative to
-     `dataset/`, mirroring how `png_per_record` rewrites `image_path`. Smallest change —
-     reuses the sink mechanism + stage model, keeps the "arrays are in-pipeline" JSONL
-     convention intact.
+  1. **`npy_per_record` (brief's preferred).** Persist the **raw `mel`** field (the
+     pre-normalize `log_mel_spectrogram` output, `float32`) per record (e.g.
+     `features/<split>/<record_id>.npy`) and rewrite a per-record `feature_path`
+     (**instance-root-relative**, resolved `<instance>/<feature_path>` — the J.g
+     sink-`path` bucket, *not* `image_path`'s `dataset/`-relative anchor), mirroring how
+     `png_per_record` persists pixels + rewrites the JSONL `path`. The consumer applies
+     the persisted per-mel-bin `audio_normalize` stats at load — so persist `mel`, **not**
+     the already-normalized `feature`, or the consumer double-normalizes. Smallest change —
+     reuses the sink mechanism + stage model, keeps the "arrays are in-pipeline; persist
+     via sidecar" convention intact. *(Both pins — `mel` not `feature`, instance-root
+     anchor — were ratified in the 2026-06-23 MF review round; see
+     [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md)
+     § "Audio feature-array persistence", Q1/Q2.)*
   2. **Inline npy-bytes / base64 in the JSONL** — simplest to wire but bloats the JSONL
      and breaks the in-pipeline-array convention. Not preferred.
   3. **A uint8-quantization sink mode** (spectrogram → image through the existing PNG
@@ -337,9 +346,11 @@ ModelFoundry's own conclusions are recorded in
 
 **1. Gap 3 — the seam is aligned; commit to `npy_per_record`, drop the PNG hack.** MF
 independently confirms the shared contract this doc proposes — `npy_per_record` at
-`features/<split>/<record_id>.npy`, `(n_mels, n_frames)` on disk → `(1|C, n_mels, n_frames)`
-tensor, `feature_path` relative to `dataset/`, per-mel-bin `audio_normalize` stats — with
-the axis orientation pinned identically on both sides. Critically, **MF rejects the
+`features/<split>/<record_id>.npy`, `(n_mels, n_frames)` `float32` on disk → `(1|C, n_mels, n_frames)`
+tensor, `feature_path` **instance-root-relative** (`<instance>/<feature_path>`), persisting
+the raw `mel` so the consumer applies per-mel-bin `audio_normalize` stats at load — with
+the axis orientation pinned identically on both sides (ratified in the 2026-06-23 MF review
+round, vendor-dependency-spec Q1/Q2). Critically, **MF rejects the
 spectrogram-as-image PNG route (my option 3)** as lossy and contract-breaking (five
 documented reasons: HDR float32 → 256 levels; wrong per-mel normalization shape; fake
 3-channel RGB vs. true 1-channel; non-round-trippable → breaks the reproducibility
