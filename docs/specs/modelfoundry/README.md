@@ -6,7 +6,7 @@ Compile a YAML recipe into a reproducible, framework-agnostic trained-model inst
 
 ModelFoundry consumes a materialized [DataRefinery](https://github.com/pointmatic/datarefinery) instance and compiles a single YAML **model recipe** into a content-addressed, atomically-promoted **ModelInstance**: the trained model, per-epoch metrics, hyperparameter-search trials, held-out evaluation, predictions, visualizations, and a manifest. The result object returns notebook-shaped primitives (`pandas.DataFrame` / `numpy.ndarray` / PNG `bytes`) and works identically inside Jupyter, Marimo, IPython, or a plain `.py` script — no framework imports in user code.
 
-Reproducibility is a first-class concern: every stochastic source is seeded, the cache identity is computed from the recipe's normalized semantic form, and the same `(recipe, data, seed, variant)` tuple materializes to a byte-identical `ModelInstance`.
+Reproducibility is a first-class concern: every stochastic source is seeded, the cache identity is computed from the recipe's **segmented** canonical form (independently-hashed `core` / `plugin` / `overlays` / `extensions` segments, so a plugin-surface change never invalidates another plugin's caches), and the same `(recipe, data, seed, overlays)` tuple materializes to a byte-identical `ModelInstance`.
 
 > **Status:** pre-production (`0.x.y` series). APIs, CLI surface, and cache layout may change between minor versions until the `1.0.0` production release. See [`docs/specs/`](docs/specs/) for the concept, feature, technical, and story specifications.
 
@@ -104,23 +104,59 @@ Run all four and the result tells a bigger story than "use a CNN" (CPU, determin
 | Random (chance) | `cifar10_random.yml` | 0.095 |
 | **PyTorch CNN — 5 epochs** | `cifar10_cnn.yml` | **0.275** |
 | scikit-learn MLP | `cifar10_mlp.yml` | 0.352 |
-| **PyTorch CNN — 40 epochs** | `cifar10_cnn.yml --variant well_trained` | **0.403** |
+| **PyTorch CNN — 40 epochs** | `cifar10_cnn.yml --overlay well_trained` | **0.403** |
 
-The more-expressive CNN **loses to the flattened-pixel MLP at a small training budget**, and only **overtakes it once the budget is scaled up** — the same capacity-vs-budget dynamic that separates a legacy model from a modern over-parameterized one. Scaling the budget is itself a one-line recipe change, expressed as a variant:
+The more-expressive CNN **loses to the flattened-pixel MLP at a small training budget**, and only **overtakes it once the budget is scaled up** — the same capacity-vs-budget dynamic that separates a legacy model from a modern over-parameterized one. Scaling the budget is itself a one-line recipe change, expressed as an overlay:
 
 ```yaml
-variants:
+overlays:
   well_trained:
     Training: {max_epochs: 40}
 ```
 
 ```bash
-modelfoundry materialize recipes/cifar10_cnn.yml --variant well_trained
+modelfoundry materialize recipes/cifar10_cnn.yml --overlay well_trained
 ```
 
 Every run is content-addressed and reproducible, so each comparison is cached and byte-stable — re-running finds the existing instance instead of recomputing.
 
 > **This is a teaching illustration, not a benchmark.** On the 1,700-image subset the per-epoch trajectory is noisy and non-monotonic — the minimal recipes use no LR schedule or early stopping, so a single run can dip or spike between budgets (a swept study even shows `resnet20` *degrading* past its peak). The endpoint contrast above is real and reproducible, but a *robust* capacity-vs-budget crossover needs more data and a proper training regime. See [`scripts/experiments/`](scripts/experiments/) for the full sweep and that finding.
+
+## Advanced paths — transfer learning & predictive uncertainty
+
+Two further example recipes exercise the same recipe-as-truth workflow on richer modeling paths.
+
+### Probabilistic — MC-dropout predictive uncertainty
+
+[`recipes/cifar10_mc_dropout.yml`](recipes/cifar10_mc_dropout.yml) declares a stochastic-inference block. `Dropout` is kept **active at inference** and the model runs **T seeded forward passes**; their mean is the deployed prediction, and the spread across passes is per-record predictive uncertainty:
+
+```yaml
+Inference:
+  mode: mc_dropout      # omit the block (or use mode: point) for single-pass point estimates
+  mc_samples: 30        # T — the consumer targets 20–50
+```
+
+Uncertainty is **persisted in the materialized instance** and reads back from disk with no external config:
+
+```python
+mi = ModelFoundry.from_recipe("recipes/cifar10_mc_dropout.yml", data="./data").materialize()
+
+mi.uncertainty                            # per-record DataFrame: [split, record_id, predictive_entropy, mc_variance]
+mi.metrics["test"]["predictive_entropy"]  # mean predictive entropy per split (the reportable metric)
+mi.predictions                            # pred_label/pred_proba_* are the MC means; + the uncertainty columns
+```
+
+The per-record `predictive_entropy` / `mc_variance` columns live in `evaluation/predictions.parquet`, and `ece` / `calibration_curve` are computed over the MC-aggregated means, so calibration reflects the stochastic predictor actually deployed. The recipe also pairs MC-dropout with imbalance-aware evaluation (per-class precision/recall/F1) and a train-fitted class-weighted loss. Same single-pass behavior is unchanged for any recipe that does not declare the block.
+
+### Advanced — pretrained encoder + LoRA (transfer learning)
+
+[`recipes/advanced_encoder_lora.yml`](recipes/advanced_encoder_lora.yml) composes a frozen pretrained image encoder, parameter-efficiently fine-tuned with a LoRA adapter: `Encoder → LoRA → Pooling → Head`. This path needs the `huggingface` extra:
+
+```bash
+pip install ml-modelfoundry[huggingface,pytorch]
+```
+
+Without it the recipe still loads and validates, but `materialize()` raises a `MaterializeError` carrying the install pointer. Two more requirements: the bound DataRefinery instance must match the encoder's **native input contract** (e.g. `vit-tiny-patch16-224` pins 224×224×3 — a pretrained backbone does not adapt to the data the way `simple_cnn` does; `validate()` fails fast on a mismatch), and the base weights load from an **offline warm HF cache** (download once with network, then reruns are reproducible with no run-time network). Only the trainable head/pooling + LoRA adapter deltas are persisted; the frozen base is re-fetched from the warm cache on load, so the instance round-trips from disk.
 
 ## Library API
 
@@ -153,7 +189,7 @@ modelfoundry clean       --older-than 7d        # cache management
 modelfoundry init        <recipe-out> --data <datarefinery-recipe>   # scaffold a recipe
 ```
 
-Shared options apply to every verb: `--cache-root` / `--data-cache-root` (defaults `./models` and `./data`), `--log-level`, `--log-target` (JSON-lines operational logs), `--plugin-path`, and `-v` / `-q`.
+Shared options apply to every verb: `--cache-root` / `--data-cache-root` (defaults `./models` and `./data`), `--log-level`, `--log-target` (JSON-lines operational logs), `--plugin-path`, `--num-workers` (DataLoader workers; execution context, env `MODELFOUNDRY_NUM_WORKERS`), and `-v` / `-q`.
 
 ## Notebook-substrate-neutral
 
@@ -175,19 +211,23 @@ Hardware acceleration is **auto-detected** by default — the PyTorch plugin pic
 Training:
   max_epochs: 10
   batch_size: 32
-  device: cpu              # one of: auto (default) | cpu | cuda | mps
+  precision: fp32          # author-required (no implicit defaults) — fp32 | amp
+  checkpoint_cadence: 1    # author-required — epochs between checkpoint writes
+  device: cpu              # author-required — auto | cpu | cuda | mps ("auto" picks the best)
 ```
 
-`device` participates in the recipe's canonical hash, so the same recipe run with `device: cpu` and `device: mps` materializes into two distinct `ModelInstance` cache entries — no silent cross-device collision. Use the `variants:` block to keep both side-by-side without maintaining two recipe files:
+> Phase I introduced **no implicit defaults**: behavior-affecting fields like `precision` / `checkpoint_cadence` / `device` are authored in the recipe, not supplied by code — `modelfoundry init` emits them for you. DataLoader `num_workers` moved the *other* way: it is now **execution context**, set via `--num-workers` or `MODELFOUNDRY_NUM_WORKERS` (not a recipe field), since it never affects the trained bytes.
+
+`device` participates in the recipe's canonical hash, so the same recipe run with `device: cpu` and `device: mps` materializes into two distinct `ModelInstance` cache entries — no silent cross-device collision. Use the `overlays:` block to keep both side-by-side without maintaining two recipe files:
 
 ```yaml
-variants:
+overlays:
   cpu_bench:
     Training: {device: cpu}
 ```
 
 ```bash
-modelfoundry materialize model.yml --variant cpu_bench
+modelfoundry materialize model.yml --overlay cpu_bench
 ```
 
 ## Documentation

@@ -67,7 +67,7 @@ Per `docs/project-guide/go.md` § Pyve Essentials, the LLM wraps its own Bash-to
 | `pandas` | Tabular surfaces (training history, optimization trials, predictions DataFrame). |
 | `pyarrow` | Parquet I/O for `training/history.parquet`, `optimization/trials.parquet`, `evaluation/predictions.parquet`, `evaluation/calibration.parquet`. |
 | `pyyaml` | Recipe parsing (`yaml.safe_load`). |
-| `pydantic` (`>=2`) | Recipe model, manifest, runtime config; provides canonical-form intermediate via `model_dump(mode="json")` for cache identity (FR-4). |
+| `pydantic` (`>=2`) | Recipe model, manifest, runtime config; provides the per-segment `model_dump(mode="json")` sub-documents the segmented `join_stable` combiner hashes for cache identity (FR-4). |
 | `rich` | User-facing CLI output: per-epoch tables, per-trial progress bars, summary panels. |
 | `typer` | CLI framework. |
 | `matplotlib` | Reporting-mode visualizations (`training_curves`, `optimization_history`, `confusion_matrix`, `calibration_curve`, `predictions_grid`). Stays in core because reporting visualizations run at materialize time; gating behind an extra would surprise users whose recipes declare a visualization. |
@@ -149,16 +149,18 @@ modelfoundry/                                       # repo root
 │       │   ├── __init__.py
 │       │   ├── modelfoundry.py                     # ModelFoundry class (entry-point class for library callers)
 │       │   ├── instance.py                         # ModelInstance frozen dataclass + notebook-shaped accessors (FR-22)
-│       │   ├── config.py                           # RuntimeConfig (cache_root, data_cache_root, log_level, plugin_path, variant, seed)
+│       │   ├── config.py                           # RuntimeConfig (cache_root, data_cache_root, log_level, plugin_path, overlays, seed)
 │       │   ├── manifest.py                         # Manifest pydantic model + JSON I/O
 │       │   └── errors.py                           # ModelfoundryError hierarchy (FR-feature-map: BR-10 from consumer-dep-spec)
 │       ├── recipe/
 │       │   ├── __init__.py
-│       │   ├── models.py                           # pydantic v2 ModelRecipe + per-section sub-models
-│       │   ├── loader.py                           # FR-1 load + schema-version gate
-│       │   ├── validator.py                        # FR-2 enumerated checks 1–19
-│       │   ├── canonical.py                        # JSON-canonical bytes for cache identity (FR-4)
-│       │   ├── variants.py                         # FR-14 variant overlay
+│       │   ├── models.py                           # pydantic v2 ModelRecipe + per-section sub-models (plugin-agnostic)
+│       │   ├── loader.py                           # FR-1 load + umbrella schema-version gate
+│       │   ├── validator.py                        # FR-2 enumerated checks 1–22
+│       │   ├── sections.py                         # F2 discriminated-union surface resolver (checks 3/17), Story I.c
+│       │   ├── versioning.py                       # F5 umbrella + per-segment versions + migration seam, Story I.g
+│       │   ├── canonical.py                        # FR-4 segmented join_stable cache-identity bytes
+│       │   ├── overlays.py                         # FR-14 overlay application
 │       │   └── search_space.py                     # FR-11 Optimization.search_space resolution + recipe-path injection
 │       ├── cache/
 │       │   ├── __init__.py
@@ -206,8 +208,8 @@ modelfoundry/                                       # repo root
 ├── tests/
 │   ├── conftest.py                                 # shared fixtures: tmp cache roots, minimal DataRefinery fixture, sample recipes
 │   ├── unit/
-│   │   ├── test_recipe_loader.py                   # FR-1: schema-version gate, plugin resolution, variant overlay, canonicalization byte-stability
-│   │   ├── test_recipe_validator.py                # FR-2: every check 1..19 has a test
+│   │   ├── test_recipe_loader.py                   # FR-1: schema-version gate, plugin resolution, overlay merge, canonicalization byte-stability
+│   │   ├── test_recipe_validator.py                # FR-2: every check 1..22 has a test
 │   │   ├── test_cache_identity.py                  # FR-4: cosmetic-edit invariance, semantic-edit perturbation, loose-coupling rule
 │   │   ├── test_atomic_promote.py                  # FR-5: failure at every materialize stage leaves FAILED marker
 │   │   ├── test_manifest.py                        # FR-3 manifest shape; round-trip
@@ -246,7 +248,7 @@ modelfoundry/                                       # repo root
 │       ├── recipes/
 │       │   ├── minimal_pytorch.yml                 # smallest passing recipe
 │       │   ├── pytorch_with_optimization.yml       # Optimization stage exercise
-│       │   ├── pytorch_with_variants.yml           # variant overlay exercise
+│       │   ├── pytorch_with_overlays.yml           # overlay exercise
 │       │   ├── pytorch_failing_expectations.yml    # OutputExpectations failure smoke
 │       │   ├── sklearn_stub.yml                    # exercises plugin=sklearn rejection
 │       │   └── invalid_*.yml                       # one fixture per validator rejection
@@ -291,7 +293,7 @@ class ModelFoundry:
         *,
         data: DataRefineryInstance,           # required, eager binding (concept Open Q1)
         config: RuntimeConfig | None = None,
-        variant: str | None = None,
+        overlays: Sequence[str] | None = None,
         seed: int | None = None,
     ) -> "ModelFoundry": ...
 
@@ -320,12 +322,12 @@ def materialize(
     *,
     data: DataRefineryInstance,
     config: RuntimeConfig | None = None,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
     seed: int | None = None,
     overwrite: bool = False,
 ) -> ModelInstance:
     return ModelFoundry.from_recipe(
-        recipe_path, data=data, config=config, variant=variant, seed=seed
+        recipe_path, data=data, config=config, overlays=overlays, seed=seed
     ).materialize(overwrite=overwrite)
 ```
 
@@ -376,18 +378,39 @@ Where `PredictInput` is a plugin-defined union; the PyTorch plugin accepts `pd.D
 ### `recipe.loader` (FR-1)
 
 ```python
-SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = frozenset({1})  # grows over time
+# Story I.g: the recipe's `schema_version` is the UMBRELLA (combination-function)
+# version, sourced from recipe.versioning.SUPPORTED_COMBINER_VERSIONS and kept under
+# this name for back-compat (validator check 1, tests). Per-segment versions live in
+# recipe/versioning.py, not the recipe text.
+SUPPORTED_SCHEMA_VERSIONS: frozenset[int] = SUPPORTED_COMBINER_VERSIONS  # = frozenset({1})
 
 def load_recipe(
     path: pathlib.Path,
     *,
-    variant: str | None = None,
+    overlays: Sequence[str] | None = None,
     seed: int | None = None,
 ) -> ModelRecipe:
-    """Parse YAML, gate on schema_version, apply variant overlay, canonicalize."""
+    """Parse YAML, gate on the umbrella schema_version, apply overlays, construct."""
 ```
 
-Raises `RecipeError` on schema-version mismatch, malformed YAML, unknown plugin, unknown variant. Unknown top-level keys are rejected (`extra="forbid"` on the pydantic root model).
+Raises `RecipeError` on schema-version mismatch, malformed YAML, unknown plugin, unknown overlay. Unknown top-level keys are rejected (`extra="forbid"` on the pydantic root model — relaxed only inside the `extensions:` island).
+
+### `recipe.versioning` (FR-5, Story I.g)
+
+```python
+SUPPORTED_COMBINER_VERSIONS: frozenset[int] = frozenset({1})   # umbrella = recipe schema_version (join_stable shape)
+SEGMENT_VERSIONS: dict[str, int] = {"core": 1, "plugin": 1, "overlays": 1, "extensions": 1}  # code-tracked, not recipe fields
+MIGRATIONS: dict[tuple[str, int, int], SegmentMigration] = {}  # (segment, from, to) -> migration; EMPTY pre-1.0
+
+def migrate_segment(segment, payload, from_version, to_version):
+    """Route one segment through its registered single-step migration chain.
+
+    No-op when versions match; refuses-with-pointer ("re-materialize") on a missing
+    step. Empty registry pre-1.0 (OR-9 zero support window); a post-1.0 segment bump
+    registers its migration here. Per-segment version *fields* in the recipe are a
+    future schema change — kept out of the recipe now to stay byte-neutral.
+    """
+```
 
 ### `recipe.validator` (FR-2)
 
@@ -411,23 +434,40 @@ def validate(
     data: DataRefineryInstance,
     plugin: Plugin,
 ) -> ValidationReport:
-    """Run FR-2 checks 1..19. Never short-circuits."""
+    """Run FR-2 checks 1..22. Never short-circuits."""
 ```
 
 ### `recipe.canonical` (FR-4)
 
 ```python
+def recipe_segments(recipe: ModelRecipe) -> dict[str, Any]:
+    """Partition the (flat-on-disk) recipe into core / plugin / overlays / extensions
+    sub-documents (Story I.b, I.a Decision 2).
+
+    The `overlays` segment reads the recipe's `overlays` catalog field
+    (`_OVERLAY_FIELD = "overlays"`, renamed from `variants` in Story I.j.2 to adopt
+    the family standard). The loader clears that catalog pre-hash (apply_overlays),
+    so on a materialized recipe the segment is empty and sparse-omitted."""
+
+def join_stable(segments: dict[str, Any], *, upstream: bytes | None = None) -> bytes:
+    """Combine per-segment digests into one stable 32-byte identity digest.
+
+    Labeled, length-framed concatenation of per-segment SHA-256 digests (each segment
+    canonicalized via sort_keys + compact separators). Empty segments are SPARSE-OMITTED
+    (contribute nothing). Prefix-capable via `upstream` (H(H_upstream ‖ segment)) so the
+    deferred vertical stage-waterfall can layer on later. Byte format is the
+    DataRefinery-coordinated family standard (governed shared contract).
+    """
+
 def canonical_bytes(recipe: ModelRecipe) -> bytes:
-    """JSON-canonical bytes for cache identity.
+    """The `join_stable` pre-image for `recipe` — `recipe_hash = SHA-256(this)`.
 
-    Steps:
-      1. recipe.model_dump(mode="json")  -> dict[str, Any]
-      2. json.dumps(..., sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-      3. .encode("utf-8")
-
-    Every pydantic field default participates. A new default value or
-    field-name change perturbs the canonical bytes — that is the deliberate
-    invalidation lever, gated by SUPPORTED_SCHEMA_VERSIONS bumps.
+    No longer a flat total `model_dump`: it is the length-framed concatenation of the
+    recipe's per-segment digests (recipe_segments -> join_stable). Cosmetic edits within
+    a segment leave it unchanged; a semantic edit in any segment changes it. With
+    no-implicit-defaults (Phase I), there are no field-default values to silently shift
+    omitting recipes — the invalidation levers are the combiner, the segment partition,
+    and authored values, gated by the umbrella SUPPORTED_SCHEMA_VERSIONS + per-segment versions.
     """
 
 def recipe_hash(recipe: ModelRecipe) -> str:
@@ -451,7 +491,7 @@ def cache_key(
     """
 ```
 
-Loose-coupling (CR-15): the bound DataRefinery instance's `recipe_hash` participates in the **data instance identity**, but the consuming ModelFoundry recipe's cache identity treats the DataRefinery instance as a single hashed unit — re-materializing upstream changes the data_instance_hash16 only when the DataRefinery cache directory itself moves (new variant, new seed, new recipe shape, new input bytes). Re-materializing upstream into the same DataRefinery cache directory is a no-op for ModelFoundry's cache identity. This is intentional per FR-4 and the consumer-dep-spec's loose-coupling rule.
+Loose-coupling (CR-15): the bound DataRefinery instance's `recipe_hash` participates in the **data instance identity**, but the consuming ModelFoundry recipe's cache identity treats the DataRefinery instance as a single hashed unit — re-materializing upstream changes the data_instance_hash16 only when the DataRefinery cache directory itself moves (new overlays, new seed, new recipe shape, new input bytes). Re-materializing upstream into the same DataRefinery cache directory is a no-op for ModelFoundry's cache identity. This is intentional per FR-4 and the consumer-dep-spec's loose-coupling rule.
 
 ### `cache.atomic` (FR-5)
 
@@ -614,7 +654,7 @@ Implements the Plugin Protocol against PyTorch. Key sub-modules:
 - `visualizations.py` — Matplotlib renderers for `training_curves`, `optimization_history`, `confusion_matrix`, `calibration_curve`, `predictions_grid`. Each visualization op takes `InstanceArtifacts` and returns PNG bytes (single PNG) or `None` (skipped, e.g. `optimization_history` without an Optimization stage and `mode: reporting` declared — emits a placeholder PNG so the manifest's `visualizations` record is consistent).
 - `persistence.py` — `save_model(model, model_dir)` writes:
   - `model/weights/state_dict.pt` — `torch.save(model.state_dict(), ...)`.
-  - `model/architecture.json` — the canonical post-variant-overlay, post-Optimization-merge `Architecture` block, serialized with the same JSON-canonical bytes recipe canonicalization uses.
+  - `model/architecture.json` — the canonical post-overlay, post-Optimization-merge `Architecture` block, serialized with the same JSON-canonical bytes recipe canonicalization uses.
   - `model/checkpoints/checkpoint-best.pt` — the pre-production checkpoint dict (FR-25 foundation; ready to grow optimizer_state later without a public-API change).
   `load_model(path)` reads `model/architecture.json`, rebuilds the `nn.Module` via the recursive builder, then `load_state_dict` from `model/weights/state_dict.pt`. No external config object required (TR-6 round-trip guarantee).
 - `determinism.py` — wraps `torch.use_deterministic_algorithms(True)` + sets `CUBLAS_WORKSPACE_CONFIG=:4096:8` in the environment; documents which ops hard-error under deterministic mode. The plugin's `health_check()` (FR-19) reports whether deterministic mode can be enabled on the installed backend.
@@ -659,14 +699,17 @@ class ModelRecipe(pydantic.BaseModel):
     Evaluation: EvaluationSpec
     Visualizations: list[VisualizationSpec] = []
     OutputExpectations: list[ExpectationSpec] = []
-    variants: dict[str, dict[str, Any]] = {}   # name -> partial overlay
+    overlays: dict[str, dict[str, Any]] = {}   # name -> partial overlay
+    extensions: dict[str, Any] = {}            # F3 (I.d): the one relaxed island; enters identity only when non-empty
 ```
+
+> **No-implicit-defaults (Phase I / F4).** The param models below carry **no value-`default=`** for behavior-affecting fields — the recipe authors them (the `init` scaffolder emits them) and the interpreting code supplies none. **Mode-selecting optionals** (absence is meaningful) stay `| None = None`; a single-legal-value **invariant** (`Optimization.n_jobs=1`) keeps its constant. See `project-essentials.md` § "No implicit defaults".
 
 ```python
 class DataSpec(pydantic.BaseModel):
     model_config = ConfigDict(extra="forbid")
     recipe: pathlib.Path                   # DataRefinery recipe path
-    variant: str | None = None
+    overlays: list[str] = []
     seed: int | None = None
     cache_root: pathlib.Path | None = None # override DataRefinery cache root for this binding
 ```
@@ -676,17 +719,18 @@ class TrainingSpec(pydantic.BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_epochs: int = Field(gt=0)
     batch_size: int = Field(gt=0)
-    num_workers: int = Field(ge=0, default=2)
-    precision: Literal["fp32", "amp"] = "fp32"  # AMP off by default per QR-3
-    checkpoint_cadence: int = Field(gt=0, default=1)
-    early_stopping: EarlyStoppingSpec | None = None
+    # `num_workers` is NOT a recipe field (Story I.e.1, Option A): it is output-neutral
+    # execution context (RuntimeConfig.num_workers / --num-workers / MODELFOUNDRY_NUM_WORKERS).
+    precision: Literal["fp32", "amp"]           # author-required (I.e.3); AMP off unless declared, per QR-3
+    checkpoint_cadence: int = Field(gt=0)        # author-required (I.e.3)
+    early_stopping: EarlyStoppingSpec | None = None  # mode-selecting optional: None ⇒ no early stopping
     # Applies to Training + Evaluation + inference (eval and predict inherit);
     # resolved by the plugin's health_check-reported availability at materialize
     # time. "auto" picks the best available accelerator. Validator check 20
     # rejects an explicit device the plugin reports unavailable. Distinct values
     # produce distinct canonical recipe bytes (CPU-bench and MPS runs are
     # separate ModelInstances by design — no silent cross-device cache collision).
-    device: Literal["auto", "cpu", "cuda", "mps"] = "auto"
+    device: Literal["auto", "cpu", "cuda", "mps"]  # author-required (I.e.3); "auto" picks the best accelerator
     # Forward-extensibility hook (Q16 foundation; see § Checkpoint format above):
     # persist_optimizer_state: bool = False  # absent in pre-prod; added by future continued-training FR
 ```
@@ -694,11 +738,11 @@ class TrainingSpec(pydantic.BaseModel):
 ```python
 class OptimizationSpec(pydantic.BaseModel):
     model_config = ConfigDict(extra="forbid")
-    sampler: Literal["tpe", "random", "grid"] = "tpe"
-    pruner: Literal["median", "none"] = "median"
+    sampler: Literal["tpe", "random", "grid"]   # author-required (I.e.3)
+    pruner: Literal["median", "none"]           # author-required (I.e.3)
     n_trials: int = Field(gt=0)
-    n_jobs: Literal[1] = 1                  # locked to 1 per QR-3 (FR-2 check 10)
-    baseline_trial: Literal["enqueue_recipe_defaults"] | None = "enqueue_recipe_defaults"
+    n_jobs: Literal[1] = 1                  # invariant (not a free default): locked to 1 per QR-3 (FR-2 check 10)
+    baseline_trial: Literal["enqueue_recipe_defaults"] | None  # author-required (I.e.3)
     objective_metric: str | None = None     # defaults to Evaluation.primary_metric on val
     max_epochs_per_trial: int | None = None # caps Training.max_epochs per trial
     search_space: dict[str, SearchSpaceSpec]  # keyed by recipe path
@@ -710,8 +754,8 @@ class EvaluationSpec(pydantic.BaseModel):
     splits: list[str]
     primary_metric: str
     metrics: list[str]                      # validated against the v0.x metric vocabulary at check 11
-    comparison: ComparisonSpec | None = None
-    calibration_bins: int = Field(gt=0, default=10)
+    comparison: ComparisonSpec | None = None  # mode-selecting optional: None ⇒ no baseline comparison
+    calibration_bins: int = Field(gt=0)     # author-required (I.e.3)
 ```
 
 ```python
@@ -723,7 +767,7 @@ class ExpectationSpec(pydantic.BaseModel):
     value: float | tuple[float, float]      # tuple required for op="within"
 ```
 
-Per-plugin specs (`ArchitectureSpec`, plugin-specific sub-models under `Loss` / `Optimizer` / `Visualizations`) are loaded by the plugin's `OperationSpec.param_model` and attached to the recipe object after `OperationSpec` resolution. Recipe-level `extra="forbid"` plus plugin-level `param_model` resolution covers FR-2 checks 3 and 17.
+Per-plugin specs (`ArchitectureSpec`, plugin-specific sub-models under `Loss` / `Optimizer` / `Visualizations`) are loaded by the plugin's `OperationSpec.param_model`. The op-bearing sections form a **discriminated union** (op = discriminator, the plugin's `OperationSpec.param_model` = variant), resolved at validate time by `recipe.sections.resolve_sections` — `recipe/models.py` stays plugin-agnostic and `recipe/canonical.py` stays plugin-free (Story I.c, I.a Decision 3). Recipe-level `extra="forbid"` (relaxed only inside the `extensions:` island) plus the resolver covers FR-2 checks 3 (op registered **for its section** — `applies_to` match) and 17 (op params), and FR-2 **check 22** warns non-fatally on `extensions:` keys no plugin claims (`Plugin.extension_keys`).
 
 ### `Manifest` (core/manifest.py)
 
@@ -738,7 +782,7 @@ class Manifest(pydantic.BaseModel):
     data_instance_hash: str                # 16 hex chars — the bound DataRefinery instance triple
     bound_data_instance: pathlib.Path      # resolved absolute path for inspect()/status() lineage
     seed: int
-    variant: str | None
+    overlays: list[str]
     created_at: datetime                   # UTC ISO 8601
     elapsed_seconds: float
     warnings: list[ManifestWarning] = []
@@ -761,7 +805,7 @@ class RuntimeConfig(pydantic.BaseModel):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_target: str = "stderr"                       # file path or "stderr" / "stdout"
     plugin_path: tuple[pathlib.Path, ...] = ()
-    variant: str | None = None
+    overlays: list[str] = []
     seed: int | None = None                          # CLI override; participates in cache identity
     overwrite: bool = False
 ```
@@ -807,7 +851,7 @@ CLI exit codes (mirrors DataRefinery's mapping): `0` success, `1` user/recipe/co
 | `--log-level` | `MODELFOUNDRY_LOG_LEVEL` | `INFO` | Operational log level. |
 | `--log-target` | `MODELFOUNDRY_LOG_TARGET` | `stderr` | JSON-lines log sink. |
 | `--plugin-path` | `MODELFOUNDRY_PLUGIN_PATH` | (empty) | Extra plugin discovery paths. |
-| `--variant` | (none) | (none) | Variant overlay name. |
+| `--overlay` | (none) | (none) | Overlay name (repeatable; applied in order). |
 | `--seed` | (none) | (recipe) | Ad-hoc seed override; changes cache identity. |
 | `--overwrite` | (none) | `false` | Re-materialize even on cache hit. |
 
@@ -832,7 +876,7 @@ Root command: `modelfoundry`. Subcommands:
 
 **Shared flags** (apply to every subcommand): `--cache-root`, `--data-cache-root`, `--log-level`, `--log-target`, `--plugin-path`, `--verbose`, `--quiet`.
 
-**Subcommand-local flags**: `--variant`, `--seed`, `--overwrite` (`materialize` only); `--view` (`inspect` only); `--dry-run` (`clean`).
+**Subcommand-local flags**: `--overlay`, `--seed`, `--overwrite` (`materialize` only); `--view` (`inspect` only); `--dry-run` (`clean`).
 
 **Exit codes**: `0` success, `1` user/recipe/contract error, `2` system/plugin error, `130` SIGINT.
 
@@ -877,7 +921,7 @@ See `docs/project-guide/developer/best-practices-guide.md` for full rationale.
 
 Per `features.md` PE-1, the pre-production release commits to no throughput / latency / memory targets. Concrete defaults that flow from determinism caveats and the locked architecture:
 
-- **`Training.num_workers`**: default `2`. Seeded via `pipeline.seeding.worker_init_fn_factory`. Output bytes are independent of `num_workers` (per FR-25). Recipes may override.
+- **`RuntimeConfig.num_workers`** (Story I.e.1, Option A): **execution context, not a recipe field** — set via `--num-workers` / `MODELFOUNDRY_NUM_WORKERS` (default `0`, PyTorch-portable). Threaded to the DataLoader through the `Plugin` Protocol (`run_training` / `run_optimization`), seeded via `pipeline.seeding.worker_init_fn_factory`; output bytes are independent of `num_workers` (per FR-25), so it is output-neutral and excluded from cache identity.
 - **`Optimization.n_jobs`**: locked to `1` (FR-2 check 10). Parallel trials are a deferred upgrade.
 - **`Training.precision`**: `"fp32"` default. AMP relaxes the byte-identity guarantee per QR-3.
 - **Optuna `RDBStorage` SQLite**: file-backed sqlite under the materialize temp dir; opaque to consumers. SQLite handles the trial volumes seen in pre-production (`n_trials ≤ 100` typical).
