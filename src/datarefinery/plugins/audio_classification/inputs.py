@@ -254,11 +254,13 @@ def _enumerate_audio(root: Path) -> list[Path]:
     Sorting by relative POSIX path keeps enumeration order stable across
     machines so ``by_row_order`` joins and content hashing are deterministic.
     """
-    candidates = [
-        p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in _AUDIO_EXTENSIONS
-    ]
-    candidates.sort(key=lambda p: p.relative_to(root).as_posix())
-    return candidates
+    # Route through the shared symlink-following enumeration (Story K.g) so the
+    # audio loader and the input hasher walk the same file set, then filter to
+    # audio extensions. enumerate_files already returns deterministically sorted.
+    # Local import mirrors `_build_label_index` below — avoids a core↔plugin cycle.
+    from datarefinery.pipeline.inputs import enumerate_files
+
+    return [p for p in enumerate_files(root) if p.suffix.lower() in _AUDIO_EXTENSIONS]
 
 
 def _claim_id(rid: str, seen_ids: set[str]) -> None:
@@ -277,8 +279,10 @@ def _hash_dir(root: Path, label_from: LabelFromSpec | None) -> str:
     A declared ``label_from`` manifest's bytes are appended so manifest edits
     invalidate the cache without re-touching any clip.
     """
+    from datarefinery.pipeline.inputs import enumerate_files
+
     h = hashlib.sha256()
-    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    for path in enumerate_files(root):
         rel = path.relative_to(root).as_posix().encode("utf-8")
         h.update(rel)
         h.update(b":")

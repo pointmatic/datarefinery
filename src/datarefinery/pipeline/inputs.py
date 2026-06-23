@@ -25,6 +25,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -187,12 +188,10 @@ def _enumerate_flat_images(root: Path) -> list[Path]:
     Python versions for `by_row_order` joins. We sort by POSIX-form path
     relative to `root` so filesystem walk order does not leak in.
     """
-    candidates: list[Path] = []
-    for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in _IMAGE_EXTENSIONS:
-            candidates.append(path)
-    candidates.sort(key=lambda p: p.relative_to(root).as_posix())
-    return candidates
+    # Route through the shared symlink-following enumeration (Story K.g) so the
+    # flat loader and the input hasher walk the same file set, then filter to
+    # image extensions. enumerate_files already returns deterministically sorted.
+    return [p for p in enumerate_files(root) if p.suffix.lower() in _IMAGE_EXTENSIONS]
 
 
 def _read_manifest_rows(
@@ -379,8 +378,48 @@ def _hash_image_folder(root: Path) -> str:
     return h.hexdigest()
 
 
+def enumerate_files(root: Path) -> list[Path]:
+    """The single shared file-enumeration helper (Story K.g, FR-K-2).
+
+    Walks ``root`` and returns every regular file beneath it, **following
+    symlinked directories** with cycle protection, sorted deterministically by
+    POSIX-form path relative to ``root``.
+
+    Why this exists. ``Path.rglob("*")`` on Python 3.12 does **not** descend
+    symlinked directories (the ``recurse_symlinks`` parameter is 3.13+), so a
+    symlinked-dir tree enumerated to an effectively empty set — the Gap 2
+    silent stale-cache / wrong-data bug: the loader read the real files while
+    the hasher digested nothing, so two different symlink views collided on one
+    digest. We walk explicitly with ``os.walk(..., followlinks=True)`` and
+    dedupe on resolved real directory paths so a symlink loop (or a symlink
+    pointing back at an ancestor) cannot cause an infinite walk.
+
+    This is the shared enumeration the loader and the input hasher must both
+    use so they can never again disagree about which files exist
+    (`project-essentials.md` § "The loader and the input hasher must walk the
+    *same* file set"). Story K.h builds the ``path_tree`` resolver on top of it.
+    """
+    files: list[Path] = []
+    visited: set[Path] = set()
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        real = Path(dirpath).resolve()
+        if real in visited:
+            # Already walked this real directory via another path (a symlink
+            # cycle or a symlink to an ancestor). Prune to avoid looping.
+            dirnames[:] = []
+            continue
+        visited.add(real)
+        for name in filenames:
+            p = Path(dirpath) / name
+            if p.is_file():
+                files.append(p)
+    files.sort(key=lambda p: p.relative_to(root).as_posix())
+    return files
+
+
 def _iter_files(root: Path) -> list[Path]:
-    return [p for p in root.rglob("*") if p.is_file()]
+    """Backward-compatible alias for :func:`enumerate_files` (the hasher's walk)."""
+    return enumerate_files(root)
 
 
 def reload_dataset(

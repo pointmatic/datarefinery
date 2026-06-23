@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Input hash now follows symlinked directories (Story K.g, FR-K-2).** The input
+  hasher's enumeration used `Path.rglob("*")`, which on Python 3.12 does **not** descend
+  symlinked directories (`recurse_symlinks` is 3.13+) — so a symlinked-dir source hashed
+  to an effectively empty file set while the loader read the real files, a silent
+  stale-cache / wrong-data reproducibility bug (consumer Gap 2: two different symlink
+  views collided on one digest). The loader and hasher now share **one** symlink-following,
+  cycle-protected, deterministically-sorted enumeration helper (`enumerate_files`) so they
+  can never disagree about which files exist. The audio plugin's hashing carried the same
+  `rglob` pattern and is fixed by the same helper.
+  > **⚠️ Cache-identity effect (pre-prod, acceptable).** A source reached through a
+  > symlinked directory now hashes its real content instead of an empty set, so its
+  > `input_hash` changes — the previous digest was wrong. Affected instances re-materialize
+  > on next run (pre-production invalidation is acceptable per `project-essentials.md`).
+
 ## [0.24.0] - 2026-06-23
 
 **Phase K Subphase K-1 — Audio feature-array egress (consumer Gap 3).** Closes the

@@ -122,16 +122,16 @@ Architectural spike (deliverable = a documented design decision, not production 
 
 ---
 
-### Story K.g: Input hash follows symlinked directories [Planned]
+### Story K.g: Input hash follows symlinked directories [Done]
 
 Test-first bugfix for Gap 2: the hasher's `_iter_files` (`root.rglob("*")`) does not descend symlinked directories on Python 3.12, so a symlinked-dir tree hashes to an effectively empty file set — a silent stale-cache / wrong-data reproducibility bug, while the loader reads the real files. Implements FR-K-2; bundled into `v0.25.0`.
 
-- [ ] Failing reproduction test: two symlink views with different targets must yield different `_hash_image_folder` digests, plus a loader-vs-hasher file-set-parity assertion
-- [ ] Fix `_iter_files` ([`pipeline/inputs.py:382-383`](../../src/datarefinery/pipeline/inputs.py#L382-L383)) to follow symlinked directories with cycle protection (dedupe on resolved real-paths); keep traversal deterministically sorted
-- [ ] Introduce the shared enumeration helper so the loader and hasher walk the **same** file set (the FR-K-1 coupling point)
-- [ ] Verify `_hash_image_flat` (reuses `_hash_image_folder`) is fixed for free
-- [ ] Housekeeping: check the audio plugin's hashing ([`plugins/audio_classification/inputs.py`](../../src/datarefinery/plugins/audio_classification/inputs.py)) for the same symlink-blind `rglob` pattern
-- [ ] Note the cache-identity effect in CHANGELOG (resolved-file-set hashing; pre-prod invalidation acceptable)
+- [x] Failing reproduction tests ([`tests/unit/test_inputs_symlink_hash.py`](../../tests/unit/test_inputs_symlink_hash.py)): two symlink views with different targets yield different `_hash_image_folder` digests; symlinked-content ≠ empty; loader-vs-hasher file-set parity; cycle termination
+- [x] New shared `enumerate_files` helper ([`pipeline/inputs.py`](../../src/datarefinery/pipeline/inputs.py)) follows symlinked directories via `os.walk(followlinks=True)` with cycle protection (dedupe on resolved real-paths), deterministically sorted; `_iter_files` delegates to it
+- [x] Loader and hasher walk the **same** set: `_hash_image_folder`/`_iter_files` and `_enumerate_flat_images` both route through `enumerate_files` (the FR-K-1 coupling point K.h's `path_tree` builds on)
+- [x] `_hash_image_flat` (reuses `_hash_image_folder`) fixed for free
+- [x] Audio plugin housekeeping: `_hash_dir` + `_enumerate_audio` ([`plugins/audio_classification/inputs.py`](../../src/datarefinery/plugins/audio_classification/inputs.py)) carried the same `rglob` pattern — both now route through `enumerate_files`
+- [x] CHANGELOG `[Unreleased]` note: symlink-following hashing + the pre-prod-acceptable cache-identity effect (K.i consolidates into the `v0.25.0` entry)
 
 ---
 
