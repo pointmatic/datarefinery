@@ -155,8 +155,8 @@ def test_valid_recipe_passes_all_checks() -> None:
     recipe = _build(_base_dict())
     report = validate(recipe, _Plugin())
     assert report.passed, [r for r in report.failures]
-    assert len(report.results) == 30
-    assert {r.check_id for r in report.results} == set(range(1, 31))
+    assert len(report.results) == 31
+    assert {r.check_id for r in report.results} == set(range(1, 32))
     assert all(r.status == "pass" for r in report.results)
 
 

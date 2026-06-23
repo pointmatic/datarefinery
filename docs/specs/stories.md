@@ -148,14 +148,14 @@ Implements FR-K-1 per the K.f spike: the shared cross-plugin directory resolver,
 
 ---
 
-### Story K.i: Validate check for unsatisfiable layouts (v0.25.0 — Subphase K-2 release) [Planned]
+### Story K.i: Validate check for unsatisfiable layouts (v0.25.0 — Subphase K-2 release) [Done]
 
 Additive static validator check (FR-K-5) that fails fast at `validate` when a `*_tree` source's `layout` cannot be satisfied by a well-formed tree, instead of deferring to `materialize`. Owns the bundled **`v0.25.0`** release for Subphase K-2.
 
-- [ ] Add the validator check: exactly one `{label}` for labeled sources; flag a `{label}` level that resolves to only subdirectories (no files); depth consistency — the message names the offending nesting
-- [ ] Tests for the new check (pass + fail cases); update the validate-check count where documented
-- [ ] `recipe-authoring.md`: document the check
-- [ ] Ship the bundled `v0.25.0` minor: bump `__version__`, add a CHANGELOG entry enumerating K-2 (recursive ingestion + symlink-hash fix), and run the full local CI gate (`mypy src tests`, `ruff check src/ tests/`, `ruff format --check src/ tests/`, `pyve test`)
+- [x] Added **check 31** (`tree_layout_label_source`, [`recipe/validator.py`](../../src/datarefinery/recipe/validator.py)): a labeled `*_tree` source must carry exactly one label source — a `{label}` token **or** `label_from`, never both — failing fast at `validate` and naming the source. (The "`{label}` level with only subdirectories" rule needs the filesystem; `validate` is static, so that mismatch stays a materialize-time "matched no files" error — scope clarified in the message + docs.)
+- [x] Tests ([`tests/unit/test_validator_tree_layout.py`](../../tests/unit/test_validator_tree_layout.py), 6: pass/label-token, pass/label_from, pass/unlabeled, fail/no-source, fail/two-sources, non-tree-ignored); validate-check count 30 → 31 (FR-2 list, README, tech-spec, 5 count assertions)
+- [x] [`recipe-authoring.md`](../guides/recipe-authoring.md): documented check 31 in the `*_tree` section
+- [x] Shipped the bundled **`v0.25.0`** minor: bumped `__version__` (0.24.0 → 0.25.0); consolidated the `[Unreleased]` notes into a `v0.25.0` CHANGELOG entry enumerating K-2 (recursive ingestion + symlink-hash fix + check 31); full local CI gate green (`mypy src tests`, `ruff check src/ tests/`, `ruff format --check src/ tests/`, `pyve test` — 1582 passed)
 
 ---
 

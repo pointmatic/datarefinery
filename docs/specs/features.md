@@ -285,6 +285,7 @@ Verify a recipe's correctness without running the pipeline. Covers schema correc
 28. `extension_keys_declared` — every `extensions.<namespace>.<key>` must be declared by the bound plugin's `extension_keys()`; undeclared namespaces or keys are rejected (Story J.n.6).
 29. `splits_operate_at_clip_level` — a recipe with a record-fanning `Generation` op (e.g. audio `window`) must stratify at the clip level, never on a fan-out child field (`source_record_id` / `window_index`) (Story J.r).
 30. `npy_sink_targets_pre_normalize_field` — an `npy_per_record` sink (which rewrites a per-record `feature_path`) must target a **pre-normalize** field, not the already-normalized output of a fit-on-train Featurization (e.g. audio `audio_normalize` → `feature`). Persisting the normalized output and re-applying the persisted statistics at load double-normalizes; the check refuses it and names the offending op. Egress analogue of check 26 (Story K.d).
+31. `tree_layout_label_source` — a labeled `*_tree` source (`image_tree` / `audio_tree`, `unlabeled` false) must carry exactly one label source: a `{label}` token in its `layout` **or** a `label_from` sidecar, never both. Caught statically at `validate` (naming the source + layout) instead of deep in `materialize` (Story K.i). The runtime tree-shape mismatch (a `{label}` level holding only subdirectories) stays a materialize-time error — `validate` has no filesystem access.
 
 **Edge Cases:**
 - Plugin not installed -> hard error pointing at the plugin name and discovery path.

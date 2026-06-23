@@ -1490,6 +1490,47 @@ def check_27_dtype_altering_transform_incompatible_with_aggressive(
     )
 
 
+def check_31_tree_layout_label_source(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Story K.i (FR-K-5): a labeled ``*_tree`` source needs exactly one label source.
+
+    A ``*_tree`` source resolves files via its ``layout`` template. A labeled
+    source (``unlabeled`` is false) must carry **exactly one** label source — a
+    ``{label}`` token in the layout (path-derived) OR a ``label_from`` sidecar —
+    and never both (contradictory). This is the static (filesystem-blind) closure
+    of the validate/materialize asymmetry the Gap-1 report flagged: without it, a
+    layout with no label source passes every static check and only fails deep in
+    ``materialize``. The runtime *tree-shape* mismatch (a ``{label}`` level that
+    holds only subdirectories) remains a materialize-time error — ``validate`` has
+    no filesystem access — surfaced by the loader's "matched no files" message.
+    """
+    descriptor = "tree_layout_label_source"
+    issues: list[str] = []
+    for src in recipe.Input.sources:
+        if not src.type.endswith("_tree") or src.unlabeled:
+            continue
+        has_label_token = src.layout is not None and "{label}" in src.layout
+        has_label_from = src.label_from is not None
+        if has_label_token and has_label_from:
+            issues.append(
+                f"Input source {src.name!r} ({src.type}) declares both a '{{label}}' layout "
+                f"token and a 'label_from' sidecar — two contradictory label sources; keep one"
+            )
+        elif not has_label_token and not has_label_from:
+            issues.append(
+                f"Input source {src.name!r} ({src.type}) layout {src.layout!r} has no label "
+                f"source — add a '{{label}}' token, declare 'label_from', or set 'unlabeled: true'"
+            )
+    if not issues:
+        return _passed(31, descriptor)
+    return CheckResult(
+        check_id=31,
+        descriptor=descriptor,
+        status="fail",
+        location="Input",
+        message="; ".join(issues),
+    )
+
+
 def check_30_npy_sink_targets_pre_normalize_field(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Story K.d: an ``npy_per_record`` sink must persist a pre-normalize field.
 
@@ -1737,6 +1778,7 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
         "npy_sink_targets_pre_normalize_field",
         check_30_npy_sink_targets_pre_normalize_field,
     ),
+    (31, "tree_layout_label_source", check_31_tree_layout_label_source),
 )
 
 

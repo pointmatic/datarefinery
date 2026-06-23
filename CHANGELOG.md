@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-06-23
+
+**Phase K Subphase K-2 — Generalized ingestion & hash correctness (consumer Gaps 1 + 2).**
+Resolves two consumer-surfaced ingestion gaps on a shared file-enumeration helper: the
+`image_tree` / `audio_tree` source family with a `layout` path template handles
+arbitrary-depth taxonomy trees the one-level folder loaders could not (Gap 1), and the
+input hasher now follows symlinked directories so a symlinked-dir source no longer hashes
+to an empty set (Gap 2). Bundles stories K.f (resolver-boundary spike), K.g (symlink-hash
+fix), K.h (resolver + `*_tree` + `layout`), K.i (unsatisfiable-layout validator check).
+
 ### Added
 
 - **`image_tree` / `audio_tree` source types + the `layout` path template (Story K.h,
@@ -41,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   > symlinked directory now hashes its real content instead of an empty set, so its
   > `input_hash` changes — the previous digest was wrong. Affected instances re-materialize
   > on next run (pre-production invalidation is acceptable per `project-essentials.md`).
+
+### Changed
+
+- **`validate` now runs 31 checks (was 30).** New **check 31**
+  (`tree_layout_label_source`, Story K.i, FR-K-5) — a labeled `*_tree` source must carry
+  exactly one label source (a `{label}` token in its `layout` or a `label_from` sidecar,
+  never both), caught statically at `validate` instead of deep in `materialize`. Closes the
+  validate/materialize asymmetry for the no-label-source case (the runtime tree-shape
+  mismatch stays a materialize-time error — `validate` is filesystem-blind).
 
 ## [0.24.0] - 2026-06-23
 
