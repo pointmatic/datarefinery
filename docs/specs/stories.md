@@ -30,9 +30,20 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
-### Story K.a: TBD
+### Story K.a: Refactor README.md (v0.22.0/v0.23.0 catch-up — audio plugin, segmented identity) [Done]
 
-- [ ] TBD
+Documentation-only refactor bringing the repo-root `README.md` current with the
+Phase-J releases. No version bump — pure doc catch-up (the features already
+shipped in v0.22.0 / v0.23.0); rides the next code-story release per Version
+Cadence.
+
+- [x] Announce `audio_classification` as a second fully-real plugin (intro, "Why", Plugin model): `audio_folder` / `audio_flat` sources + required `target_sample_rate`, `window` Generation op, `log_mel_spectrogram` + fit-on-train `audio_normalize` Featurizations
+- [x] Add the `[audio]` extra (librosa) to Installation; add an audio recipe example to Quickstart
+- [x] Bump recipe anatomy `schema_version: 1` → `3`
+- [x] Rewrite cache-identity prose: flat hash → four-segment identity (`core` / `plugin` / `overlays` / `extensions`) + per-segment scoped invalidation
+- [x] `variants` → `overlays` (recipe anatomy block, section-roles table, `--variant` → repeatable `--overlay`); document the `extensions` namespace
+- [x] Fix instance layout: `recipe.yaml` → `recipe.json`; correct the validate-check count (23 → 29)
+- [x] Add the `Sinks` recipe section (section-roles table + brief example) and the `export` CLI verb
 
 ---
 

@@ -13,12 +13,8 @@ produced during preparation, and a report describing both. Re-running an
 unchanged recipe over unchanged inputs returns the cached instance
 unchanged; any semantic edit invalidates and rebuilds.
 
-Two categories ship as **fully-real plugins** — **image classification**
-and **audio classification** — with tabular and text plugin stubs to keep
-the abstractions honest. The audio plugin is the proof that the
-category-agnostic abstractions are not "image with extra steps": its
-windowing, log-mel featurization, and fit-on-train normalization all land
-on the same recipe sections image uses. See the
+The first-class category is **image classification**; tabular and text
+plugin stubs exist to keep the abstractions honest. See the
 [concept](docs/specs/concept.md), [features](docs/specs/features.md),
 and [tech-spec](docs/specs/tech-spec.md) documents for design depth.
 
@@ -37,11 +33,7 @@ materialization path. Highlights:
 - **Semantic cache identity.** Cache addressing combines a canonical
   hash of the recipe (whitespace- and key-order-insensitive) with a
   hash of the raw inputs and the seed. Cosmetic edits don't rebuild;
-  meaningful edits do. The recipe hash is **segmented** into four
-  independently-versioned identity parts (`core` / `plugin` /
-  `overlays` / `extensions`), so an edit confined to one segment
-  invalidates only that segment's scope — e.g. an audio-plugin change
-  never rebuilds an image recipe's cache.
+  meaningful edits do.
 - **Atomic temp-then-promote.** Materialization writes into a temp
   directory and promotes only after success — partial instances never
   appear in the cache.
@@ -78,17 +70,6 @@ corruptions, install with the `[corruptions]` extra:
 ```bash
 pip install 'ml-datarefinery[corruptions]'
 ```
-
-For the **`audio_classification`** plugin (clip decode, windowing,
-log-mel featurization), install with the `[audio]` extra, which pulls in
-`librosa` (and its transitive `soundfile`):
-
-```bash
-pip install 'ml-datarefinery[audio]'
-```
-
-The default install stays lean; the audio plugin imports `librosa`
-lazily, so the package remains importable without the extra.
 
 ### From source (development)
 
@@ -153,7 +134,7 @@ After a successful `materialize`, the cache layout looks like:
 
 ```text
 cache/instances/<recipe-hash>/<input-hash>/<seed>/
-├── recipe.json              # canonical post-loader recipe (the bytes hashed for the cache key)
+├── recipe.yaml              # exact recipe used (canonicalized for the cache key)
 ├── manifest.json            # full hashes, record counts, schema version
 ├── dataset/                 # prepared dataset (e.g. <split>.jsonl)
 ├── fitted_statistics/       # statistics fitted on the training split
@@ -282,82 +263,6 @@ is ready for downstream inference — train a model on `train`+`val`,
 predict against `test`, and submit. (Inference itself is external to
 DataRefinery.)
 
-### Audio classification
-
-The `audio_classification` plugin (install with `pip install
-'ml-datarefinery[audio]'`) follows the same `init → validate →
-materialize → status` journey on the same recipe sections — only the
-plugin name, source types, and ops differ. Sources mirror the image
-ones: `audio_folder` (class-subdirectory labels) and `audio_flat`
-(`label_from` sidecar or `unlabeled: true`). Each source declares a
-required `target_sample_rate`; the loader decodes every clip with
-`librosa` and resamples to it (mono float32).
-
-The pipeline is: **decode → window → log-mel → fit-on-train normalize.**
-Windowing is a `Generation` op that fans each clip into fixed-length
-window records (so `manifest.record_counts` reflects the expansion);
-featurization is a two-op `Featurizations` chain — `log_mel_spectrogram`
-writes the raw spectrogram to `mel`, then fit-on-train `audio_normalize`
-reads `mel` and writes per-mel-bin-standardized `feature`.
-
-```yaml
-schema_version: 3
-plugin: audio_classification
-seed: 0
-
-Input:
-  sources:
-    - name: clips
-      type: audio_folder        # class-named subdirectories of audio files
-      path: ./my-audio/train
-      target_sample_rate: 16000 # required — clips decode + resample to this
-
-Output:
-  record_schema:
-    sample_array: { dtype: float32 }   # decoded waveform (in-pipeline; not serialized)
-    label: { dtype: str }
-
-Labels:
-  field: label
-  source: { kind: direct }
-
-Splits:
-  ratios: { train: 0.8, val: 0.2 }
-  stratify_by: label            # clip-level stratification; a clip's windows stay together
-  seed: 7
-
-Generation:
-  - name: win
-    op: window
-    inputs: [sample_array]
-    output_schema: matches_input
-    seed: 0
-    splits: [train, val]
-    replace_input_records: true # each clip -> N window records
-    params:
-      window_length_samples: 1600   # 0.1s @ 16 kHz
-      hop_samples: 1600             # non-overlapping
-      remainder: drop               # or pad_zero for the trailing partial window
-
-Featurizations:
-  - name: logmel
-    op: log_mel_spectrogram
-    inputs: [sample_array]
-    output_field: mel             # raw log-mel spectrogram (n_mels x n_frames)
-    params: { n_fft: 512, hop_length: 256, n_mels: 32, f_min: 0.0, power: 2.0 }
-    splits: [train, val]
-  - name: norm
-    op: audio_normalize
-    inputs: [mel]
-    output_field: feature         # fit-on-train per-mel-bin normalized
-    fit_source: train             # stats fit on train, applied to val/test
-    splits: [train, val]
-```
-
-Each window record carries `source_record_id` (the parent clip's
-`record_id`) and `window_index` — the documented grouping key downstream
-tools use to aggregate window predictions back to a clip-level decision.
-
 ## Recipe anatomy
 
 A recipe is a single YAML file. Field names match the section set
@@ -365,7 +270,7 @@ used by the validator and runner; each operation declares the stages
 and splits it applies to so train-only behavior is explicit.
 
 ```yaml
-schema_version: 3
+schema_version: 1
 plugin: image_classification
 seed: 0
 
@@ -419,7 +324,7 @@ Visualizations:
     stage: post_pipeline
     mode: reporting
 
-overlays:
+variants:
   no_augment:
     Augmentations: []
 ```
@@ -441,36 +346,13 @@ Section roles at a glance:
 | `Featurizations` | Derive new fields from existing ones |
 | `OutputExpectations` | Post-pipeline assertions on materialized data |
 | `Visualizations` | Exploration (on-demand) or reporting (persisted) views |
-| `Sinks` | Per-record disk exports captured at a named stage (e.g. PNGs) |
-| `overlays` | Named overrides on any section (experiment knobs) |
-| `extensions` | Sanctioned namespace for plugin-consumed experimental keys |
+| `variants` | Named overlays on any section (experiment knobs) |
 
-Select one or more overlays at materialize time with repeatable
-`--overlay no_augment` (applied in order, last-writer-wins per section).
-Overlays change the canonical hash (and therefore the cache identity).
-(`overlays` is the v0.22.0 generalization of the former `variants` /
-`--variant` surface.)
-
-The optional `Sinks` section captures per-record artifacts (v1:
-`png_per_record`) from a named pipeline stage under a path template,
-rooted in the instance directory — so downstream consumers read
-bit-identical bytes from the stage that produced them:
-
-```yaml
-Sinks:
-  - name: transformed
-    stage: post_Transformations    # observes this stage's record output
-    field: image                   # uint8 H×W×C array to serialize
-    format: png_per_record
-    path_template: "transformed/{split}/{record_id}.png"
-```
-
-Sinks are part of canonical recipe bytes. Add a sink to an
-already-materialized recipe and re-run it without rebuilding the
-pipeline via the `export` verb.
+Select a variant at materialize time with `--variant no_augment`.
+Variants change the canonical hash (and therefore the cache identity).
 
 For a section-by-section walk-through — including fit-on-train
-discipline, overlays, contracts/expectations, and the Filters-vs-Splits
+discipline, variants, contracts/expectations, and the Filters-vs-Splits
 choice for class imbalance — see the
 [Recipe authoring guide](docs/guides/recipe-authoring.md).
 
@@ -484,12 +366,11 @@ datarefinery --help
 |------|---------|----|
 | `check` | Report environment soundness (Python, deps, plugins discovered). | FR-18 |
 | `init` | Scaffold a starter recipe deterministically from raw inputs. | FR-17 |
-| `validate` | Schema + 29 enumerated static logical checks. | FR-2 |
+| `validate` | Schema + 23 enumerated static logical checks. | FR-2 |
 | `materialize` | Run the pipeline end-to-end against the recipe's inputs. | FR-3 |
 | `status` | Summarize a materialized instance or resolve a recipe to one. | FR-19 |
 | `report` | Re-render `report.md`, `drift.json`, and reporting visualizations. | FR-15 |
 | `inspect` | Read-only views of a materialized instance. | FR-20 |
-| `export` | Re-run `Sinks` against an existing instance without re-materializing. | FR-3 |
 | `clean` | Remove cached instances and orphan temp directories. | FR-21 |
 
 Execution-context flags (never alter pipeline semantics):
@@ -501,7 +382,7 @@ Execution-context flags (never alter pipeline semantics):
 | `--log-target` | `DATAREFINERY_LOG_TARGET` | Log routing target (reserved). |
 | `--plugin-path` | `DATAREFINERY_PLUGIN_PATH` | Extra plugin discovery paths. |
 | `--workers` | `DATAREFINERY_WORKERS` | Process-pool worker count. |
-| `--overlay` | — | Recipe overlay to apply before canonicalization (repeatable). |
+| `--variant` | — | Recipe variant to apply before canonicalization. |
 | `--seed` | — | Override the recipe seed (changes cache identity). |
 
 ## Plugin model
@@ -512,14 +393,9 @@ entry-point group and are discovered automatically.
 
 v1 ships:
 
-- `image_classification` — fully-real, full operation set (resize,
+- `image_classification` — first-class, full operation set (resize,
   normalize, class-distribution and sample-grid visualizations,
-  label-from-path featurization, aggressive augmentations, etc.).
-- `audio_classification` — fully-real (requires the `[audio]` extra):
-  `audio_folder` / `audio_flat` sources with clip decode + resample,
-  the `window` Generation op, and the `log_mel_spectrogram` +
-  fit-on-train `audio_normalize` Featurization chain. Validates the
-  category-agnostic abstractions on a second real category.
+  label-from-path featurization, etc.).
 - `tabular` — stub plugin exercising the abstractions; no working ops.
 - `text` — stub plugin exercising the abstractions; no working ops.
 
@@ -563,35 +439,31 @@ instance = dr.materialize()
   versions; documented migration path between versions.
 - Materialized instance = recipe + dataset + fitted statistics +
   report. No statistical artifacts persisted outside the report.
-- Segmented semantic cache identity (per-segment canonical recipe hash
-  ⊕ raw-input hash ⊕ seed). Whitespace/key-order edits do not trigger
-  rebuilds; a single-segment edit invalidates only that segment's scope.
+- Semantic cache identity (canonical recipe hash ⊕ raw-input hash ⊕
+  seed). Whitespace/key-order edits do not trigger rebuilds.
 - Atomic temp-then-promote materialization; no partial instances in
   cache.
-- Named overlays within a recipe; experiment knobs are overlays, not
+- Named variants within a recipe; experiment knobs are variants, not
   separate recipes.
-- Two fully-real plugins — `image_classification` and
-  `audio_classification`, both scoped to **classification** — plus
-  tabular and text stubs.
-- Deterministic `init` scaffolder (image only); optional LLM
-  enhancement layer via `lmentry` as an extra.
+- Image plugin scoped to **classification**; tabular and text stubs.
+- Deterministic `init` scaffolder; optional LLM enhancement layer via
+  `lmentry` as an extra.
 - Stable drift-relevant report subsection for downstream tooling.
 
 **Non-goals for v1:**
 
-- Image and audio tasks beyond classification (detection,
-  segmentation; audio event detection / source separation).
+- Image tasks beyond classification (detection, segmentation).
 - Model framework abstraction, training, evaluation, inference.
 - Production streaming and drift-detection logic.
 - Persisted statistical artifacts beyond the report (no sidecar
   pickles, no separate stats files).
-- Recipe inheritance or multi-file recipe composition (overlays
+- Recipe inheritance or multi-file recipe composition (variants
   suffice).
 - Resume-from-stage during materialization.
 - Hard LLM dependency (DataRefinery must work fully offline).
 - Tabular and text plugin implementations (stubs only).
 - Hard performance targets (reactive performance work only).
-- `init` for non-image categories (audio recipes are written by hand).
+- `init` for non-image categories.
 
 For the full requirements, see
 [`docs/specs/features.md`](docs/specs/features.md). For implementation
