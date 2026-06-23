@@ -342,8 +342,10 @@ agree on the contract —
 **Shared on-disk contract (pin jointly with DR before coding):**
 - DR ships an **`npy_per_record`** array sink: persists the float field per record
   at `features/<split>/<record_id>.npy`, shape **`(n_mels, n_frames)`**, and
-  rewrites a **`feature_path`** relative to `dataset/` (mirrors how
-  `png_per_record` rewrites `image_path`). Sink output is instance content →
+  rewrites a **`feature_path`** **instance-root-relative** (`<instance>/<feature_path>`)
+  — the J.g sink-`path` bucket, **not** the `image_path`/`dataset/`-relative bucket
+  (corrected in the 2026-06-23 review round; see DR `vendor-dependency-spec.md` Q1).
+  Sink output is instance content →
   covered by cache identity exactly as PNG is.
 - DR persists the **`audio_normalize`** fit-on-train stats (per-mel-bin).
 
@@ -386,7 +388,7 @@ DataRefinery's own solutions doc
 ([`datarefinery/consumer-gap-solutions.md`](datarefinery/consumer-gap-solutions.md)
 Gap 3) confirms the producing half and **agrees on the contract**: its preferred
 fix is the **`npy_per_record`** sink (`features/<split>/<record_id>.npy`,
-`feature_path` relative to `dataset/`, `(n_mels, n_frames)` on disk) — exactly what
+`feature_path` **instance-root-relative**, `(n_mels, n_frames)` on disk) — exactly what
 MF's consumption branch above consumes. The axis orientation is pinned identically
 on both sides (disk `(n_mels, n_frames)` → tensor `(1|C, n_mels, n_frames)`), which
 is the obvious way a "paired" fix silently fails to line up. Two coordination points
@@ -428,7 +430,7 @@ option 1. No conflict with anything MF shipped.
 3. **Gap 3 → plan_features (proper path, not the PNG hack).** Decision recorded:
    spectrogram-as-image is lossy and wrong; build the feature-array path. Both
    briefs exist and agree on the contract (`npy_per_record` + `feature_path`
-   relative to `dataset/`, `(n_mels, n_frames)` float arrays, `audio_normalize`
+   instance-root-relative, `(n_mels, n_frames)` float arrays, `audio_normalize`
    stats). Settle the shared contract with DataRefinery, then author the loader
    story (feature-array branch + `audio_normalize`) with the brief's verification
    as acceptance tests. The MC-dropout path is done; do not re-investigate it.

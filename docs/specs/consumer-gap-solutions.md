@@ -335,6 +335,16 @@ ingestion/bugfix item, and it cannot be created in `debug` mode. Recommended pat
   coordinate rollout with the ModelFoundry consumption fix (paired). It is architecturally
   distinct from Phase K's data-ingestion theme — egress/persistence, not ingestion — and
   crosses repos, so it warrants its own phase rather than an append.
+  - **Double-normalize guardrail (validator check, from the 2026-06-23 MF review).** The
+    contract blesses `field: mel` (pre-normalize) for the consumer-applied path, but an
+    author *could* point a `feature_path`-rewriting `npy_per_record` sink at the
+    already-normalized `feature` field — the consumer would then re-apply `audio_normalize`
+    and silently double-normalize. The `plan_phase` story should add a validator check that
+    a `feature_path`-rewriting `npy_per_record` sink targets the pre-normalize field
+    (`mel`), failing fast at `validate`. This is the egress analogue of check 26
+    (pixel-altering transform ⇒ qualifying sink). MF mirrors the guard at load (verify the
+    rewriting sink's `field == mel` before applying stats). No contract change now — both
+    sides carry it into their execution stories (DR `plan_phase`, MF `plan_features`).
 
 ---
 

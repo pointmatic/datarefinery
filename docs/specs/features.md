@@ -520,6 +520,19 @@ Derive new features from one or more existing inputs.
 
 **In-pipeline vs persisted (audio).** The audio `sample_array`, `mel`, and `feature` arrays are **in-pipeline only** — they are not serialized into `dataset/<split>.jsonl`. The per-record JSONL carries the metadata consumers bind against: `record_id`, `source_record_id`, `window_index`, `label`, `path`, `sample_rate`.
 
+**Audio requirement-ID crosswalk (R1–R8).** The audio plugin originated from a consumer-authored requirements brief numbered R1–R8, now archived as a Phase J planning input ([`.archive/phase-j-audio-classification-requirements.md`](.archive/phase-j-audio-classification-requirements.md)). The canonical requirements live **here and in `tech-spec.md`**; the R-IDs persist only as stable cross-repo shorthand (cited by the vendor-dependency specs and the audio briefs) and resolve as:
+
+| R-ID | Requirement | Canonical home |
+|------|-------------|----------------|
+| R1 | Audio input sources | FR-3 — `audio_folder` / `audio_flat` (+ required `target_sample_rate`) |
+| R2 | Decode / resample | FR-3 loader — mono `float32` via `librosa.load(..., mono=True)` |
+| R3 | Windowing of variable-length clips | FR-GEN-2 — `window` op |
+| R4 | Spectral featurization | FR-FEAT-1 — `log_mel_spectrogram` |
+| R5 | Fit-on-train feature normalization | FR-FEAT-2 — `audio_normalize` |
+| R6 | Clip-level label / split integrity | FR-7 #7 + validator check 29 (`splits_operate_at_clip_level`) |
+| R7 | Test-time window aggregation key | FR-GEN-2 — `source_record_id` (DR owns the key; consumer owns the aggregation math) |
+| R8 | Plugin-interface conformance | the `Plugin` protocol / plugin model (`tech-spec.md` § plugins) |
+
 **Edge Cases:**
 - Featurization referencing a field not in `Input` or upstream output -> caught by `validate` (check 7).
 - Featurization producing a name that collides with an existing field -> hard error during materialization.

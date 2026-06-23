@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | Target repo | DataRefinery |
-| Related spec | [`audio-classification-requirements.md`](../datarefinery/audio-classification-requirements.md) (R4 spectral featurization, R5 fit-on-train normalization, R7 aggregation key) |
+| Related spec | Canonical audio requirements: [`features.md`](features.md) § FR-FEAT / FR-GEN-2 + [`tech-spec.md`](tech-spec.md) — R4 spectral featurization → FR-FEAT-1, R5 fit-on-train normalization → FR-FEAT-2, R7 aggregation key → FR-GEN-2 `source_record_id` (see the R1–R8 crosswalk in `features.md`). R-IDs originated in the archived [`phase-j-audio-classification-requirements.md`](.archive/phase-j-audio-classification-requirements.md) (Phase J planning input). |
 | Sanitized | yes |
 | Date | 2026-06-22 |
 
