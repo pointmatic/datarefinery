@@ -91,14 +91,14 @@ Implements FR-K-4: a validator check preventing silent double-normalization, plu
 
 ---
 
-### Story K.e: Cross-repo coordination + Subphase K-1 release (v0.24.0) [Planned]
+### Story K.e: Cross-repo coordination + Subphase K-1 release (v0.24.0) [Done]
 
 Coordinates the paired rollout with ModelFoundry and ships the bundled **`v0.24.0`** release for Subphase K-1.
 
-- [ ] CHANGELOG: a prominent cross-repo contract entry (new `npy_per_record` format + the `feature_path` shape-binding surface; additive, no `schema_version` bump) with a blast-radius note
-- [ ] Flag to ModelFoundry: build the `feature_path` loader branch against the **instance-root** anchor (vendor-spec Q1), not the `dataset/`-relative wording; paired with MF `plan_features` (neither half unblocks alone)
-- [ ] Confirm [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § "Audio feature-array persistence" is re-ratified from forward-declared to shipped
-- [ ] Ship `v0.24.0`: bump `__version__` and run the full local CI gate (`mypy src tests`, `ruff check src/ tests/`, `ruff format --check src/ tests/`, `pyve test`)
+- [x] CHANGELOG: a prominent cross-repo contract entry (new `npy_per_record` format + the `feature_path` shape-binding surface; additive, no `schema_version` bump) with a blast-radius note
+- [x] Flag to ModelFoundry: captured the instance-root-anchor flag (vendor-spec Q1, not `dataset/`-relative) in the CHANGELOG blast-radius note + vendor-spec § (paired with MF `plan_features`; neither half unblocks alone) — coordination is doc-side (no MF repo access from here)
+- [x] Confirm [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § "Audio feature-array persistence" is re-ratified from forward-declared to shipped (verified — heading, status, revision-log entry all read "producer side SHIPPED, v0.24.0")
+- [x] Ship `v0.24.0`: bumped `__version__` (0.23.0 → 0.24.0) in `__init__.py`; full local CI gate green (`mypy src tests`, `ruff check src/ tests/`, `ruff format --check src/ tests/`, `pyve test` — 1540 passed)
 
 ---
 

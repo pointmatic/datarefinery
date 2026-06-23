@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-06-23
+
+**Phase K Subphase K-1 — Audio feature-array egress (consumer Gap 3).** Closes the
+persistence seam that left prepared audio features unreadable from a materialized
+instance: spectral features (`mel` / `feature`) are in-pipeline-only arrays the JSONL
+writer drops, and the only sink format (`png_per_record`, uint8) had no float-array
+path. This subphase adds the additive **`npy_per_record`** float-array sink + a
+per-record **`feature_path`** rewrite so a downstream model can consume prepared audio
+features, plus a validator guardrail against silent double-normalization. Bundles
+stories K.b (integration spike), K.c (sink + rewrite), K.d (guardrail + requirement).
+
+> **⚠️ Cross-repo contract change (DataRefinery ↔ ModelFoundry; additive).** This ships
+> the producer half of the audio feature-array seam ratified in the 2026-06-23 MF review
+> round (vendor-spec Q1–Q6). Two new **shape-binding surfaces** for downstream consumers:
+> the `npy_per_record` sink `format` and the per-record `feature_path` JSONL field. Both
+> are **additive and opt-in** — existing recipes' canonical bytes are unchanged, so
+> **no recipe `schema_version` bump** and **no cache invalidation** for recipes that do
+> not declare an `npy_per_record` sink. **Blast radius:** none for existing instances
+> (a recipe must opt in to the new sink to produce any `feature_path` / `features/`
+> output). Consumers binding the new surface MUST resolve `feature_path` against the
+> **instance root** (`<instance>/<feature_path>`, the sink-`path` bucket), **not**
+> `dataset/`-relative — and consume the **pre-normalize `mel`**, applying the persisted
+> per-mel-bin `audio_normalize` statistics at load. **Paired rollout:** the consumer is
+> unblocked only once ModelFoundry ships its feature-array loader branch via
+> `plan_features`; neither half unblocks the consumer alone. See
+> [`docs/specs/modelfoundry/vendor-dependency-spec.md`](docs/specs/modelfoundry/vendor-dependency-spec.md)
+> § "Audio feature-array persistence".
+
+### Added
+
+- **`npy_per_record` float-array sink + `feature_path` rewrite (Story K.c, FR-K-3).** A
+  new `SinkOp.format` value persists a named float field per record as a `float32` `.npy`
+  sidecar at `features/<split>/<record_id>.npy` (`np.save`) and rewrites a per-record,
+  **instance-root-relative** `feature_path` into `<split>.jsonl` — mirroring how
+  `png_per_record` persists pixels and rewrites `path`. The array is a sidecar, never
+  inlined into the JSONL. Sink output is covered by `(recipe_hash, input_hash, seed)`
+  cache identity (byte-identical `.npy` across re-runs; a changed featurization param ⇒
+  cache miss). `manifest.sinks[<name>].format` reports `npy_per_record`, and
+  `features/<split>/` joins the atomic temp-then-promote unit.
+- **R-level feature-persistence requirement (Story K.d, FR-K-4).** New behavior point in
+  `features.md` FR-12: an in-pipeline array feature MUST have a persistence path so a
+  computed (non-uint8) feature can cross the materialized-instance boundary — closing the
+  seam the archived Phase J audio brief left unspecified. Documented in
+  `docs/guides/recipe-authoring.md`.
+
+### Changed
+
+- **Vendor-dependency contract re-ratified (Story K.c).** `vendor-dependency-spec.md`
+  § "Audio feature-array persistence" moves from **forward-declared → shipped** on the
+  DataRefinery producer side (the MF consumer loader remains pending `plan_features`).
+- **`validate` now runs 30 checks (was 29).** New **check 30**
+  (`npy_sink_targets_pre_normalize_field`, Story K.d) — the egress analogue of check 26:
+  an `npy_per_record` sink MUST target a pre-normalize field, refusing a sink that points
+  at the already-normalized output of a fit-on-train Featurization (e.g. `feature`), which
+  would double-normalize at the consumer. The failure message names the offending op.
+
 ## [0.23.0] - 2026-06-22
 
 **Subphase J-1 — Audio classification.** DataRefinery's **second fully-real
