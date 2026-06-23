@@ -28,8 +28,8 @@ needed.
 | # | Gap | Headline verdict | Notable sub-finding | Disposition |
 |---|-----|------------------|---------------------|-------------|
 | 1 | DR writes instance-relative `path`; MF resolves a bare `path` relative to **CWD** | **confirmed** | Workaround script exists (at `scripts/examples/`, not the cited path) | ✅ **FIXED — Story I.k, v0.17.1**: `_decode` anchors instance-relative `path` to the instance + bind-time fail-fast gate |
-| 2 | MF encoder path applies **no** HF image-processor preprocessing | **confirmed** | The "uint8-sink vs. normalize **collision**" framing is **refuted** — `normalize` is a fit-on-train op applied at load, so resize-via-sink + normalize coexist | Try existing load-time normalize path first; **spike** the residual (exact pretrained stats vs. fit-on-train) |
-| 3 | PyTorch loader is image-only; no audio / feature-array path | **confirmed** | MC-dropout path is **already built and modality-agnostic** (sub-claim refuted-in-the-good-sense — it is *not* the blocker) | **Decision: spectrogram-as-image is the wrong (lossy) solution** — build the feature-array path (`npy_per_record` + `feature_path`); cross-repo **`plan_features`** (both briefs exist) |
+| 2 | MF encoder path applies **no** HF image-processor preprocessing | **confirmed** (headline) — blocking "collision" sub-claim **refuted** | `normalize` is a fit-on-train op applied at load (resize-via-sink + normalize coexist); DR **confirmed** it persists fixed author-supplied stats | ✅ **No spike — zero-code recipe pattern** (DR `resize` + fixed-stat `normalize` in **0-255 units** = HF stats × 255); document the pattern + units caveat |
+| 3 | PyTorch loader is image-only; no audio / feature-array path | **confirmed** | MC-dropout path is **already built and modality-agnostic** (not the blocker); surrounding audio contract now pinned (DR vendor-spec 2026-06-22) but **feature transport still not in the contract** | **Decision: spectrogram-as-image is the wrong (lossy) solution** — build the feature-array path; cross-repo **`plan_features`**, **BLOCKED on DR shipping `feature_path`/`npy_per_record` persistence** |
 
 ---
 
@@ -170,7 +170,7 @@ alignment.
 
 ## Gap 2 — encoder path applies no HF image-processor preprocessing
 
-### Verdict: **confirmed** (headline) — with a **refuted** sub-claim (the "collision")
+### Verdict: **confirmed** (headline) — blocking sub-claim **refuted**; ✅ resolvable today (zero code)
 
 The headline fact is true: MF never instantiates or applies a HuggingFace image
 processor. But the gap's **diagnosis** — that supplying the encoder's
@@ -222,35 +222,49 @@ So the consumer's documented mitigation ("train with `[0,1]`, note the caveat")
 was **not the only option** — declaring the encoder's expected normalization as a
 DR `normalize` op would have MF apply it at load over the uint8 sink, no collision.
 
-### Residual open question — **pending** (drives the spike)
+### Residual open question — **RESOLVED** (DataRefinery, 2026-06-23): no spike needed
 
-What remains genuinely uncertain: a frozen pretrained encoder wants its **exact
-pretrained stats** (e.g. ImageNet mean/std), but DR's `normalize` is typically
-**fit-on-train** — fitted stats ≈ but ≠ the pretrained distribution. Whether DR
-can persist **fixed** (author-supplied) `normalize` stats is a DataRefinery
-question not answerable from this repo.
+The one uncertainty — could DR persist **fixed**, author-supplied `normalize`
+mean/std (so a frozen encoder gets its *exact* pretrained stats rather than
+fit-on-train) — is **answered yes** by DataRefinery. Verified in `NormalizeOp.fit`:
+`mean`/`std` are `required=False` mode-selecting optionals — **supply both and DR
+honors them as-is and persists them**; omit them and it fits from train. So the
+encoder's exact ImageNet (or ViT `[-1,1]`) stats go in via a normalize op, and MF
+applies them at load. **This closes Gap 2 with zero code change in either repo** —
+no spike, no `Encoder`-op change.
 
-### Solution (spike — design choice is non-obvious)
+### Solution — the zero-code recipe pattern (works today), with the critical units caveat
 
-1. **Cheapest first (validate the refutation):** author a recipe that declares the
-   encoder's mean/std as a DR `normalize` op and confirm MF applies it at load to
-   the uint8-sinked pixels (expected to work per the evidence above). If DR
-   supports fixed stats, this likely closes the gap with **zero MF code**.
-2. **If exact pretrained stats can't be supplied data-side**, spike adding an
-   **optional HF-image-processor application to the `Encoder` op** — e.g.
-   `EncoderParams.apply_image_processor: bool` (and/or explicit
-   `image_mean`/`image_std`/`image_size`), applied in `_PretrainedClassifier`
-   before the encoder. **Cache-identity caveat:** this moves a behavior-affecting
-   value into the recipe, so it must follow the no-implicit-defaults rule
-   (author-required, emitted by the scaffolder) and is **cache-relevant** — weigh
-   against keeping normalization a pure data-side concern.
-3. **Either way, document the contract** at the recipe surface (the `Encoder` op
-   does not auto-preprocess; normalization is data-side) — that closes the
-   *intuition* gap independent of the code decision.
+The pattern: **DR `resize` (to the encoder's input size, baked → uint8 PNG sink) +
+DR `normalize` with fixed encoder stats (persisted, applied at load by MF).** The
+Gap-1 fix (now shipped) makes the sink's instance-relative paths resolve, so the
+whole chain works end-to-end.
 
-Spike deliverable: a decision (data-side fixed-stats vs. encoder-applied
-preprocessing) + the recipe-surface documentation. Cross-repo coordination
-required for option 1.
+> ⚠ **Units caveat — the easy way to get this silently wrong.** MF applies
+> `(x - mean) / std` on **0-255 pixel units with NO `/255` rescale**
+> ([data.py:189-199](../../src/modelfoundry/plugins/pytorch/data.py#L189-L199);
+> the deliberate H.a contract). HuggingFace image processors define
+> `image_mean`/`image_std` in **`[0,1]` units** (applied *after* a `/255` rescale).
+> So the stats written into the DR `normalize` op must be **scaled to 0-255**:
+> `mean₂₅₅ = image_mean × 255`, `std₂₅₅ = image_std × 255`. Then MF computes
+> `(x₂₅₅ − image_mean·255)/(image_std·255) = (x₂₅₅/255 − image_mean)/image_std` —
+> exactly the encoder's expected rescale-then-normalize. Writing the raw `[0,1]`
+> HF values directly would be a *new* silent mismatch (mean ≈ 0.5 subtracted from
+> 0-255 pixels). This units conversion is the recipe-surface contract to document.
+
+Worked examples (per-channel R,G,B):
+
+| Encoder norm | HF `[0,1]` stats | DR `normalize` op (0-255 units) |
+|---|---|---|
+| ImageNet | mean `[.485,.456,.406]`, std `[.229,.224,.225]` | mean `[123.675,116.28,103.53]`, std `[58.395,57.12,57.375]` |
+| ViT `[-1,1]` | mean `[.5,.5,.5]`, std `[.5,.5,.5]` | mean `[127.5,127.5,127.5]`, std `[127.5,127.5,127.5]` |
+
+**Still worth doing (docs, not a spike):** document this `Encoder`-normalization
+recipe pattern (resize + fixed-stat normalize, in 0-255 units) at the recipe
+surface so the next consumer doesn't re-derive it — that closes the *intuition*
+gap. The `Encoder`-op-applies-HF-preprocessing idea is **no longer needed** and is
+dropped (it would have moved a behavior-affecting value into the recipe with
+cache-identity cost, for no benefit over the data-side path).
 
 ---
 
@@ -342,10 +356,8 @@ agree on the contract —
 **Shared on-disk contract (pin jointly with DR before coding):**
 - DR ships an **`npy_per_record`** array sink: persists the float field per record
   at `features/<split>/<record_id>.npy`, shape **`(n_mels, n_frames)`**, and
-  rewrites a **`feature_path`** **instance-root-relative** (`<instance>/<feature_path>`)
-  — the J.g sink-`path` bucket, **not** the `image_path`/`dataset/`-relative bucket
-  (corrected in the 2026-06-23 review round; see DR `vendor-dependency-spec.md` Q1).
-  Sink output is instance content →
+  rewrites a **`feature_path`** relative to `dataset/` (mirrors how
+  `png_per_record` rewrites `image_path`). Sink output is instance content →
   covered by cache identity exactly as PNG is.
 - DR persists the **`audio_normalize`** fit-on-train stats (per-mel-bin).
 
@@ -382,38 +394,117 @@ contract), not `debug`. Sequence: settle the shared contract with DR → DR ship
 `npy_per_record` → MF ships the consumption branch (or in parallel against the
 agreed contract, since neither ships value alone).
 
-### Cross-repo coordination (DataRefinery plan, confirmed 2026-06-22)
+### Cross-repo coordination (DataRefinery contract, status 2026-06-23)
 
 DataRefinery's own solutions doc
 ([`datarefinery/consumer-gap-solutions.md`](datarefinery/consumer-gap-solutions.md)
-Gap 3) confirms the producing half and **agrees on the contract**: its preferred
-fix is the **`npy_per_record`** sink (`features/<split>/<record_id>.npy`,
-`feature_path` **instance-root-relative**, `(n_mels, n_frames)` on disk) — exactly what
-MF's consumption branch above consumes. The axis orientation is pinned identically
-on both sides (disk `(n_mels, n_frames)` → tensor `(1|C, n_mels, n_frames)`), which
-is the obvious way a "paired" fix silently fails to line up. Two coordination points
-that bind the MF side:
+Gap 3) and its **vendored dependency contract**
+([`datarefinery/vendor-dependency-spec.md`](datarefinery/vendor-dependency-spec.md))
+were both reviewed across several rounds. The feature-array transport is now a
+**forward-declared § "Audio feature-array persistence — `npy_per_record` +
+`feature_path`"** in the vendor-spec, with **MF's review-round questions Q1–Q6
+pinned** (2026-06-23). **Status: forward-declared, NOT yet shipped** — DR must still
+ship the `npy_per_record` sink (its `plan_phase`) and MF the loader branch (its
+`plan_features`); the two land together. So Gap 3 stays **blocked on DR shipping
+persistence**, but the *shape* MF builds against is now contractually fixed (no
+longer just a brief proposal).
 
-1. **The family must commit to the float-array path, not the PNG hack.** DR's plan
-   still lists its **option 3 (uint8-quantization PNG sink)** as a live spike
-   candidate. That is the same spectrogram-as-image route MF **rejected above** as
-   lossy and contract-breaking. If DR's spike landed on option 3, MF would be forced
-   back onto the lossy path. **MF's position into the joint spike: choose
-   `npy_per_record` (DR option 1).** Both repos independently flag the PNG route as
-   lossy — align on the float-array sink and drop option 3.
-2. **`feature_path` is a shape-binding surface → vendor-dependency-spec.** DR flags
-   the new per-record `feature_path` field as a contract surface requiring a
-   `modelfoundry/vendor-dependency-spec.md` update and coordinated rollout. That spec
-   is currently **forward-declared** (see `stories.md` Future, "authored at the
-   pre-production release") — the audio seam is a concrete reason it must capture the
-   `feature_path` / feature-array layout when it lands. MF consumes the sink output
-   **read-only** (the loose-coupling invariants in `project-essentials.md` hold — MF
-   never re-hashes DR's instance), so cache identity for the features stays DR's
-   responsibility; MF just reads them.
+**Pinned feature-transport contract (the binding facts for MF's loader story):**
 
-**Net:** the seam is aligned end-to-end. The only decision that could still split
-the two halves is option-1-vs-option-3 at the spike — and both sides already lean
-option 1. No conflict with anything MF shipped.
+- **Q1 — `feature_path` anchor: instance-root-relative**, resolve `<instance>/<feature_path>`
+  (e.g. `<instance>/features/<split>/<record_id>.npy`). It is the **J.g sink-`path`
+  bucket, NOT `image_path`'s `dataset/`-relative anchor** — the earlier
+  "anchored as `image_path`" wording was self-contradictory and is corrected.
+  MF's shipped Story I.k precedence already resolves bare/sink `path` against the
+  instance root, so `feature_path` joins that branch.
+- **Q2 — sink persists the RAW `mel` (pre-normalize); the consumer applies
+  `audio_normalize` at load** — the audio analogue of "normalization is applied by
+  the consumer, not baked." No double-normalize. (An author *may* sink any field,
+  but the blessed path is `field: mel` + consumer-applied stats; MF consumes `mel`.)
+- **Q3 — dtype asymmetry:** the `.npy` is **`float32`** (`power_to_db(...).astype(float32)`);
+  the `audio_normalize` `mean`/`std` stats are **`float64`** (same promotion as image
+  `normalize`). Apply `(mel − mean) / std` with promotion; byte-identity is over the
+  float32 array.
+- **Q4 — rank: always 2-D `(n_mels, n_frames)`** in v1 (mono); MF asserts `ndim == 2`
+  and **owns the unsqueeze** to `(1, n_mels, n_frames)`. `(C, …)` is future, not v1.
+- **Q5 — `feature_path` may be nested**; join as a relative POSIX path (same as
+  `image_path`, Story J.h) — do not assume a flat `features/<split>/`.
+- **Q6 — `feature_path` is authoritative** over any stray source `path` on the same
+  record; MF ignores `path` for feature resolution (same rule as `image_path`).
+- **Branch selection / cache identity / coupling:** per-record field presence
+  (`feature_path` ⇒ feature path; else image path); sink output covered by DR's cache
+  identity exactly as PNG; MF consumes **read-only** (never re-hashes the instance).
+
+**Surrounding audio contract also pinned (from the 2026-06-22 additions):**
+
+- **`audio_normalize` stats** (J.t): per-mel-bin `mean`/`std`, **`n_mels` rows**,
+  **mel axis = axis 0** of `(n_mels, n_frames)`; apply
+  `(feature − mean[:, None]) / std[:, None]`; same parquet shape + exact
+  zero-variance guard (`std == 0 → 1.0`) as image `normalize`. This is exactly
+  MF's `_resolve_normalization_steps` audio branch — now precisely specified
+  (was "audio-appropriate reshape" hand-wave in the plan above).
+- **mel orientation** (J.s): `(n_mels, n_frames)` librosa-native — confirms the
+  `(1, n_mels, n_frames)` load target.
+- **Window records** (J.q): the `window` Generation op uses `replace_input_records`,
+  so `record_counts` is **post-windowing**; window ids are `…__w{window_index:04d}`
+  (vs image `…__v{variant_index:03d}`), carrying `source_record_id` (parent clip) +
+  `window_index`. MF must treat windows as first-class records, not clips.
+- **Aggregation contract R7** (J.u): `source_record_id` is DR's clip↔window grouping
+  key; **DR ships no aggregation op** — MF owns the clip-level aggregation math
+  (mean/logit-avg/vote) for MC-dropout eval. New **failure mode**: a window whose
+  `source_record_id` resolves to no clip → refuse (MF should add this check
+  alongside its existing sidecar-missing detection).
+
+**Still-open cross-repo coordination items:**
+
+1. **Float-array path** — both *solutions docs* commit to `npy_per_record` and DR
+   demoted its PNG option 3 to "do not build." Good — but until that lands in the
+   *vendor-spec* (above), it's intent, not contract.
+2. **`feature_path` shape-binding surface → vendor-dependency-spec
+   (authority RESOLVED 2026-06-23; one nicety left).** The DR vendor-spec's new
+   `DR:`/`MF:` Revision-Log path convention + its link evidence resolve the earlier
+   "does the spec exist?" confusion — it was a **directory-convention mix-up**, not a
+   missing doc. The convention: each repo files DR-pushed/shared docs under a subdir
+   named for the *other* tool.
+   - **The DR↔MF shared contract** (`vendor-dependency-spec.md`) — authored
+     **canonically in DataRefinery** (`DR:docs/specs/modelfoundry/…`, the ~68 KB copy)
+     and vendored into MF at **`MF:docs/specs/datarefinery/vendor-dependency-spec.md`**
+     ([the mirror](datarefinery/vendor-dependency-spec.md)). Proof it's DR-canonical:
+     this MF copy's relative links are DR-relative (they resolve to *swapped* targets
+     in the MF tree). It **exists** — there was never a missing shared contract.
+   - **MF's own downstream contract** (how *future* consumers — modelmetrics/modelmachine
+     — bind against MF) is a **separate, not-yet-authored** doc forward-declared in
+     `MF:docs/specs/stories.md` Future. (Its eventual home should follow the same
+     "subdir named for the other tool" convention; the literal `docs/specs/modelfoundry/`
+     path in that forward-declaration is a maintainer call, not this seam's concern.)
+
+   So there is no real "missing contract." **Remaining nicety (not blocking):** no
+   written rule that the DR↔MF contract is *edited in DR and vendored into MF* — so
+   when Gap-3 `plan_features` needs a change, MF **proposes it to DR** (attributed
+   `MF:` in the Revision Log) to absorb and re-vendor, rather than editing the MF
+   mirror in isolation (which would drift). The MF mirror's relative links are also
+   DR-relative (broken in the MF tree) — cosmetic. MF consumes the instance
+   read-only regardless (loose-coupling invariants hold — MF never re-hashes it).
+3. **Versioning-scheme divergence (governance).** The vendor-spec states DR uses
+   **per-segment versions with *no* global umbrella counter** (line 404) and asserts
+   "MF adopts the horizontal mechanism wholesale." But MF's segmented identity
+   carries an **umbrella combiner version** (`SUPPORTED_COMBINER_VERSIONS`, per
+   `project-essentials.md`) that DR does not. This joins the already-recorded
+   `join_stable` byte-format divergence (DR `b"\x1f".join` unframed vs MF labeled /
+   length-framed) on the **divergence ledger** of the "governed cross-tool-family
+   standard." Functionally inert for MF (it consumes DR's `recipe_hash` opaquely,
+   never recomputes it), so it is a **coordination/governance item, not a bug** —
+   align at the family level; do not change MF's combiner unilaterally.
+
+**Net:** the audio seam's *supporting* surfaces (stats, orientation, windowing,
+aggregation key, failure mode) are now pinned and de-risk MF's eventual loader; but
+the **feature-array transport itself is still unshipped on DR's side and absent from
+the contract**, so MF Gap-3 remains blocked on that — sequencing confirmed, not
+closed. Gap 2's enabling fact is independently **corroborated** by the same spec:
+image `normalize` "can pin either [mean/std] as params (in which case the pinned
+value is the persisted value)" (line 293) — the fixed-stats path MF's Gap-2
+resolution relies on is now in the authoritative contract, not just DR's verbal
+reply.
 
 ---
 
@@ -422,15 +513,23 @@ option 1. No conflict with anything MF shipped.
 1. **Gap 1 → ✅ DONE (Story I.k, v0.17.1).** Fixed via the debug cycle: loader
    anchors instance-relative `path` to the instance + bind-time fail-fast gate;
    full CI gate green. Consumer-side sidecar workaround is now obsolete.
-2. **Gap 2 → quick experiment, then spike.** First validate the refutation
-   (encoder stats as a DR `normalize` op applied at load — possibly zero MF code).
-   If exact pretrained stats can't be supplied data-side, spike the
-   Encoder-applies-preprocessing option (with its cache-identity implications).
-   Document the recipe-surface contract either way.
-3. **Gap 3 → plan_features (proper path, not the PNG hack).** Decision recorded:
-   spectrogram-as-image is lossy and wrong; build the feature-array path. Both
-   briefs exist and agree on the contract (`npy_per_record` + `feature_path`
-   instance-root-relative, `(n_mels, n_frames)` float arrays, `audio_normalize`
-   stats). Settle the shared contract with DataRefinery, then author the loader
-   story (feature-array branch + `audio_normalize`) with the brief's verification
-   as acceptance tests. The MC-dropout path is done; do not re-investigate it.
+2. **Gap 2 → ✅ no spike; document the recipe pattern.** DataRefinery confirmed
+   `normalize` persists fixed author-supplied stats, so a frozen encoder gets exact
+   stats today with **zero code in either repo**: DR `resize` + `normalize` with the
+   encoder's stats **in 0-255 units (HF stats × 255)**. Only task left is to
+   document this `Encoder`-normalization pattern + the units caveat at the recipe
+   surface (a docs change — `plan_features`/`plan_tech_spec` or a short doc story).
+   The Encoder-op-applies-HF-preprocessing idea is dropped.
+3. **Gap 3 → plan_features (proper path, not the PNG hack) — but BLOCKED on DR
+   shipping feature persistence.** Decision recorded: spectrogram-as-image is lossy
+   and wrong; build the feature-array path. **Status check (DR vendor-spec,
+   2026-06-22):** the *surrounding* contract is now pinned (`audio_normalize` stats
+   with exact axis/broadcast, mel orientation, window records, R7 aggregation key,
+   dangling-window failure mode) — but **feature-array persistence
+   (`npy_per_record` / `feature_path`) is still NOT in the contract; features remain
+   in-pipeline-only.** So MF's consumption branch has nothing to bind to yet.
+   Sequence: DR ships feature persistence (its `plan_phase`) + adds `feature_path`
+   to the vendor-spec → *then* MF authors the loader story (feature-array branch +
+   `audio_normalize` per the now-pinned stats contract), with the brief's
+   verification as acceptance tests. MC-dropout path is done; do not re-investigate
+   it.

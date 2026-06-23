@@ -7,7 +7,7 @@
 | Sanitized | yes |
 | Date | 2026-06-22 |
 
-> **Paired fix.** This brief and [`modelfoundry-audio-feature-consumption.md`](modelfoundry-audio-feature-consumption.md)
+> **Paired fix.** This brief and [`modelfoundry/audio-feature-consumption.md`](modelfoundry/audio-feature-consumption.md)
 > describe the two halves of one consumer-blocking seam: the data side cannot
 > *persist* the computed audio features (this brief), and the modeling side
 > cannot *consume* them (the companion brief). Neither fix alone unblocks the

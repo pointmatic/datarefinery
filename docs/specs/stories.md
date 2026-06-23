@@ -55,16 +55,16 @@ Resolves consumer Gap 3 (see [`consumer-gap-solutions.md`](consumer-gap-solution
 
 ---
 
-### Story K.b: [Spike] Audio feature-array persistence integration spike [Planned]
+### Story K.b: [Spike] Audio feature-array persistence integration spike [Done]
 
-Integration spike that ratifies the cross-repo `feature_path` contract before implementation. Light — the 2026-06-23 MF review already settled Q1–Q6 in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § "Audio feature-array persistence". De-risks FR-K-3 / FR-K-4.
+Integration spike that ratifies the cross-repo `feature_path` contract before implementation. Light — the 2026-06-23 MF review already settled Q1–Q6 in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § "Audio feature-array persistence". De-risks FR-K-3 / FR-K-4. Deliverable: [`phase-k-subphase-1-feature-persistence-spike.md`](phase-k-subphase-1-feature-persistence-spike.md).
 
-- [ ] Re-confirm the pinned contract: `npy_per_record` at `features/<split>/<record_id>.npy`; persist the raw `mel` (pre-normalize); `feature_path` **instance-root-relative**; `(n_mels, n_frames)` `float32`, rank-2 in v1; `feature_path` nested-safe and authoritative over any stray `path`
-- [ ] Confirm additive versioning (new `SinkOp.format` enum value + optional `feature_path`) ⇒ no recipe `schema_version` bump; sink output covered by `(recipe_hash, input_hash, seed)` cache identity
-- [ ] Draft the live R-level feature-persistence requirement text for [`features.md`](features.md) (the seam the archived Phase J audio spec left unspecified)
-- [ ] Record the MF gap-doc anchor-staleness flag: the in-repo copy is fixed; MF's own repo copy must match at `plan_features` (instance-root anchor, not `dataset/`-relative)
-- [ ] Settle the doc-layout convention for the copied seam docs (`docs/specs/` vs `docs/specs/modelfoundry/`) — developer's call; capture the decision
-- [ ] Deliverable: ratified contract notes + the drafted R-level requirement; no production code
+- [x] Re-confirm the pinned contract: `npy_per_record` at `features/<split>/<record_id>.npy`; persist the raw `mel` (pre-normalize); `feature_path` **instance-root-relative**; `(n_mels, n_frames)` `float32`, rank-2 in v1; `feature_path` nested-safe and authoritative over any stray `path`
+- [x] Confirm additive versioning (new `SinkOp.format` enum value + optional `feature_path`) ⇒ no recipe `schema_version` bump; sink output covered by `(recipe_hash, input_hash, seed)` cache identity
+- [x] Draft the live R-level feature-persistence requirement text for [`features.md`](features.md) (the seam the archived Phase J audio spec left unspecified) — drafted in the spike doc § 3, to be landed by Story K.d
+- [x] Record the MF gap-doc anchor-staleness flag: the in-repo copy is fixed; MF's own repo copy must match at `plan_features` (instance-root anchor, not `dataset/`-relative) — cross-repo action carried to Story K.e
+- [x] Settle the doc-layout convention for the copied seam docs (`docs/specs/` vs `docs/specs/modelfoundry/`) — developer's call; capture the decision — per-consumer subdir, prefix dropped; DR-side cross-links fixed, shared-surface fixups deferred to K.c
+- [x] Deliverable: ratified contract notes + the drafted R-level requirement; no production code
 
 ---
 

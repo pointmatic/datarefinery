@@ -3,11 +3,11 @@
 | Field | Value |
 |-------|-------|
 | Target repo | ModelFoundry |
-| Related spec | [`advanced-and-probabilistic-requirements.md`](../modelfoundry/advanced-and-probabilistic-requirements.md) (R2 MC-dropout probabilistic path — the model that consumes the audio features) |
+| Related spec | [`advanced-and-probabilistic-requirements.md`](advanced-and-probabilistic-requirements.md) (R2 MC-dropout probabilistic path — the model that consumes the audio features) |
 | Sanitized | yes |
 | Date | 2026-06-22 |
 
-> **Paired fix.** This brief and [`datarefinery-audio-feature-persistence.md`](datarefinery-audio-feature-persistence.md)
+> **Paired fix.** This brief and [`audio-feature-persistence.md`](../audio-feature-persistence.md)
 > are the two halves of one consumer-blocking seam: the data side cannot
 > *persist* the computed audio features (companion brief), and the modeling side
 > cannot *consume* them (this brief). Neither fix alone unblocks the consumer.
