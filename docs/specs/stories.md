@@ -80,14 +80,14 @@ Implements FR-K-3: the additive `npy_per_record` sink writer, the instance-root-
 
 ---
 
-### Story K.d: Double-normalize guardrail + R-level persistence requirement [Planned]
+### Story K.d: Double-normalize guardrail + R-level persistence requirement [Done]
 
-Implements FR-K-4: a validator check preventing silent double-normalization, plus landing the live R-level feature-persistence requirement drafted in the K.b spike. Bundled into `v0.24.0`.
+Implements FR-K-4: a validator check preventing silent double-normalization, plus landing the live R-level feature-persistence requirement drafted in the K.b spike. Bundled into `v0.24.0` (version bump + CHANGELOG owned by K.e).
 
-- [ ] Validator check (egress analogue of check 26): an `npy_per_record` sink that rewrites `feature_path` MUST target the pre-normalize field (`mel`), failing fast at `validate` if it points at the already-normalized `feature`; the message names the op
-- [ ] Land the R-level feature-persistence requirement in [`features.md`](features.md) (the data side MUST be able to persist R4/R5 features); refresh any stale link to the archived Phase J audio requirements
-- [ ] `recipe-authoring.md`: document `npy_per_record` and the `mel`-not-`feature` guardrail
-- [ ] Tests for the new check (pass + fail cases); update the validate-check count where documented
+- [x] Validator **check 30** (`npy_sink_targets_pre_normalize_field`, egress analogue of check 26): an `npy_per_record` sink MUST target the pre-normalize field, failing fast at `validate` if it points at the already-normalized output of a fit-on-train Featurization; the message names the op ([`recipe/validator.py`](../../src/datarefinery/recipe/validator.py))
+- [x] Landed the R-level feature-persistence requirement in [`features.md`](features.md) FR-12 (+ R4/R5-egress crosswalk row); archive links verified current (no stale Phase J audio-requirements links remain in live docs)
+- [x] [`recipe-authoring.md`](../guides/recipe-authoring.md): documented `npy_per_record` + the `mel`-not-`feature` guardrail
+- [x] Tests for the new check (pass + fail + png-ignored + no-sinks cases); validate-check count updated 29 → 30 (FR-2 list, README, tech-spec, and 5 count assertions across the test suite)
 
 ---
 

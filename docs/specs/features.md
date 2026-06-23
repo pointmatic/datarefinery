@@ -284,6 +284,7 @@ Verify a recipe's correctness without running the pipeline. Covers schema correc
 27. `dtype_altering_transform_incompatible_with_aggressive` — a dtype-altering `Transformations` op cannot share a split with an aggressive `Augmentations` op (Story J.i).
 28. `extension_keys_declared` — every `extensions.<namespace>.<key>` must be declared by the bound plugin's `extension_keys()`; undeclared namespaces or keys are rejected (Story J.n.6).
 29. `splits_operate_at_clip_level` — a recipe with a record-fanning `Generation` op (e.g. audio `window`) must stratify at the clip level, never on a fan-out child field (`source_record_id` / `window_index`) (Story J.r).
+30. `npy_sink_targets_pre_normalize_field` — an `npy_per_record` sink (which rewrites a per-record `feature_path`) must target a **pre-normalize** field, not the already-normalized output of a fit-on-train Featurization (e.g. audio `audio_normalize` → `feature`). Persisting the normalized output and re-applying the persisted statistics at load double-normalizes; the check refuses it and names the offending op. Egress analogue of check 26 (Story K.d).
 
 **Edge Cases:**
 - Plugin not installed -> hard error pointing at the plugin name and discovery path.
@@ -520,6 +521,8 @@ Derive new features from one or more existing inputs.
 
 **In-pipeline vs persisted (audio).** The audio `sample_array`, `mel`, and `feature` arrays are **in-pipeline only** — they are not serialized into `dataset/<split>.jsonl`. The per-record JSONL carries the metadata consumers bind against: `record_id`, `source_record_id`, `window_index`, `label`, `path`, `sample_rate`.
 
+**Feature-array persistence is a first-class data-side capability (FR-K-3/4).** An in-pipeline array feature — one the JSONL writer drops because it is not JSON-native (audio `mel` / `feature` today; tabular/text array features as those plugins mature) — MUST have a persistence path so a prepared feature can cross the materialized-instance boundary to a downstream consumer. The data side fulfils this via the `npy_per_record` sink `format`: it persists a named float field per record at `features/<split>/<record_id>.npy` (`float32`, librosa-native `(n_mels, n_frames)` orientation for audio) and rewrites a per-record, **instance-root-relative** `feature_path` into `<split>.jsonl`. The array is a **sidecar** — never inlined into the JSONL — so the "arrays are in-pipeline; persist via sidecar" convention holds. For the fit-on-train-normalized case the blessed consumption contract persists the **pre-normalize** field (`mel`) and lets the consumer apply the persisted per-mel-bin `audio_normalize` statistics at load (FR-6), keeping normalization the consumer's responsibility and avoiding double-normalization — enforced by validator **check 30** (an `npy_per_record` sink must target the pre-normalize field). This requirement closes the persistence seam the archived Phase J audio brief left unspecified (it covered *compute*, R4, and *normalize*, R5, but scoped *consumption* to the modeling repo): a modality that *computes* a non-uint8 feature MUST be able to *persist* it, so the seam cannot silently re-open. The shape-binding details (`feature_path` anchor, dtype, rank, nesting, authority over a stray `path`) are pinned in [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) § "Audio feature-array persistence".
+
 **Audio requirement-ID crosswalk (R1–R8).** The audio plugin originated from a consumer-authored requirements brief numbered R1–R8, now archived as a Phase J planning input ([`.archive/phase-j-audio-classification-requirements.md`](.archive/phase-j-audio-classification-requirements.md)). The canonical requirements live **here and in `tech-spec.md`**; the R-IDs persist only as stable cross-repo shorthand (cited by the vendor-dependency specs and the audio briefs) and resolve as:
 
 | R-ID | Requirement | Canonical home |
@@ -529,6 +532,7 @@ Derive new features from one or more existing inputs.
 | R3 | Windowing of variable-length clips | FR-GEN-2 — `window` op |
 | R4 | Spectral featurization | FR-FEAT-1 — `log_mel_spectrogram` |
 | R5 | Fit-on-train feature normalization | FR-FEAT-2 — `audio_normalize` |
+| R4/R5 egress | Feature-array **persistence** for downstream consumption | FR-12 feature-array persistence → FR-K-3 (`npy_per_record` + `feature_path`); guardrail check 30 / FR-K-4 |
 | R6 | Clip-level label / split integrity | FR-7 #7 + validator check 29 (`splits_operate_at_clip_level`) |
 | R7 | Test-time window aggregation key | FR-GEN-2 — `source_record_id` (DR owns the key; consumer owns the aggregation math) |
 | R8 | Plugin-interface conformance | the `Plugin` protocol / plugin model (`tech-spec.md` § plugins) |

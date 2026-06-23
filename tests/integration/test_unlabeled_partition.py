@@ -83,7 +83,7 @@ def _materialise(tmp_path: Path, recipe_dict: dict[str, object]) -> Path:
 
     result = runner.invoke(app, ["--cache-root", str(cache_root), "validate", str(recipe_path)])
     assert result.exit_code == 0, result.stdout
-    assert "29/29 checks passed" in result.stdout
+    assert "30/30 checks passed" in result.stdout
 
     result = runner.invoke(app, ["--cache-root", str(cache_root), "materialize", str(recipe_path)])
     assert result.exit_code == 0, result.stdout

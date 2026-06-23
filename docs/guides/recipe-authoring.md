@@ -1085,8 +1085,8 @@ Sinks:
 - `name` — sink identifier; on-disk root segment and manifest key. Must be unique within a recipe.
 - `stage` — closed vocabulary: `post_InputContracts`, `post_Filters`, `post_Splits`, `post_Generation`, `post_Transformations`, `post_Featurizations`, `post_Augmentations`, `post_OutputExpectations`, `post_Visualizations`. Each value names the stage whose *output* the sink observes.
 - `splits` — optional list of split names to restrict capture to. Omit (or leave `null`) to capture every split known at the chosen stage.
-- `field` — record field whose value gets serialized. For `png_per_record` this must carry a uint8 H×W×C (or H×W) numpy array.
-- `format` — serialization format. v1 ships `png_per_record`.
+- `field` — record field whose value gets serialized. For `png_per_record` this must carry a uint8 H×W×C (or H×W) numpy array; for `npy_per_record` it must carry a numpy float array (persisted as `float32`).
+- `format` — serialization format. v1 ships `png_per_record` (uint8 images) and `npy_per_record` (float feature arrays).
 - `path_template` — per-record output path, interpreted relative to the cache instance directory.
 
 **Path template grammar:**
@@ -1104,6 +1104,7 @@ Sinks:
 | `format` | Required field shape | Output |
 |---|---|---|
 | `png_per_record` | uint8 H×W×C (or H×W for grayscale) on `field` | One PNG per record via `PIL.Image.fromarray`. |
+| `npy_per_record` | numpy float array on `field` (e.g. audio `mel`, `(n_mels, n_frames)`) | One `float32` `.npy` per record via `np.save`; rewrites a per-record `feature_path` into the JSONL (see below). |
 
 **Cache identity participation.** Sinks are part of canonical recipe bytes. Adding, removing, or modifying any sink field — including `path_template` alone — invalidates the cache. Downstream tools that bind against the path layout deserve the invalidation.
 
@@ -1115,6 +1116,21 @@ Sinks:
 
 - **Validator check 26** refuses a recipe that declares a pixel-altering Transformation on any lazily-serialized split unless a *qualifying image sink* covers those splits. A qualifying sink is `format: png_per_record`, `field: image`, at a post-transform stage (`post_Transformations` or later).
 - When such a sink is present, DataRefinery **rewrites each affected record's `path`** to the sink's per-record output (instance-relative, e.g. `transformed/{split}/{record_id}.png`). The sink writes the transformed PNG; the rewritten `path` resolves to it. Consumers reading `path` now land on the transformed pixels.
+
+**`npy_per_record` — persisting float feature arrays (Story K.c/K.d).** Array features such as the audio `mel` log-mel spectrogram are **in-pipeline only** — the JSONL writer drops non-JSON-native fields. An `npy_per_record` sink is the egress path: it writes one `float32` `.npy` per record and **rewrites a per-record `feature_path`** into the JSONL so a downstream consumer can locate the feature array.
+
+```yaml
+Sinks:
+  - name: feats
+    stage: post_Featurizations    # mel exists after the log_mel_spectrogram featurization
+    field: mel                    # the PRE-normalize feature (see guardrail below)
+    format: npy_per_record
+    path_template: "features/{split}/{record_id}.npy"
+```
+
+- The written `feature_path` is **instance-root-relative** (`<instance>/features/<split>/<record_id>.npy`) — the same bucket as a sink-rewritten `path`, **not** the `dataset/`-relative `image_path` bucket. It may be **nested** (a window `record_id` can carry `/`) and is **authoritative over any stray source `path`** on the same record.
+- The array is persisted `float32`, librosa-native `(n_mels, n_frames)` for audio (mono in v1). Byte-identical across re-runs of the same recipe + inputs + seed.
+- **`mel`-not-`feature` guardrail (validator check 30).** Target the **pre-normalize** field (`mel`), not the fit-on-train-normalized output (`feature`). The consumer applies the persisted per-mel-bin `audio_normalize` statistics at load; if you persist the already-normalized `feature` and the consumer re-applies the stats, the features are **double-normalized**. `validate` refuses an `npy_per_record` sink whose `field` is the output of a fit-on-train Featurization and names the offending op.
 
 ```yaml
 Transformations:

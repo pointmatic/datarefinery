@@ -106,7 +106,7 @@ src/datarefinery/
     __init__.py
     models.py                # pydantic v2 Recipe model + per-section models
     loader.py                # FR-1 load + schema-version gate
-    validator.py             # FR-2 enumerated checks 1–29
+    validator.py             # FR-2 enumerated checks 1–30
     canonical.py             # JSON-canonical bytes for cache identity (FR-4)
     overlays.py              # FR-14 recipe overlays (J.n.5; was variants.py)
   cache/
@@ -317,7 +317,7 @@ Each callable rewrites a recipe dict from one `schema_version` to the next, exec
 
 ### `recipe.validator` (FR-2)
 
-Each of the 29 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
+Each of the 30 enumerated checks from features.md becomes a function in `validator.py` named `check_NN_<descriptor>`, returning a `CheckResult`. `validate()` runs them all and returns a `ValidationReport` listing every result; never short-circuits.
 
 ```python
 def validate(recipe: Recipe, plugin: Plugin) -> ValidationReport: ...

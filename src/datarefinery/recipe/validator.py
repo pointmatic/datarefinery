@@ -1490,6 +1490,56 @@ def check_27_dtype_altering_transform_incompatible_with_aggressive(
     )
 
 
+def check_30_npy_sink_targets_pre_normalize_field(recipe: Recipe, plugin: Plugin) -> CheckResult:
+    """Story K.d: an ``npy_per_record`` sink must persist a pre-normalize field.
+
+    Egress analogue of check 26. An ``npy_per_record`` sink rewrites a
+    per-record ``feature_path`` pointing at the persisted float array; the
+    blessed audio consumption contract persists the **raw** feature (e.g.
+    ``mel``, the ``log_mel_spectrogram`` output) so the consumer applies the
+    fit-on-train ``audio_normalize`` statistics at load. If the sink instead
+    targets the **already-normalized** output of a fit-on-train Featurization
+    (e.g. ``feature``), the consumer re-applies those statistics and silently
+    double-normalizes. This check refuses that combination at validate time.
+
+    The "normalized" set is the ``output_field`` of every fit-on-train
+    Featurization (``OperationSpec.fit_on_train``), so the check generalizes
+    across plugins rather than hardcoding the literal field name ``feature``.
+    """
+    descriptor = "npy_sink_targets_pre_normalize_field"
+    specs = plugin.supported_operations
+    fit_on_train_feats = {
+        feat.output_field: feat
+        for feat in recipe.Featurizations
+        if (spec := specs.get(feat.op)) is not None and spec.fit_on_train
+    }
+    issues: list[str] = []
+    for sink in recipe.Sinks:
+        if sink.format != "npy_per_record":
+            continue
+        owning = fit_on_train_feats.get(sink.field)
+        if owning is None:
+            continue
+        pre_normalize_hint = owning.inputs[0] if owning.inputs else "the pre-normalize field"
+        issues.append(
+            f"Sinks[{sink.name!r}] (format='npy_per_record') targets field "
+            f"{sink.field!r}, the already-normalized output of fit-on-train "
+            f"Featurization {owning.name!r} (op={owning.op!r}). Persisting it and "
+            f"re-applying the persisted statistics at load double-normalizes. "
+            f"Target the pre-normalize field instead (the input to {owning.name!r}, "
+            f"e.g. {pre_normalize_hint!r})."
+        )
+    if not issues:
+        return _passed(30, descriptor)
+    return CheckResult(
+        check_id=30,
+        descriptor=descriptor,
+        status="fail",
+        location="Sinks",
+        message="; ".join(issues),
+    )
+
+
 def check_28_extension_keys_declared(recipe: Recipe, plugin: Plugin) -> CheckResult:
     """Story J.n.6: every ``extensions`` namespace/key must be plugin-declared.
 
@@ -1682,6 +1732,11 @@ _CHECKS: tuple[tuple[int, str, Callable[[Recipe, Plugin], CheckResult]], ...] = 
     ),
     (28, "extension_keys_declared", check_28_extension_keys_declared),
     (29, "splits_operate_at_clip_level", check_29_splits_operate_at_clip_level),
+    (
+        30,
+        "npy_sink_targets_pre_normalize_field",
+        check_30_npy_sink_targets_pre_normalize_field,
+    ),
 )
 
 
