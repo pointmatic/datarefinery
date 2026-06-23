@@ -135,16 +135,16 @@ Test-first bugfix for Gap 2: the hasher's `_iter_files` (`root.rglob("*")`) does
 
 ---
 
-### Story K.h: Shared `path_tree` resolver + `image_tree`/`audio_tree` source types [Planned]
+### Story K.h: Shared `path_tree` resolver + `image_tree`/`audio_tree` source types [Done]
 
-Implements FR-K-1 per the K.f spike: the shared cross-plugin directory resolver, the `*_tree` source types, and the `layout` template, migrating the image and audio loaders onto one enumeration. Lands with K.g's shared helper; bundled into `v0.25.0`.
+Implements FR-K-1 per the K.f spike: the shared cross-plugin directory resolver, the `*_tree` source types, and the `layout` template. Lands with K.g's shared helper; bundled into `v0.25.0`.
 
-- [ ] Add `image_tree` / `audio_tree` source discriminants + `layout: str` to the recipe model ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)); update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) (shape-binding `core`/`plugin` surface)
-- [ ] Implement the shared `path_tree` resolver (template + ext-set + decode hook → records); reuse the K.g enumeration helper
-- [ ] Migrate `_load_one_image_folder` and the audio `audio_folder`/`audio_flat` loaders to delegate to the resolver; keep bare `image_folder`/`audio_folder` as sugar for `{label}/{file}` (backward-compatible)
-- [ ] Reconcile `{split}` with `InputSource.partition` (mutual exclusion; template wins when present)
-- [ ] `recipe-authoring.md`: document `*_tree` + the `layout` grammar with worked examples
-- [ ] Tests: `class/image`, `category/class/image`, and `split/category/class/image` trees resolve; byte-identical re-materialization; deterministic ordering
+- [x] Added `layout: str | None` to `InputSource` ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)) — `type` stays a free `str`, so `image_tree`/`audio_tree` need no Literal change; **additive identity** (excluded from canonical bytes when None, via [`recipe/segments.py`](../../src/datarefinery/recipe/segments.py) — zero invalidation for non-tree recipes, pins green; developer-ratified); model validator parses the grammar + enforces `{split}` xor `partition`; updated [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md)
+- [x] Implemented the shared payload-agnostic `path_tree` resolver + `layout` parser ([`recipe/layout.py`](../../src/datarefinery/recipe/layout.py)) on the K.g `enumerate_files` helper; both plugins' `image_tree`/`audio_tree` loaders delegate to it
+- [x] **Legacy loaders intentionally NOT migrated** (developer direction: "build it the way it should be" — don't migrate legacy). Bare `image_folder`/`image_flat`/`audio_folder`/`audio_flat` keep their battle-tested ordering + `record_id` schemes (byte-identity preserved; `record_id` is shape-binding). `*_tree` is the new shared-resolver path; bare types are documented as the equivalent sugar
+- [x] Reconciled `{split}` with `InputSource.partition` (mutual exclusion enforced at model validation; `{split}` stamps the record's `partition`)
+- [x] [`recipe-authoring.md`](../guides/recipe-authoring.md): documented `*_tree` + the `layout` grammar table with worked examples
+- [x] Tests ([`tests/unit/test_layout.py`](../../tests/unit/test_layout.py), [`tests/integration/test_tree_ingestion.py`](../../tests/integration/test_tree_ingestion.py)): `class/image`, `category/class/image`, `split/category/class/image` resolve; deterministic ordering; additive identity; `{split}`/`partition` exclusion; grammar validation; audio_tree end-to-end
 
 ---
 

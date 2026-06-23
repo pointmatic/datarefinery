@@ -142,10 +142,41 @@ Input:
 
 Each source has a `name` (referenced from Generation/Featurization inputs), a `type` (plugin-specific), and a `path` to the raw data. Sources are loaded deterministically — directory iteration is sorted so the input hash is stable across machines.
 
-The `image_classification` plugin ships two source types:
+The `image_classification` plugin ships three source types (the audio plugin mirrors them as `audio_folder` / `audio_flat` / `audio_tree`):
 
 - `image_folder` — ImageFolder layout (`<root>/<class>/<file>.{png,jpg}`). Class names come from the subdirectory names. Labels are intrinsic to the directory structure; no manifest is needed (and `label_from` must not be set — validator check 19 rejects it).
 - `image_flat` — flat directory of images (subdirs allowed but the path is opaque). Requires a sidecar manifest declared via `label_from`. The manifest provides the labels; there is no class-from-subdir fallback.
+- `image_tree` — arbitrary-depth directory trees described by a `layout` path template (see below). Use it when neither one-level flavor fits — e.g. `category/class/image` taxonomies or `split/category/class/image` layouts.
+
+#### `*_tree` sources and the `layout` template (Story K.h)
+
+A `*_tree` source declares a `layout` that maps path components to roles, so arbitrary nesting is expressed directly instead of adding a new enumerated flavor per shape. The grammar shares the brace surface of the `Sinks` `path_template` but is a path-segment **matcher** (it parses the tree to extract roles), not a substituter:
+
+| Token | Meaning |
+|-------|---------|
+| `{label}` | the segment whose name is the record's label (subsumes `parent_directory_name`); at most one |
+| `{split}` | the segment whose name is the split assignment (stamps the record's `partition`); at most one; mutually exclusive with a per-source `partition` |
+| `{file}` | the terminal file component (matched against the plugin's extensions); exactly one, must be last |
+| `*` | exactly one ignored ("category") level |
+| `**` | any depth (zero or more) ignored; at most one |
+
+```yaml
+Input:
+  sources:
+    # category/class/image — label is the leaf dir at any depth
+    - name: logos
+      type: image_tree
+      path: ./data/logos
+      layout: "**/{label}/{file}"
+
+    # split/category/class/image — split folds into the tree
+    - name: taxo
+      type: image_tree
+      path: ./data/taxo
+      layout: "{split}/*/{label}/{file}"
+```
+
+Common templates: `{label}/{file}` (= bare `image_folder`), `**/{label}/{file}` (label-at-any-depth), `{split}/*/{label}/{file}`, and `**/{file}` (flat-at-any-depth; pair with `label_from` for sidecar labels or `unlabeled: true`). A `*_tree` source with a `{label}` token must **not** also set `label_from` (two label sources); a `*_tree` with no `{label}` takes labels from `label_from` or is `unlabeled`. `record_id` is the file's path relative to the source root, prefixed by the source name. The `layout` field is **additive to cache identity** — recipes that don't use a `*_tree` source are byte-identical (unchanged `recipe_hash`); the bare `image_folder` / `image_flat` types are unchanged. The shared `path_tree` resolver ([`recipe/layout.py`](../../src/datarefinery/recipe/layout.py)) walks the tree via the symlink-following enumeration (Story K.g), so loader and hasher agree on the file set.
 
 ```yaml
 # image_flat + by_id (most common third-party shape)

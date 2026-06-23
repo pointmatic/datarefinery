@@ -299,6 +299,37 @@ def prefix_hash(digests: Sequence[bytes], upto: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+#: Per-source `InputSource` fields that are *additive* to cache identity: when
+#: absent (None) they are stripped from the core segment so they cannot perturb
+#: the digest of a recipe that does not use them (Story K.h `layout`). This is the
+#: per-source analogue of the empty-`extensions`/`overlays` → EMPTY_MARKER rule —
+#: a new opt-in source field lands without invalidating every existing recipe.
+_ADDITIVE_SOURCE_FIELDS: tuple[str, ...] = ("layout",)
+
+
+def _strip_additive_source_fields(core: dict[str, Any]) -> dict[str, Any]:
+    """Drop ``None``-valued additive per-source fields from ``core["Input"]``.
+
+    Returns a new dict (does not mutate the input). A source that omits an
+    additive field hashes byte-identically to a pre-field recipe, so adding the
+    field never invalidates a recipe that doesn't declare it.
+    """
+    inp = core.get("Input")
+    if not isinstance(inp, dict):
+        return core
+    sources = inp.get("sources")
+    if not isinstance(sources, list):
+        return core
+    new_sources: list[Any] = []
+    for src in sources:
+        if isinstance(src, dict) and any(
+            src.get(f) is None and f in src for f in _ADDITIVE_SOURCE_FIELDS
+        ):
+            src = {k: v for k, v in src.items() if not (k in _ADDITIVE_SOURCE_FIELDS and v is None)}
+        new_sources.append(src)
+    return {**core, "Input": {**inp, "sources": new_sources}}
+
+
 def segments_of(recipe: Recipe) -> dict[str, Any]:
     """Partition a (flat, author-facing) recipe into the frozen four segments.
 
@@ -321,6 +352,7 @@ def segments_of(recipe: Recipe) -> dict[str, Any]:
         elif segment == "plugin":
             plugin[field] = value
         # overlays/extensions are folded in as bare namespace values below.
+    core = _strip_additive_source_fields(core)
     return {
         "core": core,
         "plugin": plugin,

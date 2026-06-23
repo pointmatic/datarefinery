@@ -94,10 +94,12 @@ def load_audio_records(
                 per_source = _load_one_audio_flat(
                     src, root, src.label_from, seen_ids, attach_label=attach_label
                 )
+        elif src.type == "audio_tree":
+            per_source = _load_one_audio_tree(src, root, seen_ids, attach_label=attach_label)
         else:
             raise RecipeError(
                 f"audio_classification loader: source {src.name!r} has "
-                f"type={src.type!r}; expected 'audio_folder' or 'audio_flat'"
+                f"type={src.type!r}; expected 'audio_folder', 'audio_flat', or 'audio_tree'"
             )
         hashes[src.name] = _hash_dir(root, src.label_from)
         if src.partition is not None:
@@ -194,6 +196,58 @@ def _load_one_audio_flat_unlabeled(
             f"audio_classification loader: source {src.name!r} root {root!s} "
             f"contains no {'/'.join(_AUDIO_EXTENSIONS)} files"
         )
+    return out
+
+
+def _load_one_audio_tree(
+    src: AudioSource,
+    root: Path,
+    seen_ids: set[str],
+    *,
+    attach_label: bool,
+) -> list[Record]:
+    """Load an ``audio_tree`` source via the shared ``path_tree`` resolver (Story K.h).
+
+    Labels come from the layout's ``{label}`` token when present, else from
+    ``label_from`` / ``unlabeled``. A ``{split}`` token stamps each record's
+    ``partition``. Decode stays here (the resolver is payload-agnostic).
+    """
+    from datarefinery.pipeline.inputs import _build_label_index
+    from datarefinery.recipe.layout import path_tree
+
+    assert src.layout is not None  # model validator guarantees layout on *_tree
+    resolved = path_tree(
+        root, src.layout, extensions=frozenset(_AUDIO_EXTENSIONS), source_name=src.name
+    )
+    if not resolved:
+        raise RecipeError(
+            f"audio_classification loader: source {src.name!r} root {root!s} matched no "
+            f"{'/'.join(_AUDIO_EXTENSIONS)} files for layout {src.layout!r}"
+        )
+    has_label_token = "{label}" in src.layout
+    label_index = (
+        _build_label_index(src.label_from)
+        if (attach_label and src.label_from is not None)
+        else None
+    )
+    out: list[Record] = []
+    for i, rf in enumerate(resolved):
+        _claim_id(rf.record_id, seen_ids)
+        record = _decode_record(rf.record_id, rf.path, src.target_sample_rate)
+        if rf.split is not None:
+            record["partition"] = rf.split
+        if attach_label:
+            if has_label_token:
+                record["label"] = rf.label
+            elif src.label_from is not None:
+                assert label_index is not None
+                record["label"] = _resolve_flat_label(src.label_from, label_index, rf.path, i)
+            elif not src.unlabeled:
+                raise RecipeError(
+                    f"audio_classification loader: source {src.name!r} layout {src.layout!r} "
+                    f"has no '{{label}}' token, no label_from, and is not unlabeled"
+                )
+        out.append(record)
     return out
 
 

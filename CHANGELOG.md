@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`image_tree` / `audio_tree` source types + the `layout` path template (Story K.h,
+  FR-K-1).** A new source-type family resolves arbitrary-depth directory trees that the
+  one-level `image_folder` / `audio_folder` could not (consumer Gap 1: `category/class/file`
+  taxonomies, `split/category/class/file` layouts). A `layout` template maps path
+  components to roles — `{label}` / `{split}` / `{file}` + wildcards `*` (one ignored level)
+  / `**` (any depth) — parsed by a new shared, cross-plugin `path_tree` resolver
+  (`recipe/layout.py`) built on the symlink-following enumeration (K.g), so the image and
+  audio loaders share one resolver. A `{split}` token folds the split assignment into the
+  tree (stamps each record's `partition`; mutually exclusive with a per-source `partition`).
+  > **Cross-repo contract (additive, no invalidation).** The new `InputSource.layout` field
+  > is **excluded from canonical bytes when absent**, so every recipe that does not declare a
+  > `*_tree` source keeps a **byte-identical `recipe_hash`** — the segment pins stay green and
+  > no existing cache invalidates. The bare `image_folder` / `image_flat` / `audio_folder` /
+  > `audio_flat` types are **unchanged** (legacy loaders kept intact — identical ordering and
+  > `record_id`s). See `docs/specs/modelfoundry/vendor-dependency-spec.md` § "`*_tree` source
+  > types".
+
 ### Fixed
 
 - **Input hash now follows symlinked directories (Story K.g, FR-K-2).** The input

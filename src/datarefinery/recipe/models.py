@@ -97,6 +97,43 @@ class InputSource(_Frozen):
     label_from: LabelFromSpec | None = None
     partition: str | None = None
     unlabeled: bool = False
+    #: Story K.h (FR-K-1): the path-template `layout` for `*_tree` source types
+    #: (`image_tree` / `audio_tree`). Components `{label}` / `{split}` / `{file}`
+    #: + wildcards `*` / `**` (see `recipe/layout.py`). Additive identity surface:
+    #: excluded from canonical bytes when None (`recipe/segments.py`), so existing
+    #: recipes that don't declare it keep byte-identical cache identity.
+    layout: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_layout(self) -> InputSource:
+        is_tree = self.type.endswith("_tree")
+        if self.layout is None:
+            if is_tree:
+                raise ValueError(
+                    f"InputSource {self.name!r}: type={self.type!r} requires a 'layout' "
+                    f"template (e.g. '{{label}}/{{file}}')"
+                )
+            return self
+        if not is_tree:
+            raise ValueError(
+                f"InputSource {self.name!r}: 'layout' is only valid for a '*_tree' source "
+                f"type (got type={self.type!r}); bare folder/flat types take no layout"
+            )
+        # Local import avoids a recipe.models -> recipe.layout import at module load.
+        from datarefinery.core.errors import RecipeError
+        from datarefinery.recipe.layout import parse_layout
+
+        try:
+            parsed = parse_layout(self.layout)
+        except RecipeError as exc:
+            raise ValueError(str(exc)) from exc
+        if "{split}" in parsed.components and self.partition is not None:
+            raise ValueError(
+                f"InputSource {self.name!r}: a '{{split}}' layout token and a per-source "
+                f"'partition' are mutually exclusive (the template's split assignment wins); "
+                f"drop one"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_unlabeled(self) -> InputSource:

@@ -125,6 +125,22 @@ def _load_image_classification(
                     src.name, root, src.label_from, seen_ids, attach_label=attach_label
                 )
                 hashes[src.name] = _hash_image_flat(root, src.label_from)
+        elif src.type == "image_tree":
+            assert src.layout is not None  # model validator guarantees layout on *_tree
+            per_source = _load_one_image_tree(
+                src.name,
+                root,
+                src.layout,
+                src.label_from,
+                src.unlabeled,
+                seen_ids,
+                attach_label=attach_label,
+            )
+            hashes[src.name] = (
+                _hash_image_flat(root, src.label_from)
+                if src.label_from is not None
+                else _hash_image_folder(root)
+            )
         else:
             raise RecipeError(
                 f"image_classification loader: source {src.name!r} has "
@@ -179,6 +195,93 @@ def _load_one_image_folder(
             f"{root!s} contains no .png/.jpg/.jpeg files"
         )
     return out
+
+
+def _load_one_image_tree(
+    source_name: str,
+    root: Path,
+    layout: str,
+    label_from: LabelFromSpec | None,
+    unlabeled: bool,
+    seen_ids: set[str],
+    *,
+    attach_label: bool,
+) -> list[Record]:
+    """Load an ``image_tree`` source via the shared ``path_tree`` resolver (Story K.h).
+
+    Labels come from the layout's ``{label}`` token (path-derived) when present;
+    otherwise from ``label_from`` (sidecar) or ``unlabeled``. A ``{split}`` token
+    stamps each record's ``partition`` (consumed by ``Splits`` exactly as a
+    per-source ``partition`` is). Bytes/decode stay here — the resolver is
+    payload-agnostic.
+    """
+    from datarefinery.recipe.layout import path_tree
+
+    resolved = path_tree(
+        root, layout, extensions=frozenset(_IMAGE_EXTENSIONS), source_name=source_name
+    )
+    if not resolved:
+        raise RecipeError(
+            f"image_classification loader: source {source_name!r} root {root!s} matched no "
+            f".png/.jpg/.jpeg files for layout {layout!r}"
+        )
+    has_label_token = "{label}" in layout
+    label_index = (
+        _build_label_index(label_from) if (attach_label and label_from is not None) else None
+    )
+    if isinstance(label_index, list) and len(label_index) != len(resolved):
+        raise MaterializeError(
+            f"label_from: manifest has {len(label_index)} rows but source {source_name!r} "
+            f"has {len(resolved)} files (join=by_row_order requires equal counts)"
+        )
+    out: list[Record] = []
+    for i, rf in enumerate(resolved):
+        if rf.record_id in seen_ids:
+            raise RecipeError(
+                f"image_classification loader: duplicate record_id {rf.record_id!r} "
+                f"across input sources"
+            )
+        seen_ids.add(rf.record_id)
+        with Image.open(rf.path) as im:
+            arr = np.asarray(im)
+        record: Record = {"record_id": rf.record_id, "image": arr, "path": str(rf.path)}
+        if rf.split is not None:
+            record["partition"] = rf.split
+        if attach_label and not unlabeled:
+            record["label"] = _resolve_tree_label(
+                source_name, layout, has_label_token, label_from, label_index, rf, i
+            )
+        out.append(record)
+    return out
+
+
+def _resolve_tree_label(
+    source_name: str,
+    layout: str,
+    has_label_token: bool,
+    label_from: LabelFromSpec | None,
+    label_index: dict[str, str] | list[str] | None,
+    rf: Any,
+    row_idx: int,
+) -> Any:
+    """Resolve a single ``*_tree`` record's label from `{label}` / `label_from`."""
+    if has_label_token:
+        return rf.label
+    if label_from is not None:
+        if isinstance(label_index, dict):
+            join_key = rf.path.stem
+            if join_key not in label_index:
+                raise MaterializeError(
+                    f"label_from: file {rf.path!s} has no matching id {join_key!r} "
+                    f"in manifest {label_from.path!s}"
+                )
+            return label_index[join_key]
+        assert isinstance(label_index, list)
+        return label_index[row_idx]
+    raise RecipeError(
+        f"image_classification loader: source {source_name!r} layout {layout!r} has no "
+        f"'{{label}}' token, no label_from, and is not unlabeled — no label source"
+    )
 
 
 def _enumerate_flat_images(root: Path) -> list[Path]:
