@@ -108,17 +108,17 @@ Resolves consumer Gaps 1 and 2 (see [`consumer-gap-solutions.md`](consumer-gap-s
 
 ---
 
-### Story K.f: [Spike] Path-template grammar + shared cross-plugin resolver boundary [Planned]
+### Story K.f: [Spike] Path-template grammar + shared cross-plugin resolver boundary [Done]
 
-Architectural spike (deliverable = a documented design decision, not production code) to settle the `layout` path-template grammar and the shared cross-plugin directory-resolver boundary before implementation. De-risks FR-K-1.
+Architectural spike (deliverable = a documented design decision, not production code) to settle the `layout` path-template grammar and the shared cross-plugin directory-resolver boundary before implementation. De-risks FR-K-1. Deliverable: [`phase-k-subphase-2-ingestion-resolver-spike.md`](phase-k-subphase-2-ingestion-resolver-spike.md).
 
-- [ ] Decide the `layout` template grammar: components `{label}`, `{split}`, `{file}`; wildcards `*` (exactly one ignored level) / `**` (any depth) — mirror the sink path-template grammar in [`pipeline/sinks/template.py`](../../src/datarefinery/pipeline/sinks/template.py) for surface consistency
-- [ ] Specify the static validation rules (exactly one `{label}` for labeled sources; depth/consistency checks) that FR-K-5 will enforce
-- [ ] Define the shared `path_tree` resolver interface: inputs (`layout` + plugin file-extension set + plugin decode hook), outputs (`[(path, record_id, label?, split?)]`); how the image and audio loaders call it
-- [ ] Settle `{split}` vs per-source `InputSource.partition` precedence (mutual exclusion; template wins when present)
-- [ ] Record the field-rename refutation (`image`/`sample_array` stay plugin-owned; no `observation`/`sample` generalization) as a closed decision
-- [ ] Confirm the input hash must digest the **resolved** file set and that traversal stays deterministically sorted (the K.g coupling point)
-- [ ] Capture the decided grammar + resolver boundary in the phase plan (or a short design memo); no production code
+- [x] Decided the `layout` template grammar: components `{label}`, `{split}`, `{file}`; wildcards `*` (exactly one ignored level) / `**` (any depth) — shares the sink brace *surface* but is a path-segment **matcher** (semantically inverse to the sink substituter); new `recipe/layout.py` parser, not a reuse of `sinks/template.py` (memo § 1)
+- [x] Specified the static validation rules (exactly one `{file}` terminal; ≤1 `{label}`/`{split}`; closed token vocabulary; depth-satisfiability) that FR-K-5 will enforce (memo § 2)
+- [x] Defined the shared `path_tree` resolver interface — refined to **payload-agnostic**: returns `[(path, record_id, label?, split?)]`, decode stays in the loader (not a resolver input); plugin contributes only its extension set; backward-compatible `record_id = f"{source}/{rel_posix}"` (memo § 3)
+- [x] Settled `{split}` vs per-source `InputSource.partition` precedence (mutual exclusion; `{split}` for one-tree-many-splits, `partition` for separate-roots-per-split) (memo § 4)
+- [x] Recorded the field-rename refutation (`image`/`sample_array` stay plugin-owned; no `observation`/`sample` generalization) as a closed decision (memo § 5)
+- [x] Confirmed the input hash digests the **resolved** file set via one shared enumeration (symlink-follow + cycle protection + deterministic sort); flagged the two pre-prod-acceptable cache-invalidations for K.g/K.h CHANGELOG (memo § 6)
+- [x] Captured the decided grammar + resolver boundary in a design memo; no production code
 
 ---
 
