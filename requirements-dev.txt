@@ -1,8 +1,10 @@
 # Copyright (c) 2026 Pointmatic
 # SPDX-License-Identifier: Apache-2.0
 #
-# Dev tooling for the pyve testenv (.pyve/testenv/venv/).
-# Install with: pyve testenv install -r requirements-dev.txt
+# Dev tooling for the pyve test environment (defaults to `testenv`).
+# Install with: `pyve env install` (requirements configured in `pyve.toml`)
+
+-e .
 
 ruff
 mypy

@@ -11,3 +11,4 @@ backend = "venv"
 purpose = "test"
 backend = "venv"
 default = true
+requirements = ["requirements-dev.txt"]

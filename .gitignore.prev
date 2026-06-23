@@ -1,0 +1,66 @@
+# >>> pyve:managed:gitignore >>>
+# pyve-managed .gitignore — do not edit between the markers;
+# add your own ignores above or below the managed section.
+# macOS
+.DS_Store
+
+# Pyve-managed
+.pyve/
+.envrc
+.env
+.vscode/settings.json
+.venv
+
+# Python build and test artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+dist/
+build/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# <<< pyve:managed:gitignore <<<
+# Copyright (c) 2026 Pointmatic
+# SPDX-License-Identifier: Apache-2.0
+
+# OS-specific
+Thumbs.db
+
+# Python build and test artifacts
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter notebooks
+
+# Pyve virtual environment
+.pyve/envs
+.pyve/testenv
+
+# IDE/editor files
+.idea/
+
+# DataRefinery cache root (default)
+data/
+
+# Throwaway spike output directory
+scratch/
+
+# project-guide
+/docs/project-guide/.metadata.yml
+/docs/project-guide/README.md
+/docs/project-guide/developer/
+/docs/project-guide/templates/
+/docs/project-guide/**/*.bak.*
+
+# project
+do-not-commit*.md

@@ -968,6 +968,19 @@ The flat `recipe.model_dump(mode="json")` canonical form couples cache identity 
 - Recipe-activated arbitrary code (hooks/callbacks the recipe points at). Flagged as a separate trust-boundary effort; this memo keeps the recipe declarative.
 - Creating the new phase heading/bundle — `plan_phase`'s exclusive job.
 
+
+
+### Story J.y: Refactor planning docs (audit currency vs Phase J delivery) [Done]
+
+Audit-driven refresh of the three planning artifacts against what Phase J actually shipped (consumer integration v0.20.0, Recipe Architecture v0.22.0, audio plugin v0.23.0). Pure documentation update — **no version bump** (the docs describe already-released behavior; this rides the next code-story release per Version Cadence). Two anonymization passes folded in alongside the Phase J currency work: curriculum framing ("deep-learning curriculum / students / instructors / cohort") stripped from concept.md and features.md in favor of generic "ML practitioner" framing, with LearningFoundry reframed as a downstream-by-association integration via NbFoundry (per [[project_anonymize_consumer_spec]]).
+
+**Tasks:**
+
+- [x] Refactor concept.md (gap: audio as first-class modality; segmentation / overlays / extensions in the why-narrative; dual-contract framing; + curriculum→generic-ML reframe)
+- [x] Refactor features.md (gap: audio FRs — inputs, plugin, ops; FR-14 Variants→Overlays; segmented identity + per-segment versioning in FR-1; no-implicit-defaults; extensions namespace FR-24; new validator checks 24–29; `label_classes` / `overlays` manifest fields; + curriculum→generic-ML reframe)
+- [x] Refactor tech-spec.md (gap: audio plugin architecture + window records + op contracts; `drift.json.recipe_hash` in DriftSchema; reconciled flat→segmented cache-identity algorithm; schema-version/check-count currency; `audio_classification` package subtree)
+- [x] Revisit project-essentials.md (fixed stale `variants`→`overlays` references in § "Recipe is authoritative"; generic-ML-framing convention kept in LLM memory only, not added to the repo doc, per developer)
+
 ---
 
 ## Future

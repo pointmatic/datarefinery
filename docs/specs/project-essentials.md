@@ -129,9 +129,9 @@ Configuration precedence in DataRefinery is **recipe → CLI flags → environme
 
 **Why:** the recipe is the artifact users hand off, check into version control, and read six months later to understand what was done. If CLI flags could silently override pipeline semantics, the recipe would no longer be the source of truth — handoff would degrade back to "the recipe and the magic command-line incantation," which is the notebook-era problem DataRefinery exists to fix.
 
-**How to apply:** when adding a new feature that has a "switch" or "toggle" character, route it through the recipe as a section field or a variant — not as a CLI flag or env var. Tempting LLM mistakes to refuse:
+**How to apply:** when adding a new feature that has a "switch" or "toggle" character, route it through the recipe as a section field or an overlay — not as a CLI flag or env var. Tempting LLM mistakes to refuse:
 
-- "Let's add `--no-augment` so users can quickly disable augmentation." **No.** Augmentation policy lives in the recipe; the variant pattern (`Augmentations: []` under a named variant) covers this case explicitly. Users select the variant via `--variant no_augment`, which is execution-context selection, not recipe override.
+- "Let's add `--no-augment` so users can quickly disable augmentation." **No.** Augmentation policy lives in the recipe; the overlay pattern (`Augmentations: []` under a named overlay) covers this case explicitly. Users select the overlay via `--overlay no_augment`, which is execution-context selection, not recipe override.
 - "Let's add `--cache-root-override` that supersedes a recipe-declared cache root." **N/A** — the recipe doesn't declare cache root; it's already execution-context.
 - "Let's add `--operation-skip OP_NAME` for fast iteration." **No.** That's pipeline semantics. Use a variant or edit the recipe.
 
