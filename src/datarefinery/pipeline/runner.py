@@ -62,7 +62,7 @@ from datarefinery.pipeline.manifest import (
     SinkManifestEntry,
     write_manifest,
 )
-from datarefinery.pipeline.path_rewrite import path_rewrite_plan
+from datarefinery.pipeline.path_rewrite import feature_path_rewrite_plan, path_rewrite_plan
 from datarefinery.pipeline.sinks import SinkResult, execute_sinks
 from datarefinery.pipeline.stages.augmentations import (
     collect_augmentation_policies,
@@ -497,7 +497,15 @@ class PipelineRunner:
             # affected split has a qualifying sink, so the plan covers
             # every split that needs it.
             rewrite_plan = path_rewrite_plan(self.recipe, self.plugin)
-            _write_dataset(dataset_dir(temp_dir), split_map, rewrite_plan=rewrite_plan)
+            # Story K.c: instance-root-relative `feature_path` rewrite for
+            # `npy_per_record` float-array sinks (the audio feature egress).
+            feature_plan = feature_path_rewrite_plan(self.recipe, split_map.keys())
+            _write_dataset(
+                dataset_dir(temp_dir),
+                split_map,
+                rewrite_plan=rewrite_plan,
+                feature_rewrite_plan=feature_plan,
+            )
 
             # FR-J-1 SampleData runtime (Story J.a). P-postpipeline +
             # M-sidecar: sample the final split_map *after* the full
@@ -517,6 +525,7 @@ class PipelineRunner:
                     sample_dir(temp_dir),
                     dict(sample_result.samples),
                     rewrite_plan=rewrite_plan,
+                    feature_rewrite_plan=feature_plan,
                 )
 
             current_stage = "Recipe"
@@ -720,6 +729,7 @@ def _write_dataset(
     splits: Mapping[str, list[Record]],
     *,
     rewrite_plan: Mapping[str, SinkOp] | None = None,
+    feature_rewrite_plan: Mapping[str, SinkOp] | None = None,
 ) -> None:
     """Write per-split JSON-lines summaries and aggressive-variant sidecar PNGs.
 
@@ -748,19 +758,29 @@ def _write_dataset(
     per-record output (instance-relative) so a consumer reading ``path``
     sees the *prepared* pixels, not the diverged source. Splits absent
     from the plan keep their source ``path`` unchanged.
+
+    ``feature_rewrite_plan`` (Story K.c) maps a split name to the
+    ``npy_per_record`` sink that persisted its feature arrays. For every
+    record in such a split, an instance-root-relative ``feature_path`` is
+    rewritten in (the sink's per-record output), so a consumer can locate
+    the float feature ``.npy``. This is orthogonal to the image-mode branch:
+    it applies to both lazy and aggressive records (audio window records are
+    non-aggressive). Splits absent from the plan get no ``feature_path``.
     """
     from PIL import Image as _PIL_Image
 
     plan = rewrite_plan or {}
+    feature_plan = feature_rewrite_plan or {}
     dataset_root.mkdir(parents=True, exist_ok=True)
     for split_name, records in splits.items():
         sidecar_dir = dataset_root / split_name / "images"
         rewrite_sink = plan.get(split_name)
+        feature_sink = feature_plan.get(split_name)
         prepared: list[dict[str, Any]] = []
         for r in records:
             prepared.append(
                 _prepare_record_for_persistence(
-                    r, split_name, sidecar_dir, _PIL_Image, rewrite_sink
+                    r, split_name, sidecar_dir, _PIL_Image, rewrite_sink, feature_sink
                 )
             )
         path = dataset_root / f"{split_name}.jsonl"
@@ -789,6 +809,7 @@ def _prepare_record_for_persistence(
     sidecar_dir: Path,
     pil_image_module: Any,
     rewrite_sink: SinkOp | None = None,
+    feature_sink: SinkOp | None = None,
 ) -> dict[str, Any]:
     """Return a JSONL-ready copy of ``record``; for aggressive variants,
     side-effect-write the PNG to ``sidecar_dir`` and replace ``image``
@@ -798,7 +819,32 @@ def _prepare_record_for_persistence(
     J.g), the ``path`` field is rewritten to the sink's per-record output
     (instance-relative, via the sink's ``path_template``) so consumers see
     the transformed pixels rather than the diverged source.
+
+    When ``feature_sink`` is provided (Story K.c), an instance-root-relative
+    ``feature_path`` is rewritten in for the record, pointing at the
+    ``npy_per_record`` sink's per-record float-array output. This is
+    orthogonal to the image-mode branch and applies to both lazy and
+    aggressive records.
     """
+    out = _image_persistence_copy(record, split_name, sidecar_dir, pil_image_module, rewrite_sink)
+    if feature_sink is not None:
+        from datarefinery.pipeline.sinks.template import render_template
+
+        out["feature_path"] = render_template(
+            feature_sink.path_template, record=record, split=split_name
+        )
+    return out
+
+
+def _image_persistence_copy(
+    record: Mapping[str, Any],
+    split_name: str,
+    sidecar_dir: Path,
+    pil_image_module: Any,
+    rewrite_sink: SinkOp | None,
+) -> dict[str, Any]:
+    """The image-mode half of record preparation (J.g ``path`` rewrite +
+    H.r.2 aggressive-variant sidecar PNG). Returns a mutable JSONL-ready copy."""
     if not _is_aggressive_variant(record):
         out = dict(record)
         if rewrite_sink is not None:

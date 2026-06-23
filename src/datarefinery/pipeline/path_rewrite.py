@@ -25,6 +25,8 @@ dtype-altering-transform + aggressive-augmentation crash combination.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from datarefinery.plugins.base import Plugin
 from datarefinery.recipe.models import Recipe, SinkOp, TransformationOp
 
@@ -129,3 +131,25 @@ def uncovered_pixel_altering_splits(recipe: Recipe, plugin: Plugin) -> set[str]:
     needed = _lazy_pixel_altering_splits(recipe, plugin)
     covered = set(path_rewrite_plan(recipe, plugin).keys())
     return needed - covered
+
+
+def feature_path_rewrite_plan(recipe: Recipe, split_names: Iterable[str]) -> dict[str, SinkOp]:
+    """Map each split to the ``npy_per_record`` sink that persists its features.
+
+    Story K.c. Parallel to :func:`path_rewrite_plan` but for the float
+    feature-array egress: every ``npy_per_record`` sink persists a feature
+    ``.npy`` per record, and the dataset writer rewrites a per-record,
+    instance-root-relative ``feature_path`` to that sink's output. For each
+    split the first ``npy_per_record`` sink (in recipe declaration order)
+    that covers it wins. Unlike the J.g image rewrite this is not gated on a
+    transform classification — declaring the sink *is* the request to persist
+    and link the feature array — so no plugin is needed.
+    """
+    npy_sinks = [sink for sink in recipe.Sinks if sink.format == "npy_per_record"]
+    plan: dict[str, SinkOp] = {}
+    for split in split_names:
+        for sink in npy_sinks:
+            if _sink_covers_split(sink, split):
+                plan[split] = sink
+                break
+    return plan

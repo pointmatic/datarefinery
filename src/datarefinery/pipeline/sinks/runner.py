@@ -19,7 +19,10 @@ from typing import Any
 
 from datarefinery.core.errors import MaterializeError
 from datarefinery.pipeline.sinks.template import parse_template, render_template
-from datarefinery.pipeline.sinks.writers import write_png_per_record
+from datarefinery.pipeline.sinks.writers import (
+    write_npy_per_record,
+    write_png_per_record,
+)
 from datarefinery.recipe.models import SinkOp
 
 
@@ -120,6 +123,14 @@ def _run_one_sink(
                 )
             if sink.format == "png_per_record":
                 bytes_written = write_png_per_record(
+                    record=dict(record),
+                    field=sink.field,
+                    output_path=output_path,
+                    sink_name=sink.name,
+                    stage=sink.stage,
+                )
+            elif sink.format == "npy_per_record":
+                bytes_written = write_npy_per_record(
                     record=dict(record),
                     field=sink.field,
                     output_path=output_path,

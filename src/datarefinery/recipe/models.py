@@ -499,7 +499,7 @@ class SinkOp(_Frozen):
     stage: SinkStage
     splits: list[str] | None = None
     field: str
-    format: Literal["png_per_record"]
+    format: Literal["png_per_record", "npy_per_record"]
     path_template: str
 
 

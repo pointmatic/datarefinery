@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from datarefinery.pipeline.path_rewrite import (
+    feature_path_rewrite_plan,
     path_rewrite_plan,
     pixel_altering_transformations,
     uncovered_pixel_altering_splits,
@@ -164,3 +165,41 @@ def test_rewrite_plan_picks_first_qualifying_sink_in_recipe_order() -> None:
     recipe = _recipe(transformations=[_RESIZE_ALL], sinks=[_IMAGE_SINK, second])
     plan = path_rewrite_plan(recipe, PLUGIN)
     assert {sink.name for sink in plan.values()} == {"transformed"}
+
+
+# ---------------------------------------------------------------------------
+# feature_path_rewrite_plan (Story K.c — npy_per_record sinks)
+# ---------------------------------------------------------------------------
+
+_NPY_SINK = {
+    "name": "feats",
+    "stage": "post_Featurizations",
+    "field": "mel",
+    "format": "npy_per_record",
+    "path_template": "features/{split}/{record_id}.npy",
+}
+
+
+def test_feature_plan_maps_each_split_to_npy_sink() -> None:
+    recipe = _recipe(sinks=[_NPY_SINK])
+    plan = feature_path_rewrite_plan(recipe, ["train", "val", "test"])
+    assert set(plan.keys()) == {"train", "val", "test"}
+    assert all(sink.name == "feats" for sink in plan.values())
+
+
+def test_feature_plan_empty_without_npy_sink() -> None:
+    recipe = _recipe(sinks=[_IMAGE_SINK])
+    assert feature_path_rewrite_plan(recipe, ["train", "val", "test"]) == {}
+
+
+def test_feature_plan_respects_sink_splits_filter() -> None:
+    recipe = _recipe(sinks=[{**_NPY_SINK, "splits": ["train"]}])
+    plan = feature_path_rewrite_plan(recipe, ["train", "val", "test"])
+    assert set(plan.keys()) == {"train"}
+
+
+def test_feature_plan_picks_first_npy_sink_in_recipe_order() -> None:
+    second = {**_NPY_SINK, "name": "second", "path_template": "other/{split}/{record_id}.npy"}
+    recipe = _recipe(sinks=[_NPY_SINK, second])
+    plan = feature_path_rewrite_plan(recipe, ["train"])
+    assert plan["train"].name == "feats"

@@ -88,6 +88,17 @@ def test_sink_op_rejects_unknown_format() -> None:
         SinkOp.model_validate(_sink_dict(format="parquet"))
 
 
+def test_sink_op_accepts_npy_per_record_format() -> None:
+    # Story K.c: additive `npy_per_record` float-array sink format.
+    sink = SinkOp.model_validate(
+        _sink_dict(
+            field="mel", format="npy_per_record", path_template="features/{split}/{record_id}.npy"
+        )
+    )
+    assert sink.format == "npy_per_record"
+    assert sink.field == "mel"
+
+
 def test_sink_op_rejects_extra_fields() -> None:
     with pytest.raises(ValidationError):
         SinkOp.model_validate(_sink_dict(unexpected=True))

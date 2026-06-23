@@ -68,15 +68,15 @@ Integration spike that ratifies the cross-repo `feature_path` contract before im
 
 ---
 
-### Story K.c: `npy_per_record` float-array sink + `feature_path` rewrite [Planned]
+### Story K.c: `npy_per_record` float-array sink + `feature_path` rewrite [Done]
 
-Implements FR-K-3: the additive `npy_per_record` sink writer, the instance-root-relative `feature_path` JSONL rewrite, and manifest wiring, mirroring `png_per_record`. Bundled into `v0.24.0`.
+Implements FR-K-3: the additive `npy_per_record` sink writer, the instance-root-relative `feature_path` JSONL rewrite, and manifest wiring, mirroring `png_per_record`. Bundled into `v0.24.0` (version bump + CHANGELOG owned by K.e).
 
-- [ ] Extend the `SinkOp.format` Literal with `npy_per_record` and add the optional per-record `feature_path` field ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)); update [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) (re-ratify forward-declared → shipped)
-- [ ] Implement the `npy_per_record` writer (`np.save`, `float32`) in [`pipeline/sinks/writers.py`](../../src/datarefinery/pipeline/sinks/writers.py); enable the currently-dead non-PNG branch in [`pipeline/sinks/runner.py`](../../src/datarefinery/pipeline/sinks/runner.py)
-- [ ] Rewrite `feature_path` at dataset serialization (instance-root-relative; nested-safe), parallel to the `png_per_record` `path` rewrite
-- [ ] Manifest wiring: `manifest.sinks[<name>].format` reports `npy_per_record`; `features/<split>/` joins the atomic temp-then-promote unit
-- [ ] Tests: deterministic byte-identical `.npy` across runs (same recipe + inputs + seed); changed featurization param ⇒ cache miss; `(n_mels, n_frames)` `float32` on disk; nested `feature_path` round-trips
+- [x] Extend the `SinkOp.format` Literal with `npy_per_record` ([`recipe/models.py`](../../src/datarefinery/recipe/models.py)); the per-record `feature_path` is a serialization-time JSONL field (parallel to `image_path` — not a model field); updated [`modelfoundry/vendor-dependency-spec.md`](modelfoundry/vendor-dependency-spec.md) (re-ratified producer side forward-declared → shipped)
+- [x] Implement the `npy_per_record` writer (`np.save`, `float32`) in [`pipeline/sinks/writers.py`](../../src/datarefinery/pipeline/sinks/writers.py); enable the currently-dead non-PNG branch in [`pipeline/sinks/runner.py`](../../src/datarefinery/pipeline/sinks/runner.py)
+- [x] Rewrite `feature_path` at dataset serialization (instance-root-relative; nested-safe), parallel to the `png_per_record` `path` rewrite ([`pipeline/path_rewrite.py`](../../src/datarefinery/pipeline/path_rewrite.py) `feature_path_rewrite_plan` → [`pipeline/runner.py`](../../src/datarefinery/pipeline/runner.py) `_prepare_record_for_persistence`)
+- [x] Manifest wiring: `manifest.sinks[<name>].format` reports `npy_per_record`; `features/<split>/` joins the atomic temp-then-promote unit (sink output writes under the instance temp dir)
+- [x] Tests: deterministic byte-identical `.npy` across runs (same recipe + inputs + seed); changed featurization param ⇒ different recipe identity (cache miss); `(n_mels, n_frames)` `float32` on disk; nested `feature_path` round-trips
 
 ---
 
